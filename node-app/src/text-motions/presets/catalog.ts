@@ -3,7 +3,7 @@ import { block, keyframes, scramble, shuffleOrder, sweep, type } from './define'
 
 /**
  * AMU Text Motion 프리셋 카탈로그.
- * 원본: .agent/amu_text_motion_library.md (001–100, 독립 HTML 100개)
+ * 원본: .agent/references/NODE_APP/text-motion-library/amu_text_motion_library.md (001–100, 독립 HTML 100개)
  *
  * 원본의 중복 로직(글자 분할, 스태거, 총 길이 계산, 루프, setTimeout 타이머)은 모두 제거하고
  * 프리셋마다 "고유한 부분(키프레임/파라미터)"만 데이터로 남겼다.

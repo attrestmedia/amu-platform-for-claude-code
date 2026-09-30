@@ -1,7 +1,7 @@
 # AMU Text Motion Library
 
-`.agent/amu_text_motion_library.md`(독립 HTML 100개)를 AMU 플랫폼용 **단일 엔진 + 프리셋 데이터** 구조로 재구성한 텍스트 모션 라이브러리입니다.
-설계는 `.agent/motion-content-ui-system.md`의 원칙을 따릅니다.
+`.agent/references/NODE_APP/text-motion-library/amu_text_motion_library.md`(독립 HTML 100개)를 AMU 플랫폼용 **단일 엔진 + 프리셋 데이터** 구조로 재구성한 텍스트 모션 라이브러리입니다.
+설계는 `.agent/references/NODE_APP/text-motion-library/motion-content-ui-system.md`의 원칙을 따릅니다.
 
 | 문서 원칙 | 이 라이브러리에서의 구현 |
 | --- | --- |
