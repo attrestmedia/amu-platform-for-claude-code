@@ -1,0 +1,98 @@
+@layer components {
+  /* 버튼 스타일 */
+  .button-base {
+    @apply relative inline-flex items-center justify-center gap-1.5 text-base leading-none text-white border-transparent select-none cursor-pointer font-medium transition-all;
+    &:disabled {
+      @apply pointer-events-none opacity-60;
+    }
+    &:focus-visible {
+      @apply outline-none;
+    }
+    & svg {
+      @apply pointer-events-none shrink-0;
+    }
+
+    /* 글로시 효과 */
+    &.glossy {
+      &::before {
+        content: "";
+        @apply absolute from-white to-transparent opacity-35 h-1/2 inset-2 z-10;
+      }
+      &:active::before {
+        @apply opacity-0;
+      }
+    }
+  }
+
+  @media (min-width: 768px) {
+    .button-base:hover::before {
+      @apply opacity-0;
+    }
+  }
+}
+
+@layer components {
+  /* =========================================================
+   * AMU Image Preloader (CSS-only gradient placeholder)
+   * ========================================================= */
+  .amu-image-preloader {
+    position: relative;
+    overflow: hidden;
+    background: #0b0f1a;
+  }
+
+  .amu-image-preloader::before {
+    content: "";
+    position: absolute;
+    inset: -25%;
+    background:
+      radial-gradient(closest-side at 20% 30%, rgba(255, 0, 150, 0.75), transparent 60%),
+      radial-gradient(closest-side at 80% 20%, rgba(0, 200, 255, 0.6), transparent 55%),
+      radial-gradient(closest-side at 30% 80%, rgba(120, 255, 120, 0.55), transparent 60%),
+      radial-gradient(closest-side at 85% 75%, rgba(255, 200, 0, 0.45), transparent 60%);
+    filter: blur(30px) saturate(140%);
+    transform: translate3d(0, 0, 0);
+    opacity: 0.9;
+    animation:
+      amuImgPreloadMove 12s ease-in-out infinite alternate,
+      amuImgPreloadHue 10s linear infinite;
+    will-change: transform, filter;
+    pointer-events: none;
+  }
+
+  .amu-image-preloader::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    /* 살짝 어둡게 눌러서 위 콘텐츠(아이콘/텍스트) 가독성 확보 */
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.22));
+    pointer-events: none;
+  }
+
+  @keyframes amuImgPreloadMove {
+    0% {
+      transform: translate(-3%, -2%) scale(1.06);
+    }
+    50% {
+      transform: translate(2%, 3%) scale(1.1);
+    }
+    100% {
+      transform: translate(4%, -1%) scale(1.08);
+    }
+  }
+
+  @keyframes amuImgPreloadHue {
+    0% {
+      filter: hue-rotate(0deg) blur(30px) saturate(140%);
+    }
+    100% {
+      filter: hue-rotate(360deg) blur(30px) saturate(140%);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .amu-image-preloader::before {
+      animation: none;
+    }
+  }
+}

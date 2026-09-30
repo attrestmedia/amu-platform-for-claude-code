@@ -1,0 +1,108 @@
+export {
+  createMarketingJob,
+  getMarketingJobByJobId,
+  findMarketingJobByIdempotencyKey,
+  findActiveMarketingJobByDedupeKey,
+  updateMarketingJob,
+  updateMarketingJobStatus,
+  listMarketingJobs,
+  listMarketingJobsByJobIds,
+  appendMarketingJobUploadRecommendations,
+  createMarketingJobStep,
+  getMarketingJobStepByStepId,
+  updateMarketingJobStep,
+  updateMarketingJobStepStatus,
+  listMarketingJobSteps,
+  createMarketingAssetId,
+  createMarketingAsset,
+  updateMarketingAsset,
+  updateMarketingAssetsByIds,
+  listMarketingAssets,
+  listExpiredMarketingAssets,
+  claimExpiredMarketingAsset,
+  hasActiveMarketingAssetReference,
+  completeMarketingAssetCleanup,
+  releaseMarketingAssetCleanup,
+} from "./jobRepo";
+export {
+  createMarketingPublishLog,
+  listMarketingPublishLogs,
+  createMarketingKeywordCandidate,
+  listMarketingKeywordCandidates,
+  upsertMarketingPerformanceDaily,
+  incrementMarketingPerformanceDaily,
+  listMarketingPerformanceDaily,
+  deleteMarketingChannelProviderData,
+} from "./publishRepo";
+export {
+  updateMarketingSourceInventoryItem,
+} from "./sourceInventoryRepo";
+export {
+  getMarketingQueueCategoryConfig,
+  listMarketingQueueCategoryConfigs,
+  upsertMarketingQueueCategoryConfig,
+} from "./categoryConfigRepo";
+export {
+  countMarketingKeywordProfilesByCluster,
+  deleteMarketingKeywordCluster,
+  deleteMarketingKeywordProfile,
+  getMarketingKeywordProfile,
+  getMarketingKeywordSettings,
+  updateMarketingCriteriaByAgent,
+  updateMarketingKeywordSettingsByAgent,
+  updateMarketingUploadPolicy,
+  listMarketingKeywordClusters,
+  listMarketingKeywordProfiles,
+  upsertMarketingKeywordCluster,
+  upsertMarketingKeywordProfile,
+  upsertMarketingKeywordSettings,
+} from "./keywordProfileRepo";
+export {
+  countMarketingTypoRules,
+  deduplicateMarketingTypoRules,
+  findMarketingTypoRuleByIdentity,
+  listAllActiveMarketingTypoRules,
+  listMarketingTypoRules,
+  recordMarketingTypoCandidate,
+  updateMarketingTypoRuleStatus,
+  upsertMarketingTypoRule,
+} from "./typoRuleRepo";
+export {
+  finishMarketingCollectRun,
+  getActiveMarketingCollectRun,
+  getLatestMarketingCollectRun,
+  getMarketingSocialCollectSettings,
+  listEnabledMarketingSocialCollectSettings,
+  listMarketingCollectRuns,
+  startMarketingCollectRun,
+  upsertMarketingSocialCollectSettings,
+} from "./collectRunRepo";
+export {
+  getMarketingAdsPolicy,
+  upsertMarketingAdsPolicy,
+  upsertMarketingAdvertisingCriteria,
+  updateMarketingAdvertisingCriteriaByAgent,
+  createMarketingAdDraft,
+  listMarketingAdDrafts,
+  getMarketingAdDraft,
+  approveMarketingAdDraft,
+  appendMarketingAdExecutionExternalId,
+  claimMarketingAdExecution,
+  finishMarketingAdExecution,
+  markMarketingAdDraftExecuted,
+  listMarketingAdExecutions,
+} from "./adsRepo";
+export {
+  approveMarketingKeywordPlan,
+  createMarketingKeywordPlan,
+  getMarketingKeywordPlan,
+  listMarketingKeywordPlans,
+} from "./keywordPlanRepo";
+export {
+  createMarketingPromoCreative,
+  createMarketingPromoCreativeId,
+  deleteMarketingPromoCreative,
+  getMarketingPromoCreative,
+  listMarketingPromoCreatives,
+  updateMarketingPromoCreative,
+} from "./promoCreativeRepo";

@@ -1,0 +1,111 @@
+@theme {
+  --breakpoint-xs: 480px;
+}
+
+/* @theme inline Tailwind 토큰 매핑 */
+@theme inline {
+  /* AMU Core Tokens */
+  --color-primary: var(--primary);
+  --color-primary-sub: var(--primary-sub);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-text: var(--text-primary);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-sub: var(--secondary-sub);
+  --color-secondary-text: var(--text-secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-sub: var(--accent-sub);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-text: var(--accent-text);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+
+  --color-muted-text: var(--text-muted);
+  --color-button-text: var(--button-text);
+  --color-danger: var(--danger);
+
+  --color-focus: var(--focus);
+  --color-ring: var(--ring);
+
+  /* shadcn/ui 매핑 */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+
+  --color-input: var(--input-border);
+  --color-input-bg: var(--input-bg);
+  --color-input-border: var(--input-border);
+  --color-input-focus: var(--input-focus);
+
+  /* 글로우 */
+  --color-glow: var(--glow-color);
+  --color-glow-50: var(--glow-50);
+  --color-glow-70: var(--glow-70);
+
+  /* 차트 */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* 반지름 */
+  --radius: 0.5rem;
+}
+
+@layer base {
+  /* border 기본값 설정 */
+  *,
+  ::before,
+  ::after,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border, currentColor);
+  }
+}
+
+/*
+  media 전용 xs 조건 추가
+  - 사용법: `max-xs:...`
+  - 지정되지 않는 사이즈는 `max-[400px]:...` 처럼 사용 가능
+*/
+@custom-variant max-xs {
+  @media (width <= 360px) {
+    @slot;
+  }
+}
+
+/*
+  AMU dark variant
+
+  현재 단계는 라이트 단일 테마다(2026-07-30 결정). 다크 토큰이 없는 상태에서
+  시스템 다크 분기를 남겨 두면, 코드에 남아 있는 dark: 유틸리티(152곳)만 발동해
+  라이트 토큰 위에 다크 표면·글자가 섞이는 반쪽 상태가 된다.
+
+  그래서 시스템 분기를 걷어내고 data-theme="dark" 분기만 남긴다.
+  현재 이 속성을 쓰는 코드가 없으므로 dark: 유틸리티는 발동하지 않는다.
+  기존 dark: 클래스를 지우지 않는 이유는, 다크 복구 시 토큰만 되살리면
+  그대로 다시 동작하게 하기 위해서다.
+*/
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}

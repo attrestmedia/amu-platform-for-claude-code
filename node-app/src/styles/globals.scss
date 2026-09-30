@@ -1,0 +1,83 @@
+@charset "UTF-8";
+@use "./base/animate";
+
+/* 기본 설정 스타일 */
+html,
+body {
+  height: 100%;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: "Pretendard", "Outfit", Arial, Helvetica, sans-serif;
+  font-optical-sizing: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+// 슬라이더 스타일
+$slider-handle-size: 0.75rem;
+input[type="range"] {
+  -webkit-appearance: none; // 크롬과 사파리의 기본 스타일 제거
+  width: 100%;
+  height: 4px;
+  background: var(--border); // 슬라이더 바 색상
+  outline: none; // 포커스 시 아웃라인 제거
+  border-radius: 5px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  &:hover {
+    opacity: 1;
+  }
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none; // 크롬과 사파리의 기본 스타일 제거
+    appearance: none;
+    width: $slider-handle-size;
+    height: $slider-handle-size;
+    background: var(--border-hover);
+    border: 2px solid var(--surface);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
+  }
+
+  &::-moz-range-thumb {
+    width: $slider-handle-size;
+    height: $slider-handle-size;
+    background: var(--border);
+    cursor: pointer;
+    border-radius: 50%;
+    box-shadow: 0 0 2px rgba(0, 0, 0, 0.2);
+  }
+}
+
+// 스크롤바 스타일
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-secondary) 8%, transparent) transparent;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 999px;
+    transition: background-color 500ms;
+  }
+
+  &:hover,
+  &:focus-within {
+    scrollbar-color: color-mix(in srgb, var(--text-secondary) 16%, transparent) transparent;
+
+    &::-webkit-scrollbar-thumb {
+      background: color-mix(in srgb, var(--text-secondary) 16%, transparent);
+    }
+  }
+}

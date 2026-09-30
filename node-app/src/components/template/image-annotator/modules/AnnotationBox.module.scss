@@ -1,0 +1,83 @@
+.annotationBoxHeader {
+  &::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--annotation-color);
+    opacity: 0.2;
+  }
+
+  button {
+    color: white;
+    border: none;
+    border-radius: 9999px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+  }
+}
+
+.annotationBoxHandles {
+  > div {
+    &::before,
+    &::after {
+      content: "";
+      position: absolute;
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      background-color: var(--annotation-color);
+    }
+  }
+
+  .handle1 {
+    &::before {
+      top: var(--handle-correct);
+      left: var(--handle-correct);
+    }
+    &::after {
+      top: var(--handle-correct);
+      right: var(--handle-correct);
+    }
+  }
+
+  .handle2 {
+    &::before {
+      bottom: var(--handle-correct);
+      left: var(--handle-correct);
+    }
+    &::after {
+      bottom: var(--handle-correct);
+      right: var(--handle-correct);
+    }
+  }
+
+  .handle3 {
+    &::before {
+      top: var(--handle-correct);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    &::after {
+      bottom: var(--handle-correct);
+      left: 50%;
+      transform: translateX(-50%);
+    }
+  }
+
+  .handle4 {
+    &::before {
+      top: 50%;
+      left: var(--handle-correct);
+      transform: translateY(-50%);
+    }
+    &::after {
+      top: 50%;
+      right: var(--handle-correct);
+      transform: translateY(-50%);
+    }
+  }
+}

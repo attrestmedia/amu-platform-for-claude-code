@@ -1,0 +1,55 @@
+/**
+ * Marketing Oops 랜딩 전용 조형 언어.
+ *
+ * 로고의 정체성은 색보다 "검정 외곽선 + 블러 없는 오프셋 그림자"다.
+ * 색 토큰(@amu-labs/ui/styles/themes/marketing-oops.css)만으로는 브랜드 테스트를 통과하지 못하므로
+ * 획(stroke) 규칙을 한 곳에 고정한다.
+ *
+ * 확산 방지 계약 — 적용 지점은 3곳으로 제한한다.
+ *   1) 히어로 제품 미리보기 프레임  2) 1차 CTA 버튼  3) `출시 준비 중` 상태 배지
+ * 모든 카드/섹션에 확산시키지 않는다. 로고에서도 하드 섀도는 심볼과 로고타이프에만 붙어 있다.
+ *
+ * 스코프는 ServiceThemeScope가 세팅한 data-service-theme 속성 하위로 한정한다.
+ */
+[data-service-theme="marketing-oops"] {
+  .mo-hard {
+    border: 2px solid var(--marketing-oops-ink);
+    box-shadow: 6px 6px 0 0 var(--marketing-oops-shadow);
+  }
+
+  .mo-hard-sm {
+    border: 2px solid var(--marketing-oops-ink);
+    box-shadow: 3px 3px 0 0 var(--marketing-oops-shadow);
+  }
+
+  /* 눌리는 느낌 — 그림자를 이동시키는 정적 변위. transform이 아니라 box-shadow만 바꾼다 */
+  .mo-hard-press {
+    transition:
+      box-shadow 180ms ease,
+      translate 180ms ease;
+
+    &:hover,
+    &:focus-visible {
+      box-shadow: 3px 3px 0 0 var(--marketing-oops-shadow);
+      translate: 2px 2px;
+    }
+
+    &:active {
+      box-shadow: 0 0 0 0 var(--marketing-oops-shadow);
+      translate: 5px 5px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mo-hard-press {
+      transition: none;
+
+      &:hover,
+      &:focus-visible,
+      &:active {
+        box-shadow: 6px 6px 0 0 var(--marketing-oops-shadow);
+        translate: none;
+      }
+    }
+  }
+}

@@ -1,0 +1,147 @@
+.joypad {
+  &__container {
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    z-index: 100;
+    user-select: none;
+    touch-action: none;
+
+    @media (min-width: 768px) {
+      bottom: 40px;
+      left: 40px;
+    }
+  }
+
+  &__base {
+    position: relative;
+    width: 10rem;
+    height: 10rem;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  &__stick {
+    width: 40%;
+    height: 40%;
+    background-color: rgba(255, 255, 255, 0.8);
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    /* 스프링 효과가 있는 애니메이션으로 부드럽게 원위치로 복귀 */
+    transition: transform 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    position: relative;
+    z-index: 2;
+    // 스틱이 직접 이벤트를 받을 수 있도록 pointer-events 제거
+    // pointer-events: none;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 10%;
+      left: 10%;
+      width: 30%;
+      height: 30%;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.6);
+      filter: blur(2px);
+    }
+
+    &--dragging {
+      transition: none;
+      transform-origin: center center;
+    }
+  }
+
+  &__button {
+    position: absolute;
+    width: 30%;
+    height: 30%;
+    border-radius: 50%;
+    // border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: background-color 0.1s ease;
+    pointer-events: none;
+
+    &--active {
+      background-color: rgba(255, 255, 255, 0.3);
+    }
+
+    &--up {
+      top: 5%;
+      left: 35%;
+    }
+
+    &--down {
+      bottom: 5%;
+      left: 35%;
+    }
+
+    &--left {
+      top: 35%;
+      left: 5%;
+    }
+
+    &--right {
+      top: 35%;
+      right: 5%;
+    }
+  }
+
+  &__guide {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    pointer-events: none;
+
+    &::before,
+    &::after {
+      content: "";
+      position: absolute;
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    &::before {
+      width: 72%;
+      height: 1px;
+      top: 50%;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    &::after {
+      width: 1px;
+      height: 72%;
+      top: 50%;
+      left: 50%;
+      transform: translateY(-50%);
+    }
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .joypad {
+    &__container {
+      bottom: 30px;
+      left: 30px;
+    }
+
+    &__base {
+      width: 140px;
+      height: 140px;
+      opacity: 0.85;
+    }
+
+    &__stick {
+      width: 45%;
+      height: 45%;
+    }
+  }
+}

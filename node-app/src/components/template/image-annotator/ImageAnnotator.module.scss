@@ -1,0 +1,30 @@
+.imageAnnotatorContainer {
+  * {
+    user-select: none;
+  }
+}
+
+.annotationContainer {
+  cursor: var(--cursor-type, default);
+}
+
+// 크로스헤어 스타일
+.crosshairVertical {
+  position: absolute;
+  top: 0;
+  height: 100vh;
+  width: 1px;
+  background-color: red;
+  pointer-events: none;
+  opacity: 0.2;
+}
+
+.crosshairHorizontal {
+  position: absolute;
+  left: 0;
+  height: 1px;
+  width: 100vw;
+  background-color: red;
+  pointer-events: none;
+  opacity: 0.2;
+}

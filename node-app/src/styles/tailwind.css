@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+/* @amu-labs/ui 프리미티브의 Tailwind 클래스명을 node_modules 내부 경로로 스캔한다.
+   node_modules는 프로젝트 루트 안쪽이므로 Turbopack "leaves the filesystem root" panic이 없다.
+
+   주의: 사전 컴파일된 @amu-labs/ui/styles/index.css를 @import하지 않는다. 그 파일은
+   @import "tailwindcss" 풀 빌드를 포함해 코어 유틸리티(.flex-col 등)를 중복 방출했고,
+   그것이 이 파일의 반응형 변형(lg:flex-row 등)보다 뒤에 붙어 cascade를 역전시켜
+   반응형 레이아웃을 깨뜨렸다(로그인 좌우 분리 회귀). 유틸리티는 이 파일의
+   @import "tailwindcss"가 소스 스캔 결과로 1회만 생성한다. */
+@source "../../node_modules/@amu-labs/ui/dist/**/*.{js,mjs}";
+
+/* 토큰 정본 + 서비스 테마 override는 값만 필요하므로 원본을 그대로 import한다. */
+@import "@amu-labs/ui/styles/tokens.css";
+@import "@amu-labs/ui/styles/themes/gen-studio.css";
+@import "@amu-labs/ui/styles/themes/tutors.css";
+@import "@amu-labs/ui/styles/themes/marketing-oops.css";
+@import "@amu-labs/ui/styles/themes/shopping-mall.css";
+
+@import "./tailwind/theme.css";
+@import "./tailwind/components.css";
+@import "./tailwind/utilities.css";
+

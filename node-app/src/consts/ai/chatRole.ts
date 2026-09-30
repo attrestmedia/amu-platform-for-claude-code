@@ -1,0 +1,35 @@
+// 채팅 관련 오류 타입 정의
+export const CHAT_ERROR_TYPE = {
+  NONE: "NONE",
+  DIALOG_LIMIT_EXCEEDED: "DIALOG_LIMIT_EXCEEDED",
+  NPC_LIMIT_EXCEEDED: "NPC_LIMIT_EXCEEDED",
+  TOKEN_LIMIT_EXCEEDED: "TOKEN_LIMIT_EXCEEDED",
+  SYSTEM_ERROR: "SYSTEM_ERROR",
+  CONVERSATION_HISTORY_TOKEN_EXCEEDED: "CONVERSATION_HISTORY_TOKEN_EXCEEDED",
+  SYSTEM_PROMPT_TOKEN_EXCEEDED: "SYSTEM_PROMPT_TOKEN_EXCEEDED",
+  OTHER: "OTHER",
+  UNKNOWN_ERROR: "UNKNOWN_ERROR",
+  NEW_CHARACTER_LOCKED: "NEW_CHARACTER_LOCKED", // 새 캐릭터 대화 제한 에러
+  COIN_INSUFFICIENT: "COIN_INSUFFICIENT", // 코인 부족
+  PROMPT_OPTIONS_TOO_LONG: "PROMPT_OPTIONS_TOO_LONG",
+  MESSAGE_TOKEN_EXCEEDED: "MESSAGE_TOKEN_EXCEEDED",
+  MESSAGE_TOO_LONG: "MESSAGE_TOO_LONG",
+} as const;
+export type ChatErrorType = (typeof CHAT_ERROR_TYPE)[keyof typeof CHAT_ERROR_TYPE];
+
+const TOKEN_ERRORS = [
+  "MESSAGE_TOO_LONG",
+  "MESSAGE_TOKEN_EXCEEDED",
+  "PROMPT_OPTIONS_TOO_LONG",
+  "TOKEN_LIMIT_EXCEEDED",
+] as const;
+
+// 오류 타입 헬퍼
+export const errorCodeToType = (code?: string): ChatErrorType => {
+  if (!code) return CHAT_ERROR_TYPE.OTHER;
+  if ((TOKEN_ERRORS as readonly string[]).includes(code)) return CHAT_ERROR_TYPE.TOKEN_LIMIT_EXCEEDED;
+
+  // 유효한 에러 코드인지 체크
+  const validCodes = Object.values(CHAT_ERROR_TYPE) as string[];
+  return validCodes.includes(code) ? (code as ChatErrorType) : CHAT_ERROR_TYPE.OTHER;
+};

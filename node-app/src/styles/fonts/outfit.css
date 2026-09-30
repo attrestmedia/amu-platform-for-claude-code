@@ -1,0 +1,37 @@
+/* 
+라틴 문자와 그 확장 버전, 그리고 다양한 발음 부호나 변형 기호 등을 포함하는 범위: 
+U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF
+- U+0100-02BA: 라틴 문자 중 기본 알파벳 외에, 악센트나 기타 표식을 포함한 확장된 글리프들을 포함
+- U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF: 라틴 문자와 관련된 변형 기호, 수정 부호, 또는 발음 기호(IPA 기호 등)와 같은 부수적인 기호들이 포함
+- U+0304, U+0308, U+0329: 조합 악센트(예: macron, diaeresis 등)로, 기존 글자에 추가되어 발음이나 음절을 변경하는 역할
+- U+1D00-1DBF: 발음 기호나 특수한 음성학 기호 등이 포함
+- U+1E00-1E9F: 라틴 확장 추가 영역으로, 다양한 언어에서 사용하는 악센트가 달린 문자들을 포함
+- U+1EF2-1EFF: 주로 베트남어와 같이 특수한 문자를 사용하는 언어에서 사용되는 라틴 문자 확장이 포함
+- U+2020: 문장 부호 중 하나(예: dagger 기호)
+- U+20A0-20AB, U+20AD-20C0: 통화 기호와 같은 특수 기호들이 포함
+- U+2113: 스크립트 형태의 특수 문자(l 등)가 포함
+- U+2C60-2C7F: 라틴 확장-C 영역으로, 보다 드문 라틴 문자 변형이 포함
+- U+A720-A7FF: 라틴 확장-D 영역으로, 추가적인 언어 지원을 위해 마련된 특수한 라틴 문자들이 포함
+
+숫자(0~9)에 해당하는 유니코드 범위: 
+U+0030-0039 
+*/
+
+/* latin-ext */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/outfit/v11/QGYvz_MVcBeNP4NJuktqQ4E.woff2) format("woff2");
+  unicode-range: U+0041-005A, U+0061-007A, U+0030-0039;
+}
+/* latin */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(https://fonts.gstatic.com/s/outfit/v11/QGYvz_MVcBeNP4NJtEtq.woff2) format("woff2");
+  unicode-range: U+0041-005A, U+0061-007A, U+0030-0039;
+}

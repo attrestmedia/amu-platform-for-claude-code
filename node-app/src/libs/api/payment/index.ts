@@ -1,0 +1,1 @@
+export { fetchUniverseWallet } from "./wallet";
