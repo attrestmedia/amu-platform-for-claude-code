@@ -1,0 +1,935 @@
+{
+  "title": "인터렉티브 아티클 구현과 공개",
+  "slug": "character-interactive-article",
+  "project": "AMU Workspace",
+  "programType": "short-cycle-implementation",
+  "roadmapVersion": "0.2-provisional",
+  "createdAt": "2026-09-18T13:05:00+09:00",
+  "updatedAt": "2026-09-23T16:20:18+09:00",
+  "status": "provisional",
+  "stage": {
+    "index": ".agent/todo-amu-service-open-improvement.json",
+    "stageNo": 2,
+    "sourceItem": "p0_action.md — 인터렉티브 아티클 구현 및 테스트 / 우선순위 2. 인터렉티브 아티클 관련 기능 개발 및 구현",
+    "note": "2026-09-18 사용자 지시로 종전 1단계 원장을 둘로 쪼갠 뒤쪽이다. 앞쪽은 .agent/todo-character-model-genesis-validation.json 이며 캐릭터·모델 생성 파이프라인 검증을 담당한다. 캐릭터 생성 TASK 3건(구 CIA-07·08·09)은 그 원장으로 이관했다."
+  },
+  "executionProtocol": {
+    "modeSelection": "riskTier 가 JUDGE 인 TASK 와 write set 이 3파일을 넘는 TASK 는 MS-PARALLEL 로 수행한다. 그 외는 단일 세션으로 하되 구현한 세션이 최종 판정을 하지 않는다 — .claude/rules/agent-orchestration.md §9.",
+    "protocolLedger": ".agent/todo-ledgers/tasks/todo-multi-session.json",
+    "rule": "MS-PARALLEL 로 판정된 TASK 는 단독 세션이 혼자 구현하지 않는다. 이 원장만 지목한 지시를 받았더라도 먼저 규약 원장의 common.howToStart 를 수행한다.",
+    "cycleFolder": ".agents/character-interactive-article/{taskId}/",
+    "granularityNote": "이 원장의 TASK 는 의도적으로 잘게 쪼개져 있다. 하나가 단독으로 되돌릴 수 있는 크기를 넘으면 더 쪼개고, 쪼갤 수 없으면 중단하고 보고한다 — agent-orchestration.md §1.1."
+  },
+  "objective": "1단계에서 확보한 캐릭터와 모델로 인터렉티브 아티클 2건(캐릭터 대화형·이미지 생성형)을 만들어 공개하고, 캐릭터 이미지를 Marketing Oops·인스타그램 카드뉴스 소재로 연결한다. 캐릭터·모델 생성 파이프라인 자체는 1단계 소관이며 이 원장은 그 산출물의 소비자다. 플랫폼 정책과 SSOT 는 이 단계에서 건드리지 않는다.",
+  "scope": {
+    "in": [
+      "게스트 비허용 확정에 따른 embed 노출·로그인 유도 계약 정리",
+      "규제 게이트(모더레이션·대화 로그)와 게시 표면 2건의 계약 확정",
+      "tutors embed 대화 호출 경로 결손 해소",
+      "비로그인 독자 안내와 로그인 유도 UX",
+      "캐릭터 이미지 → 업로드 레지스트리 → Marketing Oops promo creative 연동 테스트",
+      "캐릭터 이미지 → 인스타그램 카드뉴스 덱 소재 연동 테스트 (덱 생성·렌더까지)",
+      "캐릭터 대화형 인터렉티브 아티클 1건 제작·검증·공개",
+      "이미지 생성 인터렉티브 아티클 1건 제작·검증·공개"
+    ],
+    "out": [
+      "캐릭터·모델 생성 파이프라인 검증 — 1단계. .agent/todo-character-model-genesis-validation.json",
+      "8방향 스프라이트·월드 에셋·음성 매핑·이펙트 오디오 — 1단계",
+      "AI 생성 과금·접근 정책의 정본 편입 — 1단계 CMG-01",
+      "Gen Studio 콘텐츠 생성 프롬프트 연동 대화형 — 3단계. .agent/todo-genstudio-prompt-interactive.json",
+      "/admin/game-assets 사이드바 개편 — .agent/todo-admin-workspace-shell.json",
+      "allmyuniverse.com 홈 구현 — .agent/todo-allmyuniverse-home-renewal.json",
+      "Native App 스토어 등록 — .agent/todo-native-app-play-release.json",
+      "Play Game 세계관·미니 게임 — .agent/todo-play-world-minigame.json",
+      "p1_priority.md R0~R12 — 플랫폼 정책·SSOT 재정의와 구조 전환",
+      "WordPress 기사 embed 삽입 PHP 배선 — CIA-04 에서 제외 판정 시 후속",
+      "캐릭터 → 비디오 모션 신규 연동, 인스타그램 실제 발행(카드뉴스 P7 차단), 콘텐츠 템플릿 ↔ 페르소나 N:N 바인딩",
+      "Mongoose 스키마 필드 변경, 운영 데이터 마이그레이션, 새 GA4 이벤트 정의"
+    ]
+  },
+  "designPrinciples": [
+    "이미 있는 것을 먼저 켠다. 이 단계의 대부분은 신규 구현이 아니라 결손 배선과 최초 검증이다.",
+    "인증·과금 경계를 새로 발명하지 않는다. 게스트가 필요하면 withGuestOrAuth + 유니버스 지갑 과금이라는 commerce/chat 의 기존 계약을 그대로 재사용한다.",
+    "계약 TASK 와 구현 TASK 를 섞지 않는다. 판정이 서지 않은 채로 구현에 들어가지 않는다.",
+    "정책 판정과 독립적으로 고칠 수 있는 결손은 계약을 기다리지 않는다 — CIA-05 가 그 예다.",
+    "아티클은 embed 를 붙이기 위한 껍데기가 아니다. embed 를 제거해도 읽히는 글이어야 한다."
+  ],
+  "currentStateAudit": {
+    "auditedAt": "2026-09-18T11:39:44+09:00",
+    "method": "Main 오케스트레이터가 SCAN 서브에이전트 4개를 병렬로 돌려 node-app · WordPress amu24 테마 · amu_native_app 을 실측하고, 과금·인증 경계 2건은 Main 이 직접 재확인했다.",
+    "fullAuditAt": ".agent/todo-amu-service-open-improvement.json — 전체 실측 결과와 결손 9건의 정본. 여기에는 이 단계에 걸리는 것만 옮겨 담는다.",
+    "premiseCorrection": "p0_action.md 의 모션 연동 항목은 비디오 생성으로 읽히기 쉬우나, Play 가 실제로 쓰는 캐릭터 모션은 8방향 스프라이트 파이프라인(character-sprite-v2)이며 이미 구현돼 있다. 이 사이클의 모션 항목은 신규 구현이 아니라 기존 파이프라인의 실검증으로 확정한다.",
+    "alreadyBuilt": [
+      "매거진 embed 계약 전체 — MagazineEmbedRegistrySchema.ts:16-40 의 fail-closed 정책 필드, magazineEmbedResolver.ts(판정·launch token), magazineEmbedToken.ts(서명), magazineEmbedSession.ts:15(Redis TTL 300초)",
+      "embed 슬롯 3종 실동작 — image_embed/content_embed 는 Gen Studio 에디터 재사용(MagazineEmbedSurface.tsx:232-333), tutors_embed 는 TutorsMagazineComposer",
+      "운영 런타임 게이트 ON — amu_app/secrets/node-app.env:209-214 의 MAGAZINE_EMBED_RUNTIME_ENABLED·MAGAZINE_EMBED_FEATURE_FLAG·MAGAZINE_EMBED_ALLOWED_PARENT_ORIGINS",
+      "node-app 자체 매거진(/magazine/{slug}) 경로는 end-to-end 동작 — AppMagazineArticleSurface.tsx:70-93 이 resolveMagazineEmbedRequest 를 in-process 호출",
+      "게스트 인증 계약 — apiMiddleware.ts:212-283 withGuestOrAuth(x-guest-id 검증·형식 제약·rate limit·위조 차단)",
+      "게스트 대화 + 유니버스 지갑 과금 선례 — src/app/api/(ai)/commerce/chat/route.ts:15-23",
+      "캐릭터 대화 엔진 — src/app/api/(app)/tutors/chat/route.ts(withAuth) → handleUnifiedTextChatRequest 의 preflight·멱등 예약·사후 과금",
+      "공개 캐릭터 — PersonaSchema.ts:79 의 visibility/isTemplate/forkPolicy, src/app/api/(app)/tutors/public-gallery/route.ts:31-38 무인증 캐시 라우트",
+      "스프라이트 모션 — types/game/asset-pipeline.ts 의 character-sprite-v2 STEP1~5, PersonaSchema.ts:96 sprite, types/ai/persona.ts:45-65 PersonaSpriteAnimationMap",
+      "카드뉴스 P0~P6 — 렌더러·편집기·템플릿 resolver·Marketing Oops 연동(CardNewsDeckPicker.tsx, instagramPublisher.ts) 완료"
+    ],
+    "gaps": [
+      {
+        "id": "ASO-GAP-01",
+        "title": "tutors embed 대화 배선이 끊겨 있다",
+        "evidence": "TutorsMagazineComposer.tsx:217 이 fetch(/tutors/chat) 를 base 없는 raw fetch 로 호출한다. 실제 라우트는 /api/tutors/chat 이고(그룹 (app) 는 URL 에 포함되지 않는다), src/app/tutors/chat 페이지 라우트는 없다. 같은 호출을 하는 unifiedChatClient.ts:36-39 는 fetchClient 를 써서 NEXT_PUBLIC_API_URL(/api) 이 붙는다.",
+        "impact": "매거진 기사에서 캐릭터 대화가 404 로 실패할 가능성이 매우 높다. 1줄 수정 범위.",
+        "confidence": "실측 — 코드 인용으로 확인. 런타임 404 자체는 미재현이므로 ASO-02 에서 재현 후 수정한다."
+      },
+      {
+        "id": "ASO-GAP-02",
+        "title": "embed 공개 게이트와 대화 API 인증 요구가 구조적으로 어긋난다",
+        "evidence": "magazineEmbedContract.ts:407 은 entry.authRequired 이면 embed 를 아예 켜지 않는다. 즉 슬롯이 뜨려면 authRequired=false 여야 한다. 그런데 tutors/chat 은 withAuth 고정이라 비로그인 세션에서는 401 이다. TutorsMagazineComposer.tsx:419 의 안내 문구가 이 상태를 그대로 드러낸다.",
+        "impact": "비로그인 독자가 공개 기사에서 캐릭터와 대화하는 경험이 성립하지 않는다. 코드 버그가 아니라 상위 정책 결정이 먼저 필요하다.",
+        "confidence": "실측"
+      },
+      {
+        "id": "ASO-GAP-03",
+        "title": "WordPress 기사에 embed 를 삽입하는 경로가 없다",
+        "evidence": "node-app 쪽 브릿지 API 는 있다 — src/app/api/thirdparty/wp/article-experience/route.ts(verifyWpBridgeJsonRequest, HMAC). 이를 호출하는 PHP 는 테마 전체에 0건이다. article-experience-meta-dry-run.php 는 CLI 읽기 전용 인벤토리 스크립트다.",
+        "impact": "WP 기사 경로는 신규 배선이 필요하다. 다만 선례가 둘 다 있다 — 서명 호출은 inc/actions/genstudio-assets.php:136-138, 본문 삽입은 inc/actions/promo-slots.php 의 amu24_promo_insert_article_inline(the_content 필터).",
+        "confidence": "실측"
+      },
+      {
+        "id": "ASO-GAP-04",
+        "title": "캐릭터 이미지를 마케팅 소재로 넘기는 브릿지가 없다",
+        "evidence": "promoCreativeService.ts:121-192 는 imageAssetId 를 uploadedMediaStorage 레지스트리 기준으로 참조한다. PersonaSchema.profiles 의 R2 URL 은 이 레지스트리에 등록되지 않는다. 카드뉴스 편집기(CardNewsEditor.tsx, draftMapping.ts)에도 character/persona 참조가 0건이다.",
+        "impact": "카드뉴스 P4 가 이미 검증한 R2 이미지 → studio-images 업로드 → assetId → promo creative 경로를 캐릭터 이미지에도 태우면 된다. 새 저장 계층은 불필요하다.",
+        "confidence": "실측"
+      }
+    ],
+    "unverified": [
+      "운영 DB 의 MagazineEmbedRegistryEntry·MagazineArticleDeclaration 실제 등록 건수 — 런타임 env 는 ON 이지만 개별 슬롯 등록 여부는 미확인. 확인 경로: /api/admin/magazine/embed-registry 또는 amu-magazine MCP",
+      "/embed/** 가 전역 인증 미들웨어에서 제외되는지 — node-app 루트·src 에 middleware.ts 파일이 없음을 확인했으나 라우트 그룹 layout 레벨 가드 여부는 미확인"
+    ]
+  },
+  "safetyBoundaries": [
+    "cost-preflight → 생성 → 사후 확정 과금 순서를 우회하지 않는다. 게스트 경로를 추가하더라도 preflight 를 건너뛰는 분기를 만들지 않는다 — amu_app/node-app/.claude/rules/server-economy-security.md",
+    "fail-closed 를 유지한다. 잔액·가격·레지스트리 조회 실패를 catch 해 생성이나 노출로 진행하는 폴백을 만들지 않는다 — magazineEmbedContract.ts:407 의 판정 방향을 뒤집지 않는다",
+    "이원 원장(무상/유상) 소비 정책과 유니버스 지갑 권위를 유지한다 — 게스트 대화를 허용하는 경우에도 과금 주체는 서버가 정한다. 클라이언트가 보낸 값을 신뢰하지 않는다",
+    "R2 단일 저장소 계약을 유지한다. 캐릭터 이미지를 마케팅 소재로 넘길 때 새 저장 경로를 만들지 않고 기존 업로드 레지스트리를 경유한다 — media-storage.md",
+    "production publish 게이트를 유지한다. 신규 기사 공개 발행은 env flag + confirmSlug + SEO 게이트 3조건을 모두 통과해야 하고, 직전 status 가 비공개이므로 사용자 승인이 필요하다 — .claude/rules/safety-governance.md",
+    "amu_app 과 amu_app/node-app 은 별개 저장소다. 커밋은 저장소별로 따로 만들고 .agent/* 는 커밋하지 않는다 — .claude/rules/repository-topology.md",
+    "한글 등 비ASCII 는 리터럴 UTF-8 로 전달하고 저장 후 되읽어 대조한다 — .claude/rules/text-encoding-integrity.md",
+    "대량 일괄 치환을 하지 않는다. 셸 이관·홈 구현 모두 단계별로 쪼개고 단계마다 검증한다 — .claude/rules/agent-orchestration.md §1.1"
+  ],
+  "activeRoadmap": [
+    {
+      "id": "CIA-01",
+      "executionOrder": 1,
+      "phase": "P0-계약",
+      "title": "게스트 캐릭터 대화 허용 여부 판정",
+      "owner": "user",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "done",
+      "dependsOn": [],
+      "goal": "ASO-GAP-02 의 구조적 모순을 해소하는 첫 판정이다. embed 는 authRequired=false 여야 뜨는데 대화 API 는 로그인 필수라, 이 판정 없이는 대화형 인터렉티브 아티클이 성립하지 않는다.",
+      "deliverables": [
+        {
+          "id": "CIA-01-D1",
+          "title": "게스트 대화 허용 여부 판정",
+          "work": [
+            "세 안을 비교하고 하나를 확정한다. A안 게스트 비허용 — embed 안에서 로그인 유도 UX 만 추가하고 대화는 로그인 후에만 가능. B안 게스트 읽기 전용 — 미리 생성된 샘플 대화만 노출하고 입력은 로그인 유도. C안 게스트 N턴 허용 — withGuestOrAuth 재사용 + 턴 수 상한 + rate limit.",
+            "C안을 택하는 경우 apiMiddleware.ts:212-283 의 withGuestOrAuth 를 그대로 재사용하고 새 인증 경로를 만들지 않는다는 것을 계약으로 못박는다.",
+            "각 안의 전환율·비용·규제 노출을 한 줄씩 비교하고 권고안과 근거를 남긴다."
+          ],
+          "exitCriteria": [
+            "확정안이 하나이고, 그 안에서 비로그인 독자가 기사에서 무엇까지 할 수 있는지가 문장으로 확정됐다.",
+            "새 인증 미들웨어를 만들지 않는다는 것이 계약에 있다."
+          ]
+        }
+      ],
+      "verification": [
+        "판정 문서가 .agent/docs/project/2026/09/ 아래에 생성됐다",
+        "인용한 파일:라인 재실측 대조",
+        "src 무변경 확인 (git status)"
+      ],
+      "exitCriteria": [
+        "A·B·C 중 하나가 확정됐고 비로그인 독자가 기사에서 무엇까지 할 수 있는지가 문장으로 있다."
+      ],
+      "executionMode": "SINGLE (JUDGE) — 조사·비교·권고는 선행 가능, 확정은 사용자 판단",
+      "note": "2026-09-18 사용자 결정으로 A안(게스트 비허용)이 확정돼 판정이 종결됐다. 확정 내용은 1단계 원장의 CMG-PD-01 에 정본으로 기록돼 있고, 정책 정본 편입은 그 원장의 CMG-01 이 수행한다. 비로그인 독자는 기사에서 생성 결과 열람과 로그인 유도까지만 할 수 있다.",
+      "resolution": {
+        "decidedAt": "2026-09-18",
+        "decision": "A안 — 게스트 비허용. AI 생성과 관련된 모든 기능은 로그인 사용자이면서 코인을 보유한 사용자에게만 제공한다.",
+        "recordedAt": ".agent/todo-character-model-genesis-validation.json CMG-PD-01"
+      }
+    },
+    {
+      "id": "CIA-02",
+      "executionOrder": 2,
+      "phase": "P0-계약",
+      "title": "게스트 대화 과금 주체와 남용 한도 확정",
+      "owner": "agent",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "not_applicable",
+      "dependsOn": [
+        "CIA-01"
+      ],
+      "goal": "게스트 대화를 허용하는 경우 비용이 누구 지갑에서 나가는지와 남용 상한을 코드 착수 전에 수치로 고정한다.",
+      "deliverables": [
+        {
+          "id": "CIA-02-D1",
+          "title": "과금 주체 확정",
+          "work": [
+            "게스트 대화를 허용하는 경우 과금 주체를 확정한다. commerce/chat 이 이미 쓰는 유니버스 지갑 과금(route.ts:15-23, 커머스는 항상 유니버스 지갑 과금)이 유일한 기존 선례다.",
+            "cost-preflight → 생성 → 사후 확정 과금 순서를 유지한다는 것과, 게스트 경로에 preflight 우회 분기를 만들지 않는다는 것을 명시한다.",
+            "남용 한도를 정한다 — guestId 당 턴 수, endpoint rate limit key, 일일 상한. 수치는 여기서 정하고 코드에 하드코딩 위치를 지정한다."
+          ],
+          "exitCriteria": [
+            "게스트 대화 1턴의 비용이 누구 지갑에서 나가는지가 확정됐다.",
+            "server-economy-security.md 의 fail-closed·멱등·이원 원장 계약과 충돌하지 않음을 확인했다."
+          ]
+        }
+      ],
+      "verification": [
+        "server-economy-security.md 계약과의 충돌 여부 대조",
+        "턴 상한·rate limit key·일일 상한이 수치로 기록됐다"
+      ],
+      "exitCriteria": [
+        "게스트 대화 1턴의 과금 주체가 확정됐고 preflight 우회 분기가 없음이 계약에 있다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "note": "CIA-01 이 A안(게스트 비허용)으로 확정됐으므로 원 note 의 조건대로 해당 없음으로 닫는다. 다만 유니버스 과금 주체 선택(CMG-PD-02)은 1단계 CMG-02·CMG-16 이 다루며 그 결과가 이 원장의 embed 안 생성 과금에 그대로 적용된다."
+    },
+    {
+      "id": "CIA-03",
+      "executionOrder": 3,
+      "phase": "P0-계약",
+      "title": "규제 게이트 판정 — 대화 로그 (미성년 게이트 pass)",
+      "owner": "agent+user",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-01"
+      ],
+      "goal": "미성년 게이트는 2026-09-23 compliance-guardrails.md §3-1에 따라 pass다 — 공개 기사의 대화형 기능이 미성년에게 접근 가능하다는 사실은 더 이상 blocked 사유가 아니다. 남은 판정은 대화 로그다. 대화 로그를 저장하면 §4 의 수집 항목 추가 트리거이므로 저장 여부·보존 TTL·삭제 정책을 확정한다. (이전 goal의 미성년 판정 요구는 2026-09-23 대체)",
+      "deliverables": [
+        {
+          "id": "CIA-03-D1",
+          "title": "규제 게이트 통과 판정",
+          "work": [
+            "미성년 게이트는 compliance-guardrails.md §3-1에 따라 pass로 기록한다(2026-09-23). 연령대별 모더레이션 설계는 요구하지 않는다. 연령과 무관한 공통 안전 기준으로 기존 모더레이션 자산(PersonalUniversePublicSnapshotSchema 의 moderationStatus·report 계열)을 재사용할 수 있는지 실측하되, 이 실측은 착수·공개 게이트가 아니다.",
+            "게스트 대화 로그를 저장하는지 판정한다. 저장한다면 §4 정책 갱신 트리거(수집 항목 추가)에 해당하므로 legal-policy-review 스킬 검토를 같은 작업 단위에 포함한다. 저장하지 않는다면 그 사실과 근거를 남긴다.",
+            "보존 TTL 과 삭제 정책을 확정한다. 확정 전에는 대화 로그 저장 구현에 착수하지 않는다."
+          ],
+          "exitCriteria": [
+            "규제 게이트 통과 여부가 pass 또는 blocked 로 명시됐고, blocked 면 사유와 해소 경로가 있다.",
+            "개인 식별 정보를 분석 식별자로 전송하지 않음을 확인했다."
+          ]
+        }
+      ],
+      "verification": [
+        "기존 모더레이션 자산 재사용 가능 여부 실측 결과가 기록됐다",
+        "규제 게이트 판정이 pass 또는 blocked 로 명시됐다"
+      ],
+      "exitCriteria": [
+        "판정이 pass 이거나, blocked 면 사유와 해소 경로가 있다."
+      ],
+      "executionMode": "SINGLE + 독립 검증"
+    },
+    {
+      "id": "CIA-04",
+      "executionOrder": 4,
+      "phase": "P0-계약",
+      "title": "게시 표면 판정 — node-app 매거진 vs WordPress 기사",
+      "owner": "agent+user",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [],
+      "goal": "테스트 아티클을 어디에 낼지 확정한다. node-app 매거진은 embed 가 이미 end-to-end 동작하고 WP 경로는 삽입 PHP 가 0건이다.",
+      "deliverables": [
+        {
+          "id": "CIA-04-D1",
+          "title": "게시 표면 판정 — node-app 매거진 vs WordPress 기사",
+          "work": [
+            "테스트 아티클을 어디에 낼지 확정한다. 실측상 node-app 자체 매거진(/magazine/{slug})은 embed 가 이미 end-to-end 동작하고(AppMagazineArticleSurface.tsx:70-93), WP 기사 경로는 삽입 PHP 가 0건이다(ASO-GAP-03).",
+            "최소 경로는 node-app 이라는 판정과, WP 경로를 이번 사이클에 포함할지 여부를 정한다. 포함한다면 별도 TASK 로 쪼개고 선례 2건(genstudio-assets.php 서명 호출, promo-slots.php the_content 삽입)을 근거로 범위를 적는다.",
+            "SEO·canonical 영향을 확인한다 — 두 도메인에 같은 내용이 생기지 않게 한다."
+          ],
+          "exitCriteria": [
+            "이번 사이클의 공개 표면이 하나로 확정됐다.",
+            "WP 경로가 제외되면 그 사유와 후속 조건이 남았다."
+          ]
+        }
+      ],
+      "verification": [
+        "판정 문서 생성",
+        "SEO·canonical 영향 확인 결과 기록"
+      ],
+      "exitCriteria": [
+        "이번 사이클의 공개 표면이 하나로 확정됐고, 제외된 표면은 사유와 후속 조건이 남았다."
+      ],
+      "executionMode": "SINGLE + 독립 검증"
+    },
+    {
+      "id": "CIA-05",
+      "executionOrder": 5,
+      "phase": "P1-배선",
+      "title": "tutors embed 호출 경로 결손 재현과 수정",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [],
+      "goal": "ASO-GAP-01 을 해소한다. 정책 판정과 무관하게 독립적으로 고칠 수 있으므로 계약을 기다리지 않는다.",
+      "deliverables": [
+        {
+          "id": "CIA-05-D1",
+          "title": "호출 경로 수정과 재현 확인",
+          "work": [
+            "먼저 현상을 재현한다 — embed 를 열고 대화를 전송해 실제 요청 URL 과 응답 코드를 네트워크에서 확인한다. 재현되지 않으면 수정하지 않고 사유를 남긴다.",
+            "TutorsMagazineComposer.tsx:217 의 raw fetch 를 다른 대화 소비자와 같은 경로로 통일한다. 새 클라이언트를 만들지 않고 기존 fetchClient 또는 unifiedChatClient 를 재사용한다.",
+            "동일 패턴의 raw fetch 가 매거진 모듈에 더 있는지 grep 으로 확인하고 목록을 남긴다."
+          ],
+          "exitCriteria": [
+            "요청이 /api/tutors/chat 에 도달하고 응답이 401 이 아닌 정상 경로로 들어간다.",
+            "같은 결손이 남아 있는 파일 0건이거나, 남은 것은 목록과 사유가 있다."
+          ]
+        }
+      ],
+      "verification": [
+        "pnpm run typecheck · pnpm run lint",
+        "요청 URL 과 응답 코드 기록 — 수정 전후 각 1회",
+        "기존 Tutors 대화 화면 회귀 0건"
+      ],
+      "exitCriteria": [
+        "요청이 /api/tutors/chat 에 도달한다. 재현되지 않았으면 수정하지 않고 사유가 기록됐다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "note": "dependsOn 을 비웠다. 원본 ASO-02 는 계약에 의존시켰으나, 호출 경로 수정은 게스트 정책과 독립이다."
+    },
+    {
+      "id": "CIA-06",
+      "executionOrder": 6,
+      "phase": "P1-배선",
+      "title": "비로그인 상태 안내와 유도 UX",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-05"
+      ],
+      "goal": "게스트 비허용(CMG-PD-01) 확정안대로 embed 안의 비로그인 경험을 구현한다. 새 로그인 흐름을 만들지 않고 기존 handleRequireLogin 패턴을 재사용한다.",
+      "deliverables": [
+        {
+          "id": "CIA-06-D1",
+          "title": "비로그인 상태 UX",
+          "work": [
+            "ASO-01-D1 확정안대로 구현한다. A안이면 embed 안에 로그인 유도 CTA 를 붙이고, C안이면 게스트 턴 수 잔량 표시와 소진 시 로그인 유도를 붙인다.",
+            "TutorsMagazineComposer.tsx:419 의 현행 안내 문구를 확정안에 맞게 교체한다. 사용자 노출 텍스트는 Lang/lang() i18n 을 쓴다.",
+            "iframe 안에서 로그인 다이얼로그를 띄우는 기존 패턴(ImageStudioEditor.tsx:259-261 의 handleRequireLogin)을 재사용하고 새 로그인 흐름을 만들지 않는다."
+          ],
+          "exitCriteria": [
+            "비로그인 독자가 무엇을 할 수 있고 무엇을 하려면 로그인이 필요한지 화면에서 알 수 있다.",
+            "오류 텍스트만 표시하고 다음 행동이 없는 상태가 남아 있지 않다 — DESIGN-GUIDELINES §16."
+          ]
+        }
+      ],
+      "verification": [
+        "pnpm run typecheck · pnpm run lint",
+        "로그인/비로그인 각 1회 수동 확인",
+        "375/768/1024/1440px 렌더"
+      ],
+      "exitCriteria": [
+        "비로그인 독자가 무엇을 할 수 있고 무엇에 로그인이 필요한지 화면에서 알 수 있다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "note": "확정안이 A안이므로 게스트 턴 수 잔량 표시(C안 분기)는 구현하지 않는다. 로그인 유도 CTA 만 붙인다."
+    },
+    {
+      "id": "CIA-10",
+      "executionOrder": 7,
+      "phase": "P2-연동",
+      "title": "캐릭터 이미지 업로드 레지스트리 브릿지",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [],
+      "goal": "ASO-GAP-04 를 최소 추가로 해소한다. 카드뉴스 P4 가 검증한 경로를 캐릭터 이미지에도 태운다. 새 저장 계층을 만들지 않는다.",
+      "deliverables": [
+        {
+          "id": "CIA-10-D1",
+          "title": "캐릭터 이미지 등록 브릿지",
+          "work": [
+            "PersonaSchema.profiles 의 R2 이미지를 uploadedMediaStorage 레지스트리에 등록해 assetId 를 얻는 경로를 만든다. 카드뉴스 CN-040 이 쓴 것과 같은 경로를 재사용한다.",
+            "중복 등록을 막는다 — 같은 R2 URL 을 두 번 등록하지 않는다. 기존 멱등 패턴 중 하나를 골라 쓰고 새 패턴을 만들지 않는다.",
+            "R2 단일 저장소 계약을 유지한다 — 이미지를 복사 저장하지 않고 참조만 만든다."
+          ],
+          "exitCriteria": [
+            "캐릭터 이미지 1장이 assetId 로 참조 가능하다.",
+            "두 번 호출해도 assetId 가 하나다."
+          ]
+        }
+      ],
+      "verification": [
+        "pnpm run typecheck · pnpm run lint",
+        "동일 입력 2회 호출 멱등 확인",
+        "R2 에 복사본이 생기지 않았음을 확인"
+      ],
+      "exitCriteria": [
+        "캐릭터 이미지 1장이 assetId 로 참조 가능하고 두 번 호출해도 assetId 가 하나다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "preconditionLedger": "1단계 .agent/todo-character-model-genesis-validation.json 의 CMG-04·CMG-05 가 확보한 캐릭터·모델 이미지가 있어야 착수할 수 있다. 종전 dependsOn CIA-07 을 대체한다."
+    },
+    {
+      "id": "CIA-11",
+      "executionOrder": 8,
+      "phase": "P2-연동",
+      "title": "Marketing Oops promo creative 연동 테스트",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-10"
+      ],
+      "goal": "p0_action.md 의 Marketing Oops 연동 테스트 항목이다. 캐릭터 이미지를 소재로 promo creative 1건을 만들어 경로가 성립하는지 확인한다.",
+      "deliverables": [
+        {
+          "id": "CIA-11-D1",
+          "title": "promo creative 연결",
+          "work": [
+            "save_promo_creative 의 imageAssetId 에 그 assetId 를 넣어 promo creative 1건을 만든다."
+          ],
+          "exitCriteria": [
+            "promo creative 1건이 캐릭터 이미지를 소재로 생성돼 조회된다."
+          ]
+        }
+      ],
+      "verification": [
+        "promo creative 조회 확인",
+        "외부 발행 호출 0건 확인"
+      ],
+      "exitCriteria": [
+        "캐릭터가 마케팅 소재 파이프라인에 올라간다."
+      ],
+      "executionMode": "SINGLE + 독립 검증"
+    },
+    {
+      "id": "CIA-12",
+      "executionOrder": 9,
+      "phase": "P2-연동",
+      "title": "인스타그램 카드뉴스 소재 연동 테스트",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-10"
+      ],
+      "goal": "p0_action.md 의 카드뉴스 생성 연동 테스트 항목이다. 카드뉴스 P7 이 차단 상태이므로 덱 생성과 렌더 확인까지만 한다.",
+      "deliverables": [
+        {
+          "id": "CIA-12-D1",
+          "title": "카드뉴스 소재 어댑터",
+          "work": [
+            "카드뉴스 덱 소스에 캐릭터를 넘기는 최소 어댑터를 만든다. CardNewsEditor 의 기존 소스 구조를 바꾸지 않고 소스 어댑터만 추가한다.",
+            "카드뉴스 P7 이 차단 상태이므로 실제 인스타그램 발행은 하지 않는다. 덱 생성과 렌더 확인까지만 한다."
+          ],
+          "exitCriteria": [
+            "카드뉴스 덱 1건이 캐릭터를 소재로 생성돼 렌더된다.",
+            "외부 발행 0건이고 그 사실이 기록됐다."
+          ]
+        }
+      ],
+      "verification": [
+        "카드뉴스 덱 렌더 확인",
+        "인스타그램 발행 호출 0건 확인",
+        "CardNewsEditor 기존 소스 구조 diff 0줄"
+      ],
+      "exitCriteria": [
+        "캐릭터를 소재로 한 카드뉴스 덱이 만들어진다. 발행은 범위 밖이다."
+      ],
+      "executionMode": "SINGLE + 독립 검증"
+    },
+    {
+      "id": "CIA-13",
+      "executionOrder": 10,
+      "phase": "P3-아티클",
+      "title": "대화형 슬롯 레지스트리 등록과 판정 확인",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-06"
+      ],
+      "goal": "tutors_embed 슬롯이 대상 기사에서만 켜지도록 등록하고 fail-closed 동작을 확인한다.",
+      "deliverables": [
+        {
+          "id": "CIA-13-D1",
+          "title": "레지스트리 등록과 슬롯 판정 확인",
+          "work": [
+            "MagazineEmbedRegistryEntry 를 등록한다 — serviceKey=tutors, renderMode, capabilities=chat, allowedTutorPersonaIds 에 ASO-03 캐릭터, magazineExposure=article, authRequired 는 ASO-01 확정안에 따른다.",
+            "killSwitch 동작을 확인한다 — 끄면 슬롯이 사라지고 staticFallback 으로 떨어지는지.",
+            "allowedContentIds 를 대상 기사로 제한해 다른 기사에 새지 않게 한다."
+          ],
+          "exitCriteria": [
+            "레지스트리 판정이 enabled 로 떨어지고 launch token 이 발급된다.",
+            "killSwitch off 시 fail-closed 로 동작한다."
+          ]
+        }
+      ],
+      "verification": [
+        "레지스트리 판정 enabled 와 launch token 발급 확인",
+        "killSwitch off 시 staticFallback 확인",
+        "allowedContentIds 범위 밖 기사에서 미노출 확인"
+      ],
+      "exitCriteria": [
+        "지정 기사에서만 슬롯이 뜨고 끄면 fail-closed 로 떨어진다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "preconditionLedger": "1단계가 확보한 캐릭터가 공개 상태여야 한다. 종전 dependsOn CIA-09(공개 캐릭터 노출 설정)는 1단계로 이관됐다."
+    },
+    {
+      "id": "CIA-14",
+      "executionOrder": 11,
+      "phase": "P3-아티클",
+      "title": "캐릭터 대화형 기사 집필",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-04"
+      ],
+      "goal": "embed 를 붙이기 위한 껍데기가 아니라 단독으로 읽히는 글을 쓴다. 집필은 슬롯 구현과 독립이므로 병행한다.",
+      "deliverables": [
+        {
+          "id": "CIA-14-D1",
+          "title": "기사 본문 집필",
+          "work": [
+            "기사는 embed 를 붙이기 위한 껍데기가 아니라 단독으로 읽히는 글이어야 한다. 콘텐츠 기준은 .claude/rules/content-operations.md 와 .claude/refs/content-policy/ 의 해당 문서를 따른다.",
+            "원고는 파일로 작성하고 도구 인자로 손으로 옮겨 적지 않는다 — .claude/rules/text-encoding-integrity.md §3.",
+            "ledger 중복 확인과 campaignId·R 등급 판정 근거를 기록한다."
+          ],
+          "exitCriteria": [
+            "embed 를 제거해도 기사가 성립한다.",
+            "content-ledger.jsonl 중복 확인이 끝났다."
+          ]
+        }
+      ],
+      "verification": [
+        "content-ledger.jsonl 중복 확인",
+        "campaignId·R 등급 판정 근거 기록",
+        "원고 파일 저장 후 되읽기 대조"
+      ],
+      "exitCriteria": [
+        "embed 를 제거해도 기사가 성립한다."
+      ],
+      "executionMode": "SINGLE (집필) — 원고는 파일로 작성하고 도구 인자로 옮겨 적지 않는다"
+    },
+    {
+      "id": "CIA-15",
+      "executionOrder": 12,
+      "phase": "P3-아티클",
+      "title": "대화형 기사 비공개 검증과 공개",
+      "owner": "agent+user",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-13",
+        "CIA-14",
+        "CIA-03"
+      ],
+      "goal": "비공개에서 전체 흐름을 완주한 뒤 사용자 승인을 받아 공개한다. 공개는 외부에 나가는 비가역 동작이다.",
+      "deliverables": [
+        {
+          "id": "CIA-15-D1",
+          "title": "비공개 검증 후 공개",
+          "work": [
+            "비공개 상태에서 로그인·비로그인 양쪽으로 전체 흐름을 완주한다.",
+            "공개는 사용자 승인 후에만 한다 — 신규 기사 발행은 직전 status 가 비공개이므로 .claude/rules/safety-governance.md 의 사용자 승인 대상이다.",
+            "공개 후 실 URL 로 재조회해 한글 원문 대조와 슬롯 렌더를 확인한다."
+          ],
+          "exitCriteria": [
+            "공개 URL 에서 비로그인 독자가 ASO-01 확정 경계대로 동작을 경험한다.",
+            "저장 후 재조회 대조에서 한글 훼손 0건."
+          ]
+        }
+      ],
+      "verification": [
+        "비로그인·로그인 각 1회 완주",
+        "375/768/1024/1440px · 키보드 포커스 · reduced-motion",
+        "공개 URL 재조회 한글 대조",
+        "코인 차감 원장 대조"
+      ],
+      "exitCriteria": [
+        "대화형 인터렉티브 아티클 1건이 공개돼 독자가 캐릭터와 상호작용할 수 있다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "note": "종전 dependsOn 의 CIA-02 는 해당 없음으로 닫혀 제거했다."
+    },
+    {
+      "id": "CIA-16",
+      "executionOrder": 13,
+      "phase": "P3-아티클",
+      "title": "이미지 생성 슬롯 등록과 스코프 제한",
+      "owner": "agent",
+      "riskTier": "BUILD",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [],
+      "goal": "image_embed 는 Gen Studio 파이프라인을 그대로 재사용하므로 신규 구현이 거의 없다. 등록과 스코프 제한 확인이 일이다.",
+      "deliverables": [
+        {
+          "id": "CIA-16-D1",
+          "title": "슬롯 등록과 스코프 제한",
+          "work": [
+            "레지스트리에 image_embed 를 등록한다 — allowedTemplateKeys 를 1개로 제한하고 allowCustomPrompt=false 를 유지한다(MagazineEmbedSurface.tsx:284-333 의 현행 스코프 제한 계약).",
+            "코인 차감 안내 배너가 노출되는지 확인한다.",
+            "비로그인 독자에게는 로그인 다이얼로그가 뜨는지 확인한다 — 게스트 이미지 생성은 코인 귀속 때문에 지원하지 않는다는 현행 정책을 유지한다."
+          ],
+          "exitCriteria": [
+            "지정 템플릿 외 선택이 불가능하다.",
+            "cost-preflight 가 우회되지 않는다."
+          ]
+        }
+      ],
+      "verification": [
+        "지정 템플릿 외 선택 불가 확인",
+        "코인 차감 안내 배너 노출 확인",
+        "cost-preflight 우회 없음 확인"
+      ],
+      "exitCriteria": [
+        "슬롯이 1개 템플릿으로 제한되고 과금 순서가 유지된다."
+      ],
+      "executionMode": "SINGLE + 독립 검증",
+      "preconditionLedger": "1단계가 확보한 캐릭터가 공개 상태여야 한다. 종전 dependsOn CIA-09 는 1단계로 이관됐다."
+    },
+    {
+      "id": "CIA-17",
+      "executionOrder": 14,
+      "phase": "P3-아티클",
+      "title": "이미지 생성형 기사 집필·검증·공개",
+      "owner": "agent+user",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "CIA-16",
+        "CIA-04"
+      ],
+      "goal": "이미지 생성 인터렉티브 아티클 1건을 만들어 공개한다. CIA-07 캐릭터를 예시 소재로 쓴다.",
+      "deliverables": [
+        {
+          "id": "CIA-17-D1",
+          "title": "기사 집필과 공개",
+          "work": [
+            "선택한 이미지 템플릿의 실제 활용법을 다루는 기사를 쓴다. ASO-03 캐릭터를 예시 소재로 쓴다.",
+            "비공개 검증 후 사용자 승인을 받아 공개한다.",
+            "공개 후 재조회 대조를 수행한다."
+          ],
+          "exitCriteria": [
+            "독자가 기사에서 이미지를 1장 생성할 수 있다.",
+            "생성 결과가 자동 반영되지 않고 사용자 선택 → 명시적 적용 2단계를 유지한다 — gen-studio-process.md §3."
+          ]
+        }
+      ],
+      "verification": [
+        "로그인 상태 생성 1회 성공 · 비로그인 로그인 유도 확인",
+        "preflight → 생성 → 사후 과금 순서 로그 확인",
+        "반응형 4개 폭 렌더",
+        "공개 URL 재조회 한글 대조"
+      ],
+      "exitCriteria": [
+        "이미지 생성 인터렉티브 아티클 1건이 공개돼 있고 결과 자동 반영 없이 2단계 적용이 유지된다."
+      ],
+      "executionMode": "SINGLE + 독립 검증"
+    }
+  ],
+  "gates": [
+    {
+      "id": "G-CIA-01",
+      "status": "partially_resolved",
+      "rule": "공개 기사의 대화형 기능은 대화 로그 보존 정책이 확정되기 전에는 공개하지 않는다 — .claude/rules/compliance-guardrails.md §4. 미성년 조건은 2026-09-23 §3-1에 따라 pass로 해소됐다. 게스트 허용 여부와 게스트 과금 주체는 2026-09-18 사용자 결정(게스트 비허용)으로 해소됐다.",
+      "unlockCondition": "CIA-03 이 done 이고 규제 게이트 판정이 pass 로 기록된다. blocked 면 공개하지 않고 사유를 남긴다. 게스트 관련 조건(구 CIA-01·CIA-02)은 A안 확정으로 해소됐다.",
+      "appliesTo": [
+        "CIA-06",
+        "CIA-15"
+      ],
+      "judgments": [
+        {
+          "date": "2026-09-23",
+          "scope": "minor",
+          "verdict": "pass",
+          "basis": "compliance-guardrails.md §3-1 (2026-09-23 사용자 결정, 근거 .agent/references/AMU_APP/in_progress/Minors_Regulation_Scandal.md)"
+        }
+      ]
+    },
+    {
+      "id": "G-CIA-02",
+      "status": "open",
+      "rule": "신규 기사 공개 발행은 사용자 승인 대상이다. 직전 status 가 비공개이므로 .claude/rules/safety-governance.md 의 에이전트 자동 실행 예외에 해당하지 않는다. env flag + confirmSlug + SEO 게이트 3조건도 함께 요구된다.",
+      "unlockCondition": "dryRun 선행 → requiredChecks 전항 확인 → 사용자 승인 → dryRun false. 게이트 미통과로 발행되지 않으면 draft 로 방치하지 말고 즉시 고지한다.",
+      "appliesTo": [
+        "CIA-15",
+        "CIA-17"
+      ],
+      "judgments": []
+    },
+    {
+      "id": "G-CIA-03",
+      "status": "open",
+      "rule": "이 원장에서는 플랫폼 정책·SSOT 무변경이 전제다. .agent/amu-platform-guide/ 와 .claude/rules/ 를 수정하지 않고 Mongoose 스키마 필드 추가·삭제·타입 변경도 0건이다. 단 AI 생성 과금·접근 정책의 정본 편입은 1단계 원장의 CMG-01 이 사용자 승인 아래 수행하는 예외이며, 이 원장은 그 결과를 소비만 한다.",
+      "unlockCondition": "변경이 불가피하다고 판단되면 구현을 멈추고 Main 에 반환해 사용자 승인을 받는다. 로컬 우회 패치를 만들지 않는다.",
+      "appliesTo": [
+        "CIA-01",
+        "CIA-02",
+        "CIA-03",
+        "CIA-04",
+        "CIA-05",
+        "CIA-06",
+        "CIA-10",
+        "CIA-11",
+        "CIA-12",
+        "CIA-13",
+        "CIA-14",
+        "CIA-15",
+        "CIA-16",
+        "CIA-17"
+      ],
+      "judgments": []
+    },
+    {
+      "id": "G-CIA-04",
+      "status": "open",
+      "rule": "경제 계약을 우회하지 않는다. cost-preflight → 생성 → 사후 확정 과금 순서, fail-closed, 멱등, 이원 원장을 유지한다. 과금 주체는 서버가 정하고 클라이언트 값을 신뢰하지 않는다.",
+      "unlockCondition": "해소되지 않는 상시 게이트다. 각 TASK 완료 판정 시 위반 0건을 확인한다.",
+      "appliesTo": [
+        "CIA-06",
+        "CIA-10",
+        "CIA-13",
+        "CIA-15",
+        "CIA-16",
+        "CIA-17"
+      ],
+      "judgments": []
+    },
+    {
+      "id": "G-CIA-05",
+      "status": "open",
+      "rule": "외부 발행을 하지 않는다. 인스타그램 발행은 카드뉴스 P7 차단 상태이므로 덱 생성·렌더까지만 한다.",
+      "unlockCondition": "P7 차단 해소는 이 원장 범위 밖이다.",
+      "appliesTo": [
+        "CIA-11",
+        "CIA-12"
+      ],
+      "judgments": []
+    }
+  ],
+  "measurement": {
+    "primary": [
+      "공개된 인터렉티브 아티클 2건(대화형·이미지 생성형)",
+      "각 아티클에서 독자가 상호작용을 1회 이상 완료",
+      "공통 Genesis 완주 1건과 8방향 스프라이트 생성 1건",
+      "캐릭터 소재 promo creative 1건과 카드뉴스 덱 1건"
+    ],
+    "guardrails": [
+      "Mongoose 스키마 diff 0줄",
+      "amu-platform-guide/ 및 .claude/rules/ diff 0줄",
+      "재시도 중복 과금 0건",
+      "기존 표면 회귀 0건 — Tutors 대화 · Gen Studio 에디터 · Play 스테이지",
+      "외부 발행(인스타그램) 0건"
+    ],
+    "eventNote": "새 GA4 이벤트를 이 사이클에서 정의하지 않는다. 인터렉티브 아티클용 이벤트 계약은 p1_priority.md 의 R6(Measurement Layer 선행 통합) 소관이며, 필요하면 MEASUREMENT-PLAN.md 를 정본으로 별도 판단한다. 기존 이벤트로 측정 가능한 범위까지만 본다.",
+    "decisionRule": "구현 완료는 done 이 아니다. 각 TASK 의 deliverables 와 verification 을 모두 충족해야 done 이며 판정은 Main 이 한다."
+  },
+  "risks": [
+    "CIA-01 이 C안(게스트 허용)으로 가면 남용·비용 노출이 생긴다 — CIA-02 에서 턴 상한과 rate limit 을 수치로 못박고 첫 공개는 기사 1건으로 한정해 관측한다.",
+    "CIA-05 의 404 가 재현되지 않을 수 있다 — 재현 없이 고치지 않는다. 재현 실패 시 사유를 남기고 CIA-13 의 슬롯 판정 단계에서 다시 확인한다.",
+    "CIA-07 의 생성 실패가 중간 단계에서 나면 코인이 차감된 채 결과가 없을 수 있다 — 코인 원장 대조를 검증 항목에 넣었고, 중복 과금이 나오면 todo-idempotency-durability-hardening.json 의 트리거로 기록한다.",
+    "CIA-15·CIA-17 의 공개는 비가역이다 — 비공개 완주 검증을 선행 조건으로 걸었고 공개는 사용자 승인 대상이다.",
+    "카드뉴스 P7 차단으로 CIA-12 의 산출물을 실제 발행해 검증할 수 없다 — 덱 렌더까지만 하고 그 한계를 결과에 명시한다.",
+    "동시 세션이 같은 파일을 고치면 충돌한다 — CIA-05·CIA-06 은 같은 파일(TutorsMagazineComposer.tsx)을 쓰므로 직렬로 실행한다."
+  ],
+  "openDecisions": [
+    {
+      "id": "CIA-OD-01",
+      "question": "공개 기사에서 비로그인 독자의 캐릭터 대화를 허용할 것인가?",
+      "owner": "user",
+      "status": "resolved",
+      "context": "embed 는 authRequired=false 여야 노출되는데 tutors/chat 은 withAuth 고정이라 현 상태로는 게스트 대화가 성립하지 않는다(ASO-GAP-02). 기존 선례는 있다 — withGuestOrAuth 와 commerce/chat 의 유니버스 지갑 과금.",
+      "recommendation": "C안(게스트 N턴 허용)을 권한다. 인터렉티브 아티클의 목적이 비로그인 독자를 관계로 끌어들이는 것이고, 재사용할 인증·과금 계약이 이미 검증돼 있다. 단 첫 공개는 기사 1건·턴 상한·rate limit 으로 한정한다. 규제 게이트가 blocked 면 A안으로 내린다.",
+      "blocks": [
+        "CIA-02",
+        "CIA-03",
+        "CIA-06",
+        "CIA-15"
+      ],
+      "resolvedAt": "2026-09-18",
+      "resolution": "A안 — 게스트 비허용. AI 생성과 관련된 모든 기능은 로그인 사용자이면서 코인을 보유한 사용자에게만 제공한다. 유니버스의 경우 과금 주체를 유니버스 또는 사용자 중에서 선택할 수 있다.",
+      "basis": "2026-09-18 사용자 지시. 정본 기록은 .agent/todo-character-model-genesis-validation.json 의 CMG-PD-01·CMG-PD-02."
+    },
+    {
+      "id": "CIA-OD-02",
+      "question": "WordPress 기사에도 embed 삽입 경로를 이번 사이클에 만들 것인가?",
+      "owner": "user",
+      "status": "open",
+      "context": "node-app 자체 매거진은 이미 end-to-end 동작하고 WP 경로는 삽입 PHP 가 0건이다(ASO-GAP-03). 브릿지 API 와 선례 패턴은 둘 다 있으므로 최소 추가로 가능하지만, 교차 스코프 작업이라 범위가 늘어난다.",
+      "recommendation": "이번 사이클에서는 제외하고 node-app 매거진으로 3건을 공개한다. 실동작 확인이 목적이라면 표면은 하나로 충분하고, WP 배선은 실제 독자 유입 경로가 필요해지는 시점에 별도 TASK 로 연다.",
+      "blocks": [
+        "CIA-04"
+      ]
+    }
+  ],
+  "relatedLedgers": [
+    {
+      "path": ".agent/todo-character-model-genesis-validation.json",
+      "relation": "1단계 원장. 이 원장과 종전에 한 몸이었고 2026-09-18 에 앞쪽으로 분리됐다. 캐릭터·모델 생성 파이프라인 검증과 AI 생성 과금·접근 정책 정본화를 담당하며, 이 원장의 아티클 소재를 만든다.",
+      "action": "선행 단계. 완료 전 이 원장을 active 로 올리지 않는다"
+    },
+    {
+      "path": ".agent/todo-amu-service-open-improvement.json",
+      "relation": "프로그램 인덱스. 전체 실측(결손 9건)과 단계 목록의 정본이다.",
+      "action": "참조 전용"
+    },
+    {
+      "path": ".agent/todo-ledgers/completed/todo-character-genesis-unification.json",
+      "relation": "선행 원장. 2026-09-17 완료. 종전에 CIA-07 이 그 원장 globalVerification 의 잔여 항목(Play 표면 수동 회귀)을 흡수하기로 돼 있었으나, CIA-07 이 1단계로 이관되면서 그 승계도 1단계 CMG-04·CMG-09 로 넘어갔다.",
+      "action": "참조 전용. 완료본은 수정하지 않는다"
+    },
+    {
+      "path": ".agent/todo-for-tutors-improvement.json",
+      "relation": "전면 실행 중지 유지. CT-060·CT-061·CT-062 의 전제는 이 원장 완료 후 재확인한다.",
+      "action": "상태 변경 없음"
+    },
+    {
+      "path": ".agent/todo-idempotency-durability-hardening.json",
+      "relation": "조건 발동형 승계 원장. CIA-10 의 멱등 처리에서 activationTriggers 해당 현상이 관측되면 그 원장으로 넘긴다.",
+      "action": "관측 시 트리거 기록"
+    },
+    {
+      "path": ".agent/todo-ledgers/completed/todo-instagram-card-news.json",
+      "relation": "카드뉴스 P0~P6 완료, P7 운영 검증 차단. CIA-12 는 인프라를 소비만 하고 차단을 해소하지 않는다.",
+      "action": "참조 전용"
+    }
+  ],
+  "references": {
+    "report": [
+      ".agent/docs/project/2026/09/20260918_114230__amu-service-open-improvement-shortcycle-roadmap.md",
+      ".agent/docs/project/2026/09/20260918_165301__character-model-genesis-stage-resplit.md"
+    ],
+    "strategy": [
+      ".agent/references/AMU_APP/AMU__SERVICE_INTEGRATED/p0_action.md",
+      ".agent/references/AMU_APP/AMU__SERVICE_INTEGRATED/p1_priority.md"
+    ],
+    "contracts": [
+      "amu_app/node-app/.claude/rules/gen-studio-process.md",
+      "amu_app/node-app/.claude/rules/server-economy-security.md",
+      "amu_app/node-app/.claude/rules/media-storage.md",
+      "amu_app/node-app/.claude/rules/amu-play.md",
+      ".claude/rules/agent-orchestration.md",
+      ".claude/rules/safety-governance.md",
+      ".claude/rules/compliance-guardrails.md",
+      ".claude/rules/cross-project.md",
+      ".claude/rules/repository-topology.md",
+      ".claude/rules/text-encoding-integrity.md",
+      ".claude/rules/content-operations.md"
+    ],
+    "codeAnchors": [
+      "amu_app/node-app/src/models/magazine/MagazineEmbedRegistrySchema.ts",
+      "amu_app/node-app/src/components/module/magazine/MagazineEmbedSurface.tsx",
+      "amu_app/node-app/src/components/module/magazine/TutorsMagazineComposer.tsx",
+      "amu_app/node-app/src/libs/server-utils/api/apiMiddleware.ts",
+      "amu_app/node-app/src/app/api/(ai)/commerce/chat/route.ts",
+      "amu_app/node-app/src/app/api/(app)/tutors/chat/route.ts",
+      "amu_app/node-app/src/app/api/thirdparty/wp/article-experience/route.ts"
+    ]
+  },
+  "nextExecutable": {
+    "computedAt": "2026-09-18T16:53:01+09:00",
+    "ready": [],
+    "blockedOnLedger": [
+      "이 원장 전체 — 1단계 .agent/todo-character-model-genesis-validation.json 완료 후 provisional.revalidateBeforeStart 를 수행하고 status 를 active 로 올린 뒤에 착수한다."
+    ],
+    "blockedOnUser": [
+      "CIA-15·CIA-17 공개 승인 — G-CIA-02"
+    ],
+    "outOfScope": [
+      "캐릭터·모델 생성 전체 — 1단계 원장",
+      "후속 단계 4개 — 각 단계 원장 참조",
+      "p1_priority.md R0~R12"
+    ],
+    "calculationRule": [
+      "status 가 provisional 인 동안 이 원장의 TASK 를 실행하지 않는다 — 상위 원장 stageDiscipline.",
+      "재검증 없이 status 를 바꾸지 않는다.",
+      "CIA-05 와 CIA-06 은 같은 파일(TutorsMagazineComposer.tsx)을 쓰므로 직렬로 실행한다."
+    ]
+  },
+  "globalVerification": [
+    "pnpm run typecheck (amu_app/node-app)",
+    "pnpm run lint (amu_app/node-app)",
+    "pnpm run build (amu_app/node-app) — dev 서버 종료 가능 시점에 실행. .next 덮어쓰기 주의",
+    "Mongoose 스키마 git diff 0줄",
+    "amu-platform-guide/ 및 .claude/rules/ git diff 0줄",
+    "공개된 인터렉티브 아티클 2건 실 URL 회귀 — 로그인/비로그인 각각",
+    "기존 표면 수동 회귀 — Tutors 대화 · Gen Studio 이미지 에디터 · Play 스테이지",
+    "코인 원장 대조 — 예상 차감액 일치, 중복 0건",
+    "한글 되읽기 대조 — 원장·보고서·기사 전건"
+  ],
+  "provisional": {
+    "state": "provisional",
+    "rule": "이 원장의 범위·TASK 구성·설계 판정은 확정이 아니라 잠정이다. 1단계(.agent/todo-character-model-genesis-validation.json)의 구현 결과가 이 원장의 전제를 바꾸므로, 지금 적힌 deliverable 과 exitCriteria 를 그대로 실행 지시로 삼지 않는다.",
+    "whyProvisional": "2026-09-18 사용자 지시로 종전 1단계 원장을 둘로 쪼갰다. \"지금은 오직 캐릭터 생성에만 집중하고 그 이후에 인터렉티브 아티클 관련 기능 구현을 점진적으로 진행한다\"는 결정에 따라 이 원장은 뒤쪽 단계가 됐다. 여기 남은 실측은 2026-09-18 11:39 기준이며 1단계가 코드를 바꾸는 동안 낡는다.",
+    "dependsOnLedger": [
+      ".agent/todo-character-model-genesis-validation.json"
+    ],
+    "whatCouldChange": [
+      "1단계 CMG-08 의 페르소나 배선이 캐릭터 데이터 모델을 바꾸면 대화형 embed 가 참조하는 persona 구조가 달라진다.",
+      "1단계 CMG-06 의 두 표면 통합 판정 결과에 따라 이미지 생성형 embed 가 재사용할 에디터 컴포넌트가 달라진다.",
+      "1단계 CMG-01 이 AI 생성 과금·접근 정책을 정책 정본에 올리면, 이 원장의 게스트 관련 TASK 는 그 정본을 근거로 다시 정리해야 한다.",
+      "1단계 CMG-16 이 과금 주체 선택을 구현하면 embed 안 생성의 과금 주체 판정이 달라진다.",
+      "1단계가 확보하는 캐릭터·모델이 이 원장의 아티클 소재이므로, 그 산출물이 없으면 CIA-10 이후가 성립하지 않는다."
+    ],
+    "revalidateBeforeStart": [
+      "MagazineEmbedRegistry 의 정책 필드와 magazineEmbedContract.ts 의 판정 방향이 1단계 이후에도 같은지 재확인",
+      "TutorsMagazineComposer.tsx 의 구조와 인용 라인 재확인 — 1단계가 바꿨을 수 있다",
+      "1단계에서 확보된 캐릭터·모델의 personaId 와 공개 상태 확인",
+      "1단계 CMG-01 이 정본화한 과금·접근 정책을 이 원장 safetyBoundaries 에 반영",
+      "게스트 비허용 확정(CMG-PD-01)이 commerce/chat 의 현행 withGuestOrAuth 사용에 어떤 영향을 주는지 판정 — 이 원장 CIA-03 에서 다룬다"
+    ],
+    "onStart": "1단계 완료 후 위 재검증을 수행하고 status 를 active 로, roadmapVersion 을 1.0 으로 올린다. 재검증 없이 status 를 바꾸지 않는다 — 상위 원장 stageDiscipline.",
+    "doNotTreatAsFinal": "TASK 의 deliverable·exitCriteria·riskTier 는 잠정 값이다. 재검증 결과에 따라 추가·삭제·재분할한다."
+  }
+}
