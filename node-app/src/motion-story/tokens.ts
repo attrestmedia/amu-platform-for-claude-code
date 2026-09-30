@@ -4,7 +4,7 @@
  * 설계 근거: `.agent/references/NODE_APP/signature_interaction_and_interactive_motion/
  *   20260929_065533__motion-story-runtime-design-and-implementation-plan.md` §4.2
  *
- * - React(node-app)·vanilla(WordPress)·영상 export 가 모두 이 값을 쓴다.
+ * - node-app 의 React 표면(홈 카드 · 기사 Hero · Story Mode)과 향후 영상 export 가 모두 이 값을 쓴다.
  * - 수치는 설계 문서의 **초안값**이다. readingPace 는 파일럿 완주율·이탈 지점으로 보정한다.
  * - 애니메이션 채널은 opacity · transform · clip-path (+ 밑줄용 background-size) 로 제한한다
  *   (visual-runtime §3: width/height/top/left 금지).
@@ -21,6 +21,8 @@ export const MOTION_TOKENS = {
     base: 240,
     slow: 420,
     line: 520,
+    /** number-count 전용 */
+    count: 1200,
   },
   easing: {
     standard: [0.2, 0, 0, 1],
@@ -42,11 +44,12 @@ export const MOTION_TOKENS = {
     /** 마지막 상태 유지 (FINAL BEAT HOLD) */
     holdMs: 1200,
     minDurationMs: 2400,
-    maxDurationMs: 12_000,
+    maxDurationMs: 20_000,
+    /** 카드·Hero 표면에서 한 장면에 보이는 최대 줄 수 */
     maxLines: 4,
   },
   card: {
-    /** homeCard·archiveCard: sceneIds 1~2개, durationMs + holdMs 합계 상한 (루프 피로 방지) */
+    /** homeCard · articleHero: sceneIds 1~2개, durationMs + holdMs 합계 상한 (루프 피로 방지) */
     maxScenes: 2,
     maxLoopMs: 8000,
     /** 2회 루프 후 마지막 프레임에서 정지 */
