@@ -54,7 +54,7 @@ core/                  tokens · easing · segment · keyframes · style · layo
 ### React (웹 · interactive)
 
 ```tsx
-import { TextMotion } from '../text-motions' // 사용 위치 기준 상대 경로;
+import { TextMotion } from '../text-motions'; // 사용 위치 기준 상대 경로
 
 <TextMotion as="h1" preset="blur-in" text="AI가 일자리를 없애는 것이 아니라" />
 <TextMotion preset="slide-up" split="word" staggerFrom="center" trigger="in-view" text="일의 단위를 바꾸고 있다" />
@@ -81,7 +81,7 @@ ref.current?.play(); // pause / restart / seek(ms) / durationMs
 ### JSON 스펙 (AI 생성 / 저장)
 
 ```ts
-import { parseTextMotionSpec, getTextMotionDurationMs } from '../text-motions' // 사용 위치 기준 상대 경로;
+import { parseTextMotionSpec, getTextMotionDurationMs } from '../text-motions'; // 사용 위치 기준 상대 경로
 
 const result = parseTextMotionSpec(llmOutput); // 알 수 없는 필드·범위 초과 모두 거부
 if (!result.ok) throw new Error(result.errors.join('\n'));
@@ -97,7 +97,7 @@ getTextMotionDurationMs(result.spec); // 씬/자막 타이밍 배치용 길이
 ### 바닐라 DOM (React 밖: 매거진 HTML, 임베드)
 
 ```ts
-import { mountTextMotion } from '../text-motions' // 사용 위치 기준 상대 경로;
+import { mountTextMotion } from '../text-motions'; // 사용 위치 기준 상대 경로
 
 const motion = mountTextMotion(el, { preset: 'glitch-rgb', text: 'Cyber Glitch 404' }, { trigger: 'in-view' });
 motion.destroy(); // 원래 내용 복원
