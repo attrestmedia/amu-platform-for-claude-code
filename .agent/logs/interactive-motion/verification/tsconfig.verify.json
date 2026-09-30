@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "lib": ["ES2022","DOM","DOM.Iterable"], "module": "ESNext", "moduleResolution": "bundler",
+    "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true, "skipLibCheck": true,
+    "baseUrl": "/home/user/amu-platform-for-claude-code/node-app/src",
+    "typeRoots": ["./node_modules/@types"], "types": ["react","react-dom","node"]
+  },
+  "include": ["/home/user/amu-platform-for-claude-code/node-app/src/motion-story/**/*", "/home/user/amu-platform-for-claude-code/node-app/src/interactive-articles/**/*", "/home/user/amu-platform-for-claude-code/node-app/src/components/module/magazine/story/**/*"]
+}

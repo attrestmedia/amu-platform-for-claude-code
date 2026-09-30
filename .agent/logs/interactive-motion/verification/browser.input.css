@@ -1,0 +1,7 @@
+@import "tailwindcss";
+@import "/home/user/amu-platform-for-claude-code/node-app/src/styles/tailwind/theme.css";
+@source "/home/user/amu-platform-for-claude-code/node-app/src/components/module/magazine/story";
+@source "./app.tsx";
+:root { --background:#ffffff; --surface:#f6f6f4; --text-primary:#141414; --text-secondary:#555a60; --primary:#9eaf45; --muted:#e8e8e4; --border:#dcdcd6; }
+@media (prefers-color-scheme: dark) { :root { --background:#101112; --surface:#18191b; --text-primary:#f2f2f0; --text-secondary:#a6abb0; --muted:#2a2c2e; --border:#2f3134; } }
+body { font-family: system-ui, sans-serif; background: var(--background); }
