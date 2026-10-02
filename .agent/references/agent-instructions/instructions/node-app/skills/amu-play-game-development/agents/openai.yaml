@@ -1,0 +1,4 @@
+interface:
+  display_name: "AMU Play Game Development"
+  short_description: "Route and build AMU Play 2D and 3D games"
+  default_prompt: "Use $amu-play-game-development to plan and implement an AMU Play game feature with the correct PixiJS or Three.js runtime."

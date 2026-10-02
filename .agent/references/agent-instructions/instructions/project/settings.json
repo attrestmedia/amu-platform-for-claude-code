@@ -1,0 +1,74 @@
+{
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Bash(npm run:*)",
+      "Bash(npm install:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cat:*)",
+      "Bash(node:*)",
+      "Bash(npx:*)",
+      "Bash(tsc:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(ssh:*)",
+      "Read(../**)",
+      "Edit(../**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__marketing-ops__.*|mcp__genstudio__.*|mcp__amu-magazine__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/{{AGENT_ROOT}}/hooks/korean-text-integrity.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/{{AGENT_ROOT}}/hooks/korean-text-integrity.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/{{AGENT_ROOT}}/hooks/korean-text-integrity.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__marketing-ops__.*|mcp__genstudio__.*|mcp__amu-magazine__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/{{AGENT_ROOT}}/hooks/korean-text-integrity.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

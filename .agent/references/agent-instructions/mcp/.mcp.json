@@ -1,0 +1,62 @@
+{
+  "mcpServers": {
+    "genstudio": {
+      "command": "node",
+      "args": ["/home/attrest-samsung-linux/Project/amu_labs/apps/mcp/gen-studio/dist/index.js"],
+      "env": {
+        "AGENT_API_KEY": "6b5a63e00f5a4aa64e56ec9c2cd66f25fc37d06fc9fa031f0417641291ba0d23",
+        "AGENT_BASE_URL": "https://app.allmyuniverse.com",
+        "MODEL_CATALOG_POLICY_PATH": "/home/attrest-samsung-linux/Project/web-automation-project/ai-model-tracker/config/model_catalog_policy.json",
+        "MODEL_CATALOG_LOCAL_BASE_URL": "http://100.87.218.123:3000",
+        "MODEL_CATALOG_PRODUCTION_BASE_URL": "https://app.allmyuniverse.com"
+      }
+    },
+    "amu-magazine": {
+      "command": "node",
+      "args": ["/home/attrest-samsung-linux/Project/amu_labs/apps/mcp/amu-magazine/dist/index.js"],
+      "env": {
+        "AGENT_API_KEY": "6b5a63e00f5a4aa64e56ec9c2cd66f25fc37d06fc9fa031f0417641291ba0d23",
+        "AGENT_BASE_URL": "https://app.allmyuniverse.com",
+        "AMU_PUBLISHER_CONVERTER_DIR": "/home/attrest-samsung-linux/Project/web-automation-project/wp_mng/format_converter",
+        "AMU_PUBLISHER_CONVERTER_WORK_DIR": "/tmp/amu-publisher-format-converter",
+        "AMU_PUBLISHER_PYTHON_BIN": "/home/attrest-samsung-linux/Project/web-automation-project/venv/bin/python",
+        "AMU_PUBLISHER_ALLOWED_ARTICLE_ROOTS": "/home/attrest-samsung-linux/Project/.agent/content/articles",
+        "AMU_PUBLISHER_MIN_SEO_SCORE": "85",
+        "AMU_PUBLISHER_ALLOWED_HOSTS": "localhost,127.0.0.1,100.87.218.123,app.allmyuniverse.com,allmyuniverse.com,www.allmyuniverse.com",
+        "AMU_WP_LOCAL_URL": "http://100.87.218.123",
+        "AMU_WP_LOCAL_USERNAME": "attrest_admin",
+        "AMU_WP_LOCAL_APP_PASSWORD": "cjNI 4DRN 2IB7 mMgP m2qA 6tlX",
+        "AMU_PUBLISHER_ALLOW_PRODUCTION_PUBLISH": "true",
+        "AMU_PUBLISHER_ALLOW_PRODUCTION_CTA_REPAIR": "true",
+        "AMU_PUBLISHER_ALLOW_PRODUCTION_CLEANUP": "true"
+      }
+    },
+    "google-marketing": {
+      "command": "node",
+      "args": ["/home/attrest-samsung-linux/Project/amu_labs/apps/mcp/google-marketing/dist/index.js"],
+      "env": {
+        "AGENT_BASE_URL": "https://app.allmyuniverse.com",
+        "AGENT_API_KEY": "6b5a63e00f5a4aa64e56ec9c2cd66f25fc37d06fc9fa031f0417641291ba0d23",
+        "GOOGLE_MARKETING_DEFAULT_UNIVERSE_ID": "amu"
+      }
+    },
+    "marketing-ops": {
+      "command": "node",
+      "args": ["/home/attrest-samsung-linux/Project/amu_labs/apps/mcp/marketing-ops/dist/index.js"],
+      "env": {
+        "AGENT_BASE_URL": "https://app.allmyuniverse.com",
+        "AGENT_API_KEY": "6b5a63e00f5a4aa64e56ec9c2cd66f25fc37d06fc9fa031f0417641291ba0d23",
+        "MARKETING_OPS_DEFAULT_UNIVERSE_ID": "amu"
+      }
+    },
+    "visual-check": {
+      "command": "node",
+      "args": ["/home/attrest-samsung-linux/Project/amu_labs/apps/mcp/visual-check/dist/index.js"],
+      "env": {
+        "MCP_VISUAL_WORKSPACE_ROOT": "/home/attrest-samsung-linux/Project",
+        "MCP_VISUAL_OUTPUT_ROOT": "/tmp/amu-visual-check",
+        "PLAYWRIGHT_BROWSERS_PATH": "/home/attrest-samsung-linux/.cache/ms-playwright"
+      }
+    }
+  }
+}
