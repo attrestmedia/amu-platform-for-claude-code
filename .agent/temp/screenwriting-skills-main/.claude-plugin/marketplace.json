@@ -1,0 +1,16 @@
+{
+  "name": "screenwriting-skills",
+  "owner": {
+    "name": "terry"
+  },
+  "metadata": {
+    "description": "Skills distilled from 47 screenwriting / television / dramaturgy / Chinese-opera books plus 23 volumes of published scripts, plays and opera scores (Chekhov, Ozu, Succession, The West Wing, The Sopranos, Downton Abbey, Fleabag and more), covering features, TV series and the stage"
+  },
+  "plugins": [
+    {
+      "name": "screenwriting",
+      "source": "./plugins/screenwriting",
+      "description": "26 skills in four layers: general dramaturgy (workflow & story bible, structure, premise & theme, character & conflict, dialogue, scene craft, format & adaptation, Truby organic anatomy, genre anatomy); the medium layer (series: episode & season structure, series engine & bible, writers' room, half-hour comedy; stage: Chinese opera, banqiang and qupai methods with two full-script case libraries); tradition & trade (American case studies, Japanese, Korean & French, mainland-Chinese series practice, industry & business); and master corpora (Chekhov dramaturgy, Ozu screenplay style, Succession ensemble writing, television case studies); answers in the language you ask in (one Chinese source tree, no per-language forks)"
+    }
+  ]
+}
