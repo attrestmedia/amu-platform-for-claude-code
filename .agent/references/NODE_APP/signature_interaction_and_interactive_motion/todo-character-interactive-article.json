@@ -825,7 +825,7 @@
       "action": "참조 전용"
     },
     {
-      "path": ".agent/todo-ledgers/completed/todo-character-genesis-unification.json",
+      "path": ".agent/todo-ledgers/completed/2026/09/todo-character-genesis-unification.json",
       "relation": "선행 원장. 2026-09-17 완료. 종전에 CIA-07 이 그 원장 globalVerification 의 잔여 항목(Play 표면 수동 회귀)을 흡수하기로 돼 있었으나, CIA-07 이 1단계로 이관되면서 그 승계도 1단계 CMG-04·CMG-09 로 넘어갔다.",
       "action": "참조 전용. 완료본은 수정하지 않는다"
     },
@@ -840,7 +840,7 @@
       "action": "관측 시 트리거 기록"
     },
     {
-      "path": ".agent/todo-ledgers/completed/todo-instagram-card-news.json",
+      "path": ".agent/todo-ledgers/completed/2026/09/todo-instagram-card-news.json",
       "relation": "카드뉴스 P0~P6 완료, P7 운영 검증 차단. CIA-12 는 인프라를 소비만 하고 차단을 해소하지 않는다.",
       "action": "참조 전용"
     }
