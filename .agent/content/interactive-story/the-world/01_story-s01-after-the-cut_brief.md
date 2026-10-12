@@ -1,5 +1,8 @@
 # S01 「머리를 자른 다음 날」 — Production Brief (draft)
 
+> **⚠ v1 기준 문서 — 재작성 필요 (2026-10-12).** `00_the-world-genesis-design.md` v2에서 하린의 출발점이 "팔로워 48만 모델"에서 "모델·인플루언서 지망생"으로 바뀌었다.
+> 이 Brief의 전제(광고 계약 종료·팔로워 48만)는 v2와 충돌한다. 핵심 판단(반응 vs 구매)은 v2 공식 루트 Ch9 「살게요 92%」로 이동했다. 새 S01 후보는 Ch1 「긴 머리 지망생」(00 §11 결정 6).
+
 * 문서 상태: `draft` — 규약 §8 Production Brief. **사용자 승인 전 P13 제작 입력으로 쓰지 않는다**
 * 작성: 2026-10-12
 * 기준: `INTERACTIVE-NARRATIVE-STANDARD.md` v1.0 (규약) · 상위 설계 [`00_the-world-genesis-design.md`](./00_the-world-genesis-design.md)
