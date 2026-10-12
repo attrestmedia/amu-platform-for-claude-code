@@ -1,0 +1,266 @@
+{
+  "author": "choco_51",
+  "title": "AI가 답을 다 알려주는데, 사람들은 왜 어떤 콘텐츠엔 아직도 시간을 쓸까",
+  "seoTitle": "AI 시대 콘텐츠 전략: 사람들이 시간을 쓰는 콘텐츠의 조건",
+  "slug": "ai-era-content-strategy-why-people-spend-time",
+  "excerpt": "정보는 AI가 3초 만에 정리해 준다. 그런데도 사람들이 시간을 쓰는 콘텐츠에는 공통점이 있다. 뉴스 소비 데이터와 이야기·선택에 관한 연구로 그 조건을 따라가 본다.",
+  "heroLine": "정보로는 AI를 이길 수 없다. 사람의 시간은 경험과 판단의 변화에 쓰인다.",
+  "coldOpen": {
+    "problem": "공들인 정보 콘텐츠가 AI 챗봇의 짧은 답에 밀려 읽히지 않는다",
+    "scene": "지하철에서 궁금한 건 AI에게 3초 만에 묻고, 같은 날 밤 숏폼 드라마에는 40분을 쓰는 사람",
+    "tension": "정보는 3초면 충분한데, 이야기에는 40분을 쓴다"
+  },
+  "setCustomThumbnail": "ai-era-content-strategy-why-people-spend-time",
+  "coverArtDirection": {
+    "grammar": "conceptual",
+    "scene": "밤의 지하철 창가, 한 사람의 손에 든 휴대폰 화면이 따뜻한 빛으로 얼굴을 비추고, 창밖으로 빠르게 지나가는 도시 불빛",
+    "tension": "빨리 얻는 답과, 기꺼이 쓰는 시간 사이",
+    "textPolicy": "none"
+  },
+  "seoKeyword": "AI 시대 콘텐츠 전략",
+  "seoSlugKeyword": "ai era content strategy",
+  "seoDescription": "AI 시대 콘텐츠 전략은 정보량 경쟁이 아니다. 로이터 디지털 뉴스 리포트 2026과 이야기·선택에 관한 연구로, 사람들이 정보 대신 시간을 쓰는 콘텐츠의 조건과 기획 질문을 정리했다.",
+  "content": "ai_era_content_strategy_why_people_spend_time",
+  "category": "marketing-strategy",
+  "tag": "AI 시대 콘텐츠 전략, 콘텐츠 기획, 스토리텔링, 인터랙티브 콘텐츠, 선택 과부하, 디지털 뉴스 리포트",
+  "longtailKeywords": "AI 시대 콘텐츠 전략, AI 챗봇 뉴스 소비, 콘텐츠 기획 질문, 이야기 기억 효과, 선택 과부하 메타분석, 숏폼 콘텐츠 몰입",
+  "contentRole": "trust",
+  "primaryArchetype": "mystery",
+  "supportingArchetype": "decision",
+  "experienceLevel": "story",
+  "primaryQuestion": "AI가 답을 다 주는 지금, 사람들은 어떤 콘텐츠에 시간을 쓸까?",
+  "thesis": "정보는 AI가 더 빨리 주기 때문에, 콘텐츠가 사람의 시간을 얻으려면 보고 싶은 경험으로 들어오게 하고 판단이 바뀌는 결과로 남겨야 한다.",
+  "memorableInsight": "'와, 신기하다'는 입구다. 남는 건 생각이 바뀐 콘텐츠다.",
+  "nextQuestion": "내 콘텐츠를 본 사람의 생각이 정말 바뀌었는지는, 조회수 말고 무엇으로 알 수 있을까?",
+  "questionDNA": {
+    "who": "콘텐츠를 기획·제작하는 마케터와 크리에이터",
+    "desire": "공들인 콘텐츠가 사람의 시간을 얻고 다음 행동으로 이어지는 것",
+    "obstacle": "정보는 AI 챗봇이 더 빨리 정리해 주고, 사람들의 발견 경로가 플랫폼으로 옮겨갔다",
+    "question": "그럼 사람들은 어떤 콘텐츠에 아직도 시간을 쓰는가"
+  },
+  "qualityEvidence": {
+    "curiosity": "도입부 — 3초짜리 AI 답과 40분짜리 숏폼 드라마의 대비에서 primaryQuestion을 연다",
+    "surprise": "첫 H2 — '글이 끝났다'는 예상과 달리, 순위 역전은 플랫폼 급성장보다 TV·웹사이트 이용 감소에 가깝고 AI 챗봇은 10%다. 다섯째 H2 — 잼 실험의 직관과 달리 메타분석 평균 효과는 거의 0",
+    "evidence": "로이터 디지털 뉴스 리포트 2026(48개 시장·약 10만 명, 54% 대 51%, AI 챗봇 7%→10%) — 원문 페이지 직접 확인 실패, 복수 2차 보도로 교차 확인. Mar et al. 2021 메타분석(75+ 표본, 3.3만+ 명). Iyengar & Lepper 2000, Scheibehenne et al. 2010(50개 실험·63개 조건). 각 근거 뒤에 한계 문단 배치",
+    "participation": "셋째 H2 — 가상의 콘텐츠 A(100만·이탈)와 B(5만·저장·재방문) 중 성공을 고르게 한 뒤 '한 달 뒤 남는 쪽'으로 reveal. 다섯째 H2 — '선택지가 많을수록 좋을까' 예측 후 메타분석으로 reveal",
+    "payoff": "마지막 H2 — 사람의 시간은 정보가 아니라 경험(멈춤·선택·판단 변화·다음 궁금증)에 쓰인다는 답으로 primaryQuestion을 회수",
+    "utility": "여섯째 H2 — 기획 첫 질문, 판단 기준 이동 4줄, 다섯 질문 표, 그리고 '모든 콘텐츠를 경험으로 만들 필요는 없다'의 4개 한계 조건",
+    "memorability": "마지막 H2 — \"'와, 신기하다'는 입구다. 남는 건 생각이 바뀐 콘텐츠다.\"",
+    "continuation": "결론 마지막 문장 — 판단 변화를 측정하는 방법은 이 글이 답하지 않은 실제 다음 질문이다",
+    "voice": "H1·H2·primaryQuestion을 소리 내어 읽어 사람이 묻는 말로 조정. 평어 에세이체, 습니다체 0건"
+  },
+  "articleMode": "knowledge",
+  "intelligenceRole": "analysis",
+  "evergreenPrinciple": "정보 획득 비용이 낮아질수록 콘텐츠가 사람의 시간을 얻는 근거는 정보량에서 자발적으로 머물고 싶은 경험과 판단의 변화로 옮겨간다.",
+  "temporalClaims": [
+    {
+      "date": "2026-06",
+      "claim": "48개 시장에서 일주일 동안 뉴스를 보려고 소셜미디어·동영상 플랫폼을 쓴 비율(54%)이 언론사 자체 웹사이트·앱(51%)을 처음으로 앞섰다",
+      "status": "current",
+      "sourceRef": "https://www.emarketer.com/content/social-platforms-news-sites-digital-media-reach"
+    },
+    {
+      "date": "2026-06",
+      "claim": "일주일 기준 AI 챗봇으로 뉴스를 본 비율은 10%로, 전년 7%에서 늘었다",
+      "status": "current",
+      "sourceRef": "https://www.niemanlab.org/2026/06/the-use-of-ai-chatbots-for-news-is-on-the-rise-but-not-everywhere/"
+    }
+  ],
+  "conditions": [
+    "정보 획득을 AI·플랫폼이 대신하는 주제일수록 경험·판단 변화 설계의 가치가 커진다",
+    "선택은 모든 선택지에 합리적 이유가 있고 고른 뒤 무언가가 달라질 때 참여를 만든다",
+    "이야기는 지식이 인물의 문제를 푸는 도구로 등장할 때 이해와 기억을 돕는다"
+  ],
+  "limitations": [
+    "로이터 수치는 자기보고 설문이며, 원문 페이지를 직접 확인하지 못하고 복수 2차 보도로 교차 확인했다",
+    "이야기 우위 메타분석은 텍스트 이해·기억을 다뤘고 숏폼 영상이나 구매·재방문 같은 행동 결과를 증명하지 않는다",
+    "멈춤·얻음·참여·이어짐의 곱셈 관점은 진단 프레임이며 실험으로 검증된 공식이 아니다",
+    "경험형 콘텐츠는 제작 비용이 커서 모든 주제에 적용할 근거가 없다"
+  ],
+  "counterExamples": [
+    "즉시 답이 필요한 사용법·공지·당일 수치는 이야기나 인터랙션을 붙이면 오히려 시간을 뺏는다",
+    "선택 과부하는 평균적으로 거의 나타나지 않았고, 선호가 뚜렷한 사람에게는 선택지가 많은 쪽이 나았다"
+  ],
+  "entities": [
+    "Reuters Institute Digital News Report 2026",
+    "Raymond A. Mar",
+    "Sheena Iyengar",
+    "Mark Lepper",
+    "Benjamin Scheibehenne",
+    "선택 과부하",
+    "메타분석"
+  ],
+  "topics": [
+    "AI 시대 콘텐츠 전략",
+    "콘텐츠 기획",
+    "스토리텔링과 기억",
+    "인터랙티브 콘텐츠 설계",
+    "선택 설계",
+    "뉴스 소비 변화"
+  ],
+  "intent": "AI가 정보를 대신 주는 시대에 사람의 시간을 얻는 콘텐츠 기획 기준을 알고 싶다",
+  "audience": "콘텐츠를 기획·제작하는 마케터와 크리에이터",
+  "knowledgeUnits": [
+    {
+      "unitType": "signal",
+      "statement": "뉴스 발견 경로가 언론사 자체 채널에서 소셜·동영상 플랫폼과 AI 챗봇으로 옮겨가고 있지만, 순위 역전은 플랫폼 급성장보다 기존 채널 이용 감소에 가깝고 AI 챗봇 이용은 아직 소수다.",
+      "articleSpan": "사람들이 글을 안 읽게 된 게 아니다",
+      "mechanism": "궁금함이 생기면 검색·기사 읽기 대신 AI 질문·요약·추가 질문으로 바로 답을 얻는 경로가 늘면서, 긴 글을 먼저 찾아 읽던 습관의 독점이 약해진다.",
+      "conditions": [
+        "정리된 정보로 답할 수 있는 질문일수록 이동이 빠르다"
+      ],
+      "limitations": [
+        "자기보고 설문 수치다",
+        "시장마다 차이가 크고, 일부 시장에서는 여전히 언론사 채널이 앞선다",
+        "원문 대신 복수 2차 보도로 교차 확인했다"
+      ],
+      "evidenceRefs": [
+        {
+          "id": "dnr-2026-platforms-overtake",
+          "sourceType": "report",
+          "sourceRef": "https://www.emarketer.com/content/social-platforms-news-sites-digital-media-reach",
+          "articleSpan": "사람들이 글을 안 읽게 된 게 아니다",
+          "observedAt": "2026-06",
+          "claimStatus": "sourced",
+          "supports": "48개 시장에서 소셜·동영상 플랫폼 뉴스 이용(54%)이 언론사 웹사이트·앱(51%)을 처음 앞섰다",
+          "limitations": [
+            "2차 보도 기준. 로이터 원문 페이지 직접 대조 필요",
+            "자기보고 설문"
+          ]
+        },
+        {
+          "id": "dnr-2026-ai-chatbot-news",
+          "sourceType": "report",
+          "sourceRef": "https://www.niemanlab.org/2026/06/the-use-of-ai-chatbots-for-news-is-on-the-rise-but-not-everywhere/",
+          "articleSpan": "사람들이 글을 안 읽게 된 게 아니다",
+          "observedAt": "2026-06",
+          "claimStatus": "sourced",
+          "supports": "AI 챗봇으로 뉴스를 본 주간 비율이 7%에서 10%로 늘었다",
+          "limitations": [
+            "2차 보도 기준",
+            "AI가 주된 뉴스원인 사람은 여전히 소수다"
+          ]
+        }
+      ]
+    },
+    {
+      "unitType": "principle",
+      "statement": "주목(Wow)은 사람을 멈춰 세우는 입구이지 결과가 아니다. 콘텐츠의 가치는 멈춤·얻음·참여·이어짐이 모두 일정 수준 이상일 때 남고, 하나가 0에 가까우면 나머지가 상쇄하지 못한다.",
+      "articleSpan": "조회수 100만과 5만, 어느 쪽이 성공일까",
+      "mechanism": "주목만 있으면 이탈하고, 정보만 있으면 끝까지 보지 않고, 참여만 요구하면 광고로 읽혀 어느 경우에도 다음 행동이 생기지 않는다.",
+      "conditions": [
+        "콘텐츠의 목표가 재방문·관계 같은 다음 행동일 때"
+      ],
+      "limitations": [
+        "실험으로 검증된 공식이 아니라 진단 관점이다",
+        "도달 자체가 목적인 콘텐츠에는 다른 기준이 맞을 수 있다"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "unitType": "evidence",
+      "statement": "이야기 형식의 글은 설명 형식의 글보다 더 잘 이해되고 더 잘 기억된다.",
+      "articleSpan": "이야기는 왜 설명보다 오래 남을까",
+      "mechanism": "이야기는 인물·목표·장애물·선택으로 이어지는 인과 사슬을 제공해 개념 목록보다 붙잡기 쉽다.",
+      "conditions": [
+        "텍스트의 이해·기억을 볼 때"
+      ],
+      "limitations": [
+        "숏폼 영상·구매·재방문 같은 행동 결과는 증명하지 않는다"
+      ],
+      "evidenceRefs": [
+        {
+          "id": "mar-2021-narrative-expository",
+          "sourceType": "meta-analysis",
+          "sourceRef": "doi:10.3758/s13423-020-01853-1",
+          "articleSpan": "이야기는 왜 설명보다 오래 남을까",
+          "observedAt": "2021-01-06",
+          "claimStatus": "sourced",
+          "supports": "75개 이상 표본·3만 3천 명 이상 데이터에서 이야기 글이 설명 글보다 이해·기억에 유리했고, 단일 연구 제외에도 결과가 유지됐다",
+          "limitations": [
+            "텍스트 대상 연구",
+            "효과 크기 수치는 원문에서 재확인 필요"
+          ]
+        }
+      ]
+    },
+    {
+      "unitType": "anti_pattern",
+      "statement": "설명할 지식을 먼저 정하고 인물에게 그 지식을 설명시키면 이야기가 강의가 된다. 인물에게 문제가 먼저 생기고, 그 문제를 풀려면 지식이 필요해져야 한다.",
+      "articleSpan": "이야기는 왜 설명보다 오래 남을까",
+      "mechanism": "지식이 사건의 도구로 등장하면 인과 사슬 안에 들어가지만, 대화로 설명되면 이야기 구조 밖의 정보 목록으로 남는다.",
+      "conditions": [
+        "지식을 이야기로 전달하려는 콘텐츠"
+      ],
+      "limitations": [
+        "편집 관점에 근거한 원리이며 이 형태를 직접 비교한 실험 근거는 기사에 없다"
+      ],
+      "evidenceRefs": []
+    },
+    {
+      "unitType": "principle",
+      "statement": "선택지의 개수는 참여를 결정하는 핵심 변수가 아니다. 모든 선택지에 합리적 이유가 있고 고른 뒤 무언가가 달라지는 '의미 있는 선택'이 참여를 만든다.",
+      "articleSpan": "선택지를 늘리면 몰입도 늘어날까",
+      "mechanism": "선택 과부하 효과는 연구마다 방향과 크기가 크게 달라 평균적으로 거의 0이며, 선호의 뚜렷함 같은 조건에 따라 달라진다.",
+      "conditions": [
+        "사용자가 고르게 하는 인터랙션·콘텐츠를 설계할 때"
+      ],
+      "limitations": [
+        "메타분석은 구매·만족 같은 소비자 선택을 다뤘고 콘텐츠 참여를 직접 측정하지 않았다"
+      ],
+      "evidenceRefs": [
+        {
+          "id": "iyengar-lepper-2000-jam",
+          "sourceType": "experiment",
+          "sourceRef": "doi:10.1037/0022-3514.79.6.995",
+          "articleSpan": "선택지를 늘리면 몰입도 늘어날까",
+          "observedAt": "2000",
+          "claimStatus": "sourced",
+          "supports": "시식대에 잼 24종보다 6종을 놓았을 때 구매 전환이 더 높았다는 선택 과부하의 대표 사례",
+          "limitations": [
+            "단일 현장 실험",
+            "후속 메타분석에서 평균 효과가 거의 0으로 나타났다"
+          ]
+        },
+        {
+          "id": "scheibehenne-2010-choice-overload-meta",
+          "sourceType": "meta-analysis",
+          "sourceRef": "doi:10.1086/651235",
+          "articleSpan": "선택지를 늘리면 몰입도 늘어날까",
+          "observedAt": "2010-10",
+          "claimStatus": "sourced",
+          "supports": "50개 실험·63개 조건·5,036명 메타분석에서 선택 과부하의 평균 효과는 거의 0이고 연구 간 편차가 컸다",
+          "limitations": [
+            "콘텐츠 참여를 직접 다루지 않았다",
+            "정확한 효과 크기 수치는 원문 재확인 필요"
+          ]
+        }
+      ]
+    },
+    {
+      "unitType": "tactic",
+      "statement": "콘텐츠 기획의 첫 질문을 '왜 사람이 자기 시간을 써서 이걸 봐야 하는가'로 두고, 보기 전 생각·본 뒤 판단 기준·근거·다음 행동 네 줄을 채울 수 없으면 짧은 정보 콘텐츠로 낸다.",
+      "articleSpan": "AI 시대 콘텐츠 전략은 기획의 첫 질문부터 바꾼다",
+      "mechanism": "답이 '유익하니까'뿐인 콘텐츠는 AI의 즉답과 정면 경쟁하므로, 시간을 쓸 이유와 판단 변화를 기획 단계에서 먼저 확인한다.",
+      "conditions": [
+        "경험형·이야기형 콘텐츠 제작을 검토할 때"
+      ],
+      "limitations": [
+        "즉시 답이 필요한 정보에는 적용하지 않는다",
+        "제작 비용이 크므로 반응이 확인된 주제부터 적용한다"
+      ],
+      "evidenceRefs": []
+    }
+  ],
+  "intelligence": {
+    "externalEvidenceLevel": "multi_source",
+    "claimStatus": "sourced",
+    "applicability": [
+      "콘텐츠 기획",
+      "인터랙티브 콘텐츠 설계",
+      "스토리 기반 콘텐츠 제작",
+      "마케팅 콘텐츠 성과 진단"
+    ],
+    "revenueStages": []
+  }
+}
