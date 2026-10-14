@@ -6,6 +6,7 @@ import {
   type NarrativeDirectiveProposal,
 } from "types/game";
 import { isNarrativeRuntimeEnabled } from "libs/server-utils/narrative/narrativeRuntimePolicy";
+import { readEmptyTextUsage } from "libs/server-utils/api/emptyTextUsage";
 
 /**
  * @docHint
@@ -18,6 +19,7 @@ import { isNarrativeRuntimeEnabled } from "libs/server-utils/narrative/narrative
 export const NARRATIVE_DIRECTOR_POLICY = {
   maxPromptTokens: 1800,
   maxOutputTokens: 500,
+  thinkingBudgetTokens: 0,
   maxCallsPerSession: 1,
   cacheTtlSeconds: 300,
   costContract: "caller supplies pricing+balance preflight and actual usage billing",
@@ -143,6 +145,7 @@ export async function runNarrativeDirector(input: {
   invoke: () => Promise<unknown>;
   budgetCheck: () => boolean | Promise<boolean>;
   recordUsage: (usage: { promptTokens: number; outputTokens: number }) => void | Promise<void>;
+  recordUnbilledUsage?: (usage: { promptTokens: number; outputTokens: number }) => void | Promise<void>;
   circuitOpen?: boolean;
   modelName?: string;
   cacheHit?: boolean;
@@ -156,18 +159,45 @@ export async function runNarrativeDirector(input: {
   });
   if (input.circuitOpen === true) return fallback("circuit_open");
   if (!preflight.allowed) return fallback("preflight_blocked");
+  let raw: unknown;
   try {
-    const raw = await input.invoke();
-    const directive = parseNarrativeDirective(raw, input.expected);
-    const outputTokens = estimateTokens(JSON.stringify(directive));
-    if (outputTokens > NARRATIVE_DIRECTOR_POLICY.maxOutputTokens) return fallback("output_budget_exceeded");
+    raw = await input.invoke();
+  } catch (reason) {
+    const usage = readEmptyTextUsage(reason);
+    if (usage) {
+      try {
+        await input.recordUnbilledUsage?.({ promptTokens: preflight.promptTokens, outputTokens: 0 });
+      } catch {
+        // Observation failures must not prevent the static fallback.
+      }
+    }
+    return fallback(reason instanceof Error ? reason.message : "director_failed");
+  }
+
+  let directive: NarrativeDirective;
+  let outputTokens: number;
+  try {
+    directive = parseNarrativeDirective(raw, input.expected);
+    outputTokens = estimateTokens(JSON.stringify(directive));
+    if (outputTokens > NARRATIVE_DIRECTOR_POLICY.maxOutputTokens) throw new Error("NARRATIVE_DIRECTIVE_OUTPUT_BUDGET_EXCEEDED");
+  } catch (reason) {
+    try {
+      await input.recordUnbilledUsage?.({ promptTokens: preflight.promptTokens, outputTokens: 0 });
+    } catch {
+      // Observation failures must not prevent the static fallback.
+    }
+    const errorCode = reason instanceof Error ? reason.message : "director_parse_failed";
+    return fallback(`parse_failed_unbilled:${errorCode}`);
+  }
+
+  try {
     await input.recordUsage({ promptTokens: preflight.promptTokens, outputTokens });
-    return {
-      status: "proposal",
-      directive,
-      telemetry: { promptTokens: preflight.promptTokens, outputTokens, cacheHit: input.cacheHit === true, modelName: input.modelName },
-    };
   } catch (reason) {
     return fallback(reason instanceof Error ? reason.message : "director_failed");
   }
+  return {
+    status: "proposal",
+    directive,
+    telemetry: { promptTokens: preflight.promptTokens, outputTokens, cacheHit: input.cacheHit === true, modelName: input.modelName },
+  };
 }

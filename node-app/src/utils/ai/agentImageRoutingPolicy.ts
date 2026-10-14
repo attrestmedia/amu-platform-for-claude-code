@@ -1,3 +1,6 @@
+import { AI_MODEL_ROLE_POLICY } from "consts/ai/generated/modelPolicy.generated";
+import { roleRefToProviderModel } from "consts/ai/modelPolicy";
+
 export const AGENT_IMAGE_ROUTING_PROFILES = [
   "supporting_visual",
   "graphic_no_text",
@@ -69,26 +72,20 @@ export function resolveAgentImageRoutingMeta(args: {
   };
 }
 
-const ROUTING_CANDIDATES: Record<AgentImageRoutingProfileType, readonly AgentImageRoutingCandidateType[]> = {
-  supporting_visual: [
-    { provider: "zai", modelName: "glm-image" },
-    { provider: "google", modelName: "gemini-2.5-flash-image" },
-  ],
-  graphic_no_text: [
-    { provider: "google", modelName: "gemini-2.5-flash-image" },
-    { provider: "xai", modelName: "grok-imagine-image" },
-  ],
-  premium_template_sample: [
-    { provider: "google", modelName: "gemini-3.1-flash-image-preview" },
-    { provider: "xai", modelName: "grok-imagine-image-2.0" },
-    { provider: "openai", modelName: "gpt-image-2.5-flare" },
-  ],
-};
+const IMAGE_ROUTING_PROFILES = AI_MODEL_ROLE_POLICY.agent.image.routingProfiles;
+
+function routingCandidatesFromRefs(refs: readonly string[]): readonly AgentImageRoutingCandidateType[] {
+  return refs.map((ref) => roleRefToProviderModel(ref) as AgentImageRoutingCandidateType);
+}
+
+const ROUTING_CANDIDATES = {
+  supporting_visual: routingCandidatesFromRefs(IMAGE_ROUTING_PROFILES.supporting_visual.candidates),
+  graphic_no_text: routingCandidatesFromRefs(IMAGE_ROUTING_PROFILES.graphic_no_text.candidates),
+  premium_template_sample: routingCandidatesFromRefs(IMAGE_ROUTING_PROFILES.premium_template_sample.candidates),
+} satisfies Record<AgentImageRoutingProfileType, readonly AgentImageRoutingCandidateType[]>;
 
 function defaultTextPolicy(profile: AgentImageRoutingProfileType): AgentImageTextPolicyType {
-  if (profile === "graphic_no_text") return "none";
-  if (profile === "premium_template_sample") return "embedded_required";
-  return "overlay_later";
+  return IMAGE_ROUTING_PROFILES[profile].textPolicy;
 }
 
 export function isAgentImageRoutingProfile(value: unknown): value is AgentImageRoutingProfileType {

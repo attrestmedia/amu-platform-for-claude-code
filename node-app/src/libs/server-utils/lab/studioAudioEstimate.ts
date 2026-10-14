@@ -1,15 +1,11 @@
 import "server-only";
 
 import {
-  ELEVENLABS_APPROVED_VOICE_CATALOG,
   ELEVENLABS_DEFAULT_TTS_MODEL,
   ELEVENLABS_TTS_SPEED_RANGE,
 } from "consts/ai/voiceCatalog";
+import { AI_MODEL_CATALOG_REVISIONS, AI_ELEVENLABS_APPROVED_VOICE_CATALOG } from "consts/ai/generated/modelCatalog.generated";
 import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
-import {
-  createSystemPricingSnapshotRevision,
-  getSystemPricingMaps,
-} from "libs/server-utils/api/systemPricingControl";
 import {
   STUDIO_AUDIO_MAX_TEXT_LENGTH,
   STUDIO_AUDIO_TEMPLATE_KEYS,
@@ -18,6 +14,7 @@ import {
 } from "libs/server-utils/lab/studioAudioContract";
 import { assertAIUsageBalanceOrThrow } from "libs/services/aiUsageBilling";
 import { toErrorLike, toUnknownRecord } from "utils/common/typeUtils";
+import type { ElevenLabsApprovedVoiceCatalogEntry } from "consts/ai/voiceCatalog";
 
 // enqueueStudioAudioJob의 preflight와 같은 billing app이어야 한다(studioAudioJobQueue.ts의 BILLING_APP).
 // 다르면 estimate와 예약 상한·지갑 정책이 어긋난다.
@@ -70,7 +67,7 @@ function safe(value: unknown, maxLength = 240) {
  * client가 Voice를 고르는 데 필요한 공개 필드만 추린다.
  */
 export function listStudioAudioVoiceOptions(): StudioAudioVoiceOption[] {
-  return ELEVENLABS_APPROVED_VOICE_CATALOG
+  return (AI_ELEVENLABS_APPROVED_VOICE_CATALOG as readonly ElevenLabsApprovedVoiceCatalogEntry[])
     .filter((entry) => entry.rightsStatus === "verified_commercial" && entry.usage === "production")
     .map((entry) => ({
       voiceId: entry.voiceId,
@@ -175,7 +172,7 @@ export async function estimateStudioAudio(args: {
   const characters = initial.manifest.segments.reduce((sum, segment) => sum + Math.max(0, segment.charCount), 0);
   if (characters <= 0) return { ok: false, error: "AUDIO_TEXT_REQUIRED", errorCode: "AUDIO_REQUEST_INVALID" };
 
-  const pricingRevision = createSystemPricingSnapshotRevision(await getSystemPricingMaps());
+  const pricingRevision = AI_MODEL_CATALOG_REVISIONS.pricingRevision;
 
   // enqueue와 같은 fail-closed를 탄다 — 단가 키가 없으면 가격 계산 helper는 예외 없이 0코인을
   // 반환하지만 enqueue는 assertPricingConfigured에서 PRICING_NOT_FOUND(503)로 막힌다. estimate가

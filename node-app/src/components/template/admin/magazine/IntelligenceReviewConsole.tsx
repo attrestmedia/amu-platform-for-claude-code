@@ -7,7 +7,7 @@ import { useAuthCheck, useUserData } from "hooks/auth";
 import { useAuthStore } from "store/auth";
 import type { KnowledgeEvidenceRef, MagazineKnowledgeArticle } from "libs/server-utils/magazine/magazineKnowledgeContract";
 import { cn } from "utils/common";
-import { PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
+import { THEME_OVERRIDE_CLASS } from "utils/theme";
 
 type KnowledgeDetail = {
   article: MagazineKnowledgeArticle;
@@ -152,8 +152,8 @@ export function IntelligenceReviewConsole() {
   if (!isLoggedIn || (userData && !userData.roles?.includes("administrator"))) return null;
 
   return (
-    <div className={cn(PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS)}>
-      <main id="main-content" className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8" aria-labelledby="intelligence-review-title">
+    <div className={THEME_OVERRIDE_CLASS}>
+      <section className="mx-auto w-full max-w-7xl" aria-labelledby="intelligence-review-title">
         <header className="mb-6 flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-secondary-text">Magazine / AIR-801</p>
@@ -291,7 +291,7 @@ export function IntelligenceReviewConsole() {
             </aside>
           </div>
         )}
-      </main>
+      </section>
     </div>
   );
 }

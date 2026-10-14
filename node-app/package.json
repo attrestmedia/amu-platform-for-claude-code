@@ -10,6 +10,8 @@
     "start": "cross-env NODE_ENV=production next start -p 3000",
     "lint": "cross-env NODE_OPTIONS=--max-old-space-size=4096 eslint src --cache --cache-location node_modules/.cache/eslint/.eslintcache",
     "typecheck": "cross-env NODE_OPTIONS=--max-old-space-size=8192 tsc -p tsconfig.build.json --noEmit",
+    "ai-model-catalog:build": "node scripts/build/generateAiModelCatalog.mjs",
+    "ai-model-catalog:check": "node scripts/build/generateAiModelCatalog.mjs --check",
     "sw:build": "node scripts/build/build-service-worker.mjs",
     "worker:account-deletion": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs scripts/worker/account-deletion-worker.ts",
     "worker:account-deletion-destruction": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs scripts/worker/account-deletion-destruction-worker.ts",
@@ -23,10 +25,11 @@
     "verify:amu-labs-artifacts": "node scripts/build/verify-amu-labs-artifacts.mjs",
     "verify:amu-labs-release": "node scripts/build/verify-amu-labs-artifacts.mjs --require-clean-source",
     "verify:legal-policy": "node scripts/build/verify-legal-policy.mjs",
-    "verify:magazine-article": "node test/scripts/magazineArticleChromeVerify.mjs",
     "verify:ses-webhook-e2e": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs test/scripts/verify-ses-webhook-e2e.ts",
     "stage:browser:gate": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs scripts/ops/verify-stage-browser-release.ts",
     "stage:release": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs scripts/ops/manage-stage-release.ts",
+    "ai-model-catalog:m0-export": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs test/scripts/ai-model-catalog-m0-export.ts",
+    "ai-model-catalog:m0-classify": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs test/scripts/ai-model-catalog-m0-classify.ts",
     "ops:readiness-indexes": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs scripts/ops/operations-readiness-indexes.ts",
     "credentials:migrate-env": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs test/scripts/migrate-platform-credentials-from-env.ts",
     "marketing:migrate-ga-measurement-settings": "node --experimental-strip-types --loader ./scripts/loader/node-worker-loader.mjs test/scripts/migrate-ga-measurement-settings.ts",
@@ -124,6 +127,7 @@
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.32.0",
     "@typescript-eslint/parser": "^8.32.0",
+    "ajv": "^8.20.0",
     "cross-env": "^7.0.3",
     "dotenv": "^16.4.7",
     "eslint": "^9.23.0",
@@ -138,7 +142,8 @@
     "tailwindcss": "^4.1.11",
     "tailwindcss-animate": "^1.0.7",
     "typescript": "^5.8.2",
-    "workbox-build": "^7.4.1"
+    "workbox-build": "^7.4.1",
+    "yaml": "^2.9.1"
   },
   "pnpm": {
     "overrides": {

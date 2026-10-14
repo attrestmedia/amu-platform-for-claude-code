@@ -17,6 +17,8 @@ export const SYSTEM_CONTROL_AUDIT_ACTION_TYPES = [
   "service_availability_update",
   "speech_runtime_controls_update",
   "jev_runtime_controls_update",
+  "model_emergency_disable",
+  "model_emergency_release",
   "rollback",
 ] as const;
 export type SystemControlAuditActionType = (typeof SYSTEM_CONTROL_AUDIT_ACTION_TYPES)[number];

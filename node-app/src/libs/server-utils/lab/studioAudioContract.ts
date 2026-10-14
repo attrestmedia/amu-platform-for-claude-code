@@ -106,10 +106,31 @@ export type StudioAudioSettlementDecision =
       cumulativeActualCoins: number;
       cumulativeRefundedCoins: number;
       settledCharacters: number;
+      settlementOperationId: string;
+      settlementOperationIds: string[];
     }
-  | { kind: "unknown_outcome"; errorCode: "AUDIO_PRICING_REVISION_CHANGED" | "AUDIO_RESERVATION_CAP_EXCEEDED" };
+  | { kind: "unknown_outcome"; errorCode: "AUDIO_PRICING_SNAPSHOT_MISSING" | "AUDIO_PRICING_SNAPSHOT_INVALID" | "AUDIO_RESERVATION_CAP_EXCEEDED" };
 
 export type StudioAudioSegmentCompletionKind = "provider" | "cache" | "replay";
+
+export function resolveStudioAudioPricingParity(args: {
+  snapshotBillingKey: string;
+  snapshotCoins: number;
+  liveBillingKey: string;
+  liveCoins: number;
+  preflightCoins: number;
+}) {
+  const snapshotCoins = Number(args.snapshotCoins);
+  const liveCoins = Number(args.liveCoins);
+  const preflightCoins = Number(args.preflightCoins);
+  return Boolean(args.snapshotBillingKey)
+    && args.liveBillingKey === args.snapshotBillingKey
+    && Number.isSafeInteger(snapshotCoins)
+    && Number.isSafeInteger(liveCoins)
+    && Number.isSafeInteger(preflightCoins)
+    && liveCoins === snapshotCoins
+    && preflightCoins === snapshotCoins;
+}
 
 function safeString(value: unknown, maxLength = 240) {
   return String(value ?? "").trim().slice(0, maxLength);
@@ -615,28 +636,34 @@ export function isTerminalStudioAudioJobStatus(status: unknown) {
 }
 
 export function resolveStudioAudioSettlement(args: {
+  jobId: string;
+  reservationCycle: number;
   reservedCoins: number;
   actualCoins: number;
-  reservedPricingRevision: string;
-  currentPricingRevision: string;
+  reservedUsageCharacters: number;
   previousActualCoins?: number;
   previousRefundedCoins?: number;
   previousSettledCharacters?: number;
   pendingCharacters?: number;
+  previousSettlementOperationIds?: string[];
 }): StudioAudioSettlementDecision {
-  if (!args.reservedPricingRevision || args.reservedPricingRevision !== args.currentPricingRevision) {
-    return { kind: "unknown_outcome", errorCode: "AUDIO_PRICING_REVISION_CHANGED" };
-  }
   const reservedCoins = positiveNumber(args.reservedCoins);
   const actualCoins = positiveNumber(args.actualCoins);
   const previousActualCoins = positiveNumber(args.previousActualCoins);
   const previousRefundedCoins = positiveNumber(args.previousRefundedCoins);
   const previousSettledCharacters = Math.floor(positiveNumber(args.previousSettledCharacters));
   const pendingCharacters = Math.floor(positiveNumber(args.pendingCharacters));
-  if (actualCoins > reservedCoins) {
+  const reservedUsageCharacters = Math.floor(positiveNumber(args.reservedUsageCharacters));
+  if (pendingCharacters > reservedUsageCharacters || actualCoins > reservedCoins) {
     return { kind: "unknown_outcome", errorCode: "AUDIO_RESERVATION_CAP_EXCEEDED" };
   }
   const refundCoins = reservedCoins - actualCoins;
+  const suffix = refundCoins > 0 ? "refund" : "exact";
+  const settlementOperationId = `audio:${safeString(args.jobId, 160)}:settlement:${Math.max(1, Math.floor(positiveNumber(args.reservationCycle)) || 1)}:${suffix}`.slice(0, 240);
+  const settlementOperationIds = Array.from(new Set([
+    ...(Array.isArray(args.previousSettlementOperationIds) ? args.previousSettlementOperationIds.map((id) => safeString(id, 240)).filter(Boolean) : []),
+    settlementOperationId,
+  ]));
   return {
     kind: "settle",
     actualCoins,
@@ -644,5 +671,23 @@ export function resolveStudioAudioSettlement(args: {
     cumulativeActualCoins: previousActualCoins + actualCoins,
     cumulativeRefundedCoins: previousRefundedCoins + refundCoins,
     settledCharacters: previousSettledCharacters + pendingCharacters,
+    settlementOperationId,
+    settlementOperationIds,
   };
+}
+
+export function resolveStudioAudioReservedCoins(args: {
+  expectedCoins: number;
+  reservedCoins: unknown;
+  estimatedCoins: unknown;
+}): { ok: true; reservedCoins: number } | { ok: false } {
+  if (!Number.isSafeInteger(args.expectedCoins) || args.expectedCoins < 0) return { ok: false };
+  if (typeof args.reservedCoins !== "number" || !Number.isSafeInteger(args.reservedCoins) || args.reservedCoins < 0) {
+    return { ok: false };
+  }
+  if (typeof args.estimatedCoins !== "number" || !Number.isSafeInteger(args.estimatedCoins) || args.estimatedCoins < 0) {
+    return { ok: false };
+  }
+  if (args.reservedCoins !== args.expectedCoins || args.estimatedCoins !== args.expectedCoins) return { ok: false };
+  return { ok: true, reservedCoins: args.reservedCoins };
 }

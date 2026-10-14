@@ -4,9 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { Mic, Power, Wallet } from "lucide-react";
 import { Button, Input, Preloader, Switch } from "@amu-labs/ui";
 import { Lang, lang } from "components/module/i18n";
-import { SPEECH_CATALOG_PROVIDER_TYPES, type SpeechCatalogProviderType } from "consts/ai";
 import {
-  SPEECH_BUDGET_OWNERS,
+  SPEECH_RUNTIME_MANIFEST,
+  SPEECH_CATALOG_PROVIDER_TYPES,
+  type SpeechCatalogProviderType,
+  type SpeechManifestBudgetOwner,
+} from "consts/ai";
+import {
   SPEECH_BUDGET_REQUIRED_PROVIDERS,
   type SpeechBudgetLimits,
   type SpeechBudgetOwnerType,
@@ -29,9 +33,8 @@ import { logger } from "utils/log";
  * 빈 칸과 0을 같은 것으로 보이게 만들면 "안 쓰기로 했다"와 "아직 안 정했다"가 뒤섞인다.
  */
 
-const OWNER_LABELS: Record<SpeechBudgetOwnerType, { ko: string; en: string }> = {
+const OWNER_LABELS: Record<Exclude<SpeechBudgetOwnerType, "tutors">, { ko: string; en: string }> = {
   magazine: { ko: "매거진 내레이션", en: "Magazine narration" },
-  tutors: { ko: "Tutors", en: "Tutors" },
   play: { ko: "Play", en: "Play" },
   internal: { ko: "내부 테스트·Voice 선정", en: "Internal test & voice selection" },
 };
@@ -41,6 +44,11 @@ const CAP_FIELDS = [
   { key: "dailyUsdCap", label: { ko: "일", en: "Daily" } },
   { key: "monthlyUsdCap", label: { ko: "월", en: "Monthly" } },
 ] as const satisfies readonly { key: keyof SpeechBudgetLimits; label: { ko: string; en: string } }[];
+
+const REQUIRED_PROVIDER_LABELS = SPEECH_BUDGET_REQUIRED_PROVIDERS.map((provider) => {
+  const roles = SPEECH_RUNTIME_MANIFEST.budgetRoleScope[provider]?.roles;
+  return roles?.length ? `${provider} (${roles.join(", ")})` : provider;
+}).join(", ");
 
 /** 빈 문자열은 `null`(미확정)이고 "0"은 0(차단)이다. 둘을 같은 값으로 접지 않는다. */
 function parseCapInput(raw: string): number | null | undefined {
@@ -56,16 +64,20 @@ function capToInput(value: number | null) {
 }
 
 function CapRow({
+  rowKey,
   title,
   hint,
   limits,
+  manifestLimits,
   draft,
   disabled,
   onChange,
 }: {
+  rowKey: string;
   title: React.ReactNode;
   hint?: React.ReactNode;
   limits: SpeechBudgetLimits;
+  manifestLimits: SpeechBudgetLimits;
   draft: Partial<Record<keyof SpeechBudgetLimits, string>>;
   disabled: boolean;
   onChange: (field: keyof SpeechBudgetLimits, value: string) => void;
@@ -78,13 +90,15 @@ function CapRow({
       </div>
       <div className="grid grid-cols-3 gap-2">
         {CAP_FIELDS.map((field) => {
-          const inputId = `speech-cap-${String(title)}-${field.key}`;
+          const inputId = `speech-cap-${rowKey}-${field.key}`;
+          const manifestHintId = `${inputId}-manifest`;
           const current = draft[field.key] ?? capToInput(limits[field.key]);
+          const manifestCap = manifestLimits[field.key];
           return (
-            <label key={field.key} htmlFor={inputId} className="flex flex-col gap-1">
-              <span className="text-xxs text-secondary-text">
+            <div key={field.key} className="flex min-w-0 flex-col gap-1">
+              <label htmlFor={inputId} className="text-xxs text-secondary-text">
                 <Lang text={field.label} /> (USD)
-              </span>
+              </label>
               <Input
                 id={inputId}
                 size="sm"
@@ -93,8 +107,17 @@ function CapRow({
                 value={current}
                 onChange={(event) => onChange(field.key, event.target.value)}
                 placeholder={lang({ ko: "미확정", en: "Unset" })}
+                aria-describedby={manifestHintId}
               />
-            </label>
+              <p id={manifestHintId} className="text-xxs leading-4 text-secondary-text">
+                <Lang
+                  text={{
+                    ko: `manifest 상한: ${manifestCap === null ? "미확정" : `${manifestCap} USD`}`,
+                    en: `Manifest cap: ${manifestCap === null ? "Unset" : `${manifestCap} USD`}`,
+                  }}
+                />
+              </p>
+            </div>
           );
         })}
       </div>
@@ -152,6 +175,7 @@ export function SpeechRuntimeControlsPanel() {
         patch,
         reason: trimmedReason,
         fallbackRoutable: snapshot?.providerRoutable,
+        fallbackManifest: snapshot?.manifest,
       });
       setSnapshot(next);
       setGlobalDraft({});
@@ -181,7 +205,7 @@ export function SpeechRuntimeControlsPanel() {
     }
 
     const budgetByOwner: Partial<Record<SpeechBudgetOwnerType, Partial<SpeechBudgetLimits>>> = {};
-    for (const owner of SPEECH_BUDGET_OWNERS) {
+    for (const owner of Object.keys(snapshot.manifest.budgetByOwner) as SpeechManifestBudgetOwner[]) {
       const drafted = ownerDraft[owner];
       if (!drafted) continue;
       const limits: Partial<SpeechBudgetLimits> = {};
@@ -211,7 +235,8 @@ export function SpeechRuntimeControlsPanel() {
   };
 
   if (loading || !snapshot) return <Preloader variant="spin" size="lg" container />;
-  const { controls, providerRoutable } = snapshot;
+  const { controls, manifest, providerRoutable } = snapshot;
+  const manifestOwners = Object.keys(manifest.budgetByOwner) as SpeechManifestBudgetOwner[];
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
@@ -317,19 +342,20 @@ export function SpeechRuntimeControlsPanel() {
         <p className="px-4 pt-3 text-xxs leading-5 text-secondary-text">
           <Lang
             text={{
-              ko: "빈 칸은 미확정이며 강제하지 않습니다. 0은 차단이고 견적이 0이어도 막습니다. Grant로 현금 지출이 0이어도 상한은 정가로 계산합니다.",
-              en: "Blank means unset and is not enforced. 0 blocks, even for a zero estimate. Caps are computed at list price even while the grant makes cash cost zero.",
+              ko: "빈 칸은 DB 하향 상한을 지정하지 않는다는 뜻이며 manifest 상한은 계속 적용됩니다. 0은 차단이고 견적이 0이어도 막습니다. Grant로 현금 지출이 0이어도 상한은 정가로 계산합니다.",
+              en: "Blank means no additional database cap; manifest caps still apply. 0 blocks, even for a zero estimate. Caps use list price even while a grant makes cash cost zero.",
             }}
           />
           {" "}
           <Lang
             text={{
-              ko: `상한 미확정이면 호출이 차단되는 provider: ${SPEECH_BUDGET_REQUIRED_PROVIDERS.join(", ")}`,
-              en: `Providers blocked while caps are unset: ${SPEECH_BUDGET_REQUIRED_PROVIDERS.join(", ")}`,
+              ko: `manifest 상한이 적용되는 provider/role: ${REQUIRED_PROVIDER_LABELS}`,
+              en: `Providers/roles with manifest-enforced caps: ${REQUIRED_PROVIDER_LABELS}`,
             }}
           />
         </p>
         <CapRow
+          rowKey="global"
           title={<Lang text={{ ko: "조직 전체", en: "Organization-wide" }} />}
           hint={
             <Lang
@@ -340,15 +366,18 @@ export function SpeechRuntimeControlsPanel() {
             />
           }
           limits={controls.budget}
+          manifestLimits={manifest.budget}
           draft={globalDraft}
           disabled={saving}
           onChange={(field, value) => setGlobalDraft((current) => ({ ...current, [field]: value }))}
         />
-        {SPEECH_BUDGET_OWNERS.map((owner) => (
+        {manifestOwners.map((owner) => (
           <CapRow
             key={owner}
+            rowKey={owner}
             title={<Lang text={OWNER_LABELS[owner]} />}
             limits={controls.budgetByOwner[owner]}
+            manifestLimits={manifest.budgetByOwner[owner]}
             draft={ownerDraft[owner] || {}}
             disabled={saving}
             onChange={(field, value) =>

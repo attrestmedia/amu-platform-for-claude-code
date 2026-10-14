@@ -16,6 +16,8 @@ export type SignupIntentRecord = {
   returnTo: string;
   termsVersion: string;
   privacyVersion: string;
+  releaseIds?: string[];
+  manifestRevision?: string | null;
   acceptedAt: string;
   exp: number;
 };
@@ -28,6 +30,12 @@ export interface SignupIntentStore {
 
 function key(jti: string) {
   return `${SIGNUP_INTENT_KEY_PREFIX}${crypto.createHash("sha256").update(jti).digest("hex")}`;
+}
+
+function hasValidPolicyReleaseFields(record: SignupIntentRecord) {
+  return (record.releaseIds === undefined ||
+      (Array.isArray(record.releaseIds) && record.releaseIds.every((releaseId) => typeof releaseId === "string"))) &&
+    (record.manifestRevision === undefined || record.manifestRevision === null || typeof record.manifestRevision === "string");
 }
 
 const redisStore: SignupIntentStore = {
@@ -62,6 +70,8 @@ export async function issueSignupIntent(args: {
   returnTo: string;
   termsVersion: string;
   privacyVersion: string;
+  releaseIds?: string[];
+  manifestRevision?: string | null;
   store?: SignupIntentStore;
   nowMs?: number;
 }) {
@@ -75,6 +85,8 @@ export async function issueSignupIntent(args: {
     returnTo: args.returnTo,
     termsVersion: args.termsVersion,
     privacyVersion: args.privacyVersion,
+    releaseIds: args.releaseIds ?? [],
+    manifestRevision: args.manifestRevision ?? null,
     acceptedAt: new Date(nowMs).toISOString(),
     exp: nowMs + INTENT_TTL_SECONDS * 1000,
   };
@@ -126,6 +138,7 @@ export async function consumeSignupIntent(args: {
       record.jti !== jti ||
       record.mode !== "signup" ||
       record.provider !== args.provider ||
+      !hasValidPolicyReleaseFields(record) ||
       !Number.isFinite(Date.parse(record.acceptedAt)) ||
       record.exp < (args.nowMs ?? Date.now())
     ) {

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { IChatMessage, IMessageAudioMeta, RouteHintType } from "types/ai";
 import { lang } from "components/module/i18n";
 import { requestSpeechSynthesis } from "libs/api/ai";
-import { getTutorsAssistantTtsJob, requestTutorsAssistantTtsJob } from "libs/api/ai/speechClient";
 import {
   canStartPlayback,
   commandForInterruption,
@@ -67,8 +66,12 @@ function resolvePlaybackErrorMessage() {
   });
 }
 
-const TUTORS_TTS_POLL_INTERVAL_MS = 1500;
-const TUTORS_TTS_POLL_MAX_ATTEMPTS = 30;
+// TGI-110 cutover 경로만 내는 코드다. legacy 실패 동작은 바꾸지 않는다.
+const PLAY_SPEECH_CUTOVER_FALLBACK_ERROR_CODES = new Set([
+  "SPEECH_ROLE_DEFAULT_UNAVAILABLE",
+  "SPEECH_PROVIDER_NOT_APPROVED",
+  "SPEECH_MODEL_NOT_APPROVED",
+]);
 
 /** H4: 메시지에 이미 연결된 재생 가능한 asset URL(예: public R2)을 찾는다. 없으면 빈 문자열. */
 function resolvePersistedPlaybackUrl(message: IChatMessage): string {
@@ -84,42 +87,6 @@ function isBrowserOnline(): boolean {
 }
 
 type PlaybackAttempt = { identity: string; status: "inflight" | "succeeded" | "failed" };
-
-/**
- * EL-602 Tutors Assistant TTS job을 생성하고 ready asset까지 polling한다.
- * 클라이언트는 text/provider/model/uid/audioMeta를 저장하지 않는다.
- */
-async function requestTutorsAssistantTtsAudio(args: {
-  npcId: string;
-  sessionId?: string;
-  assistantClientId: string;
-  speed?: number;
-  autoplay: boolean;
-}): Promise<{ audioUrl: string; audioMeta?: IMessageAudioMeta }> {
-  const created = await requestTutorsAssistantTtsJob({
-    personaId: args.npcId,
-    sessionId: String(args.sessionId || ""),
-    assistantClientId: args.assistantClientId,
-    mode: args.autoplay ? "autoplay" : "playback",
-    speed: args.speed,
-  });
-  const immediateUrl = String(created?.audioUrl || "").trim();
-  if (immediateUrl) return { audioUrl: immediateUrl, audioMeta: created?.audioMeta };
-
-  const jobId = String(created?.jobId || "").trim();
-  if (!jobId) throw new Error("TUTORS_ASSISTANT_TTS_JOB_MISSING");
-
-  for (let attempt = 0; attempt < TUTORS_TTS_POLL_MAX_ATTEMPTS; attempt += 1) {
-    await new Promise((resolve) => window.setTimeout(resolve, TUTORS_TTS_POLL_INTERVAL_MS));
-    const job = await getTutorsAssistantTtsJob(jobId);
-    const audioUrl = String(job?.audioUrl || "").trim();
-    if (job?.status === "succeeded" && audioUrl) return { audioUrl, audioMeta: job.audioMeta };
-    if (job?.status === "failed" || job?.status === "cancelled" || job?.status === "unknown_outcome") {
-      throw new Error(job?.errorCode || "TUTORS_ASSISTANT_TTS_FAILED");
-    }
-  }
-  throw new Error("TUTORS_ASSISTANT_TTS_TIMEOUT");
-}
 
 function getMessageId(message?: IChatMessage | null) {
   return String(message?.id || message?.clientId || "").trim();
@@ -284,28 +251,8 @@ export function useVoicePlayback(args: UseVoicePlaybackArgs) {
         let audioUrl = "";
         let audioMeta: IMessageAudioMeta | undefined;
 
-        if (routeHint === "tutors") {
-          // Tutors는 비동기 job이 소유한다. 클라이언트는 audioMeta를 별도 저장하지 않는다.
-          try {
-            const tutorsAudio = await requestTutorsAssistantTtsAudio({
-              npcId,
-              sessionId,
-              assistantClientId,
-              speed,
-              autoplay,
-            });
-            audioUrl = String(tutorsAudio.audioUrl || "").trim();
-            audioMeta = tutorsAudio.audioMeta;
-            if (!audioUrl) throw new Error(resolvePlaybackErrorMessage());
-          } catch (error) {
-            // H4: job 실패/타임아웃 시 기존 message.audioMeta의 재생 가능한 asset으로 수렴한다.
-            // 재생 가능한 asset이 없으면 text-only(기존 failed 상태·안내)로 유지한다.
-            const fallbackUrl = resolvePersistedPlaybackUrl(message);
-            if (!fallbackUrl) throw error;
-            audioUrl = fallbackUrl;
-            audioMeta = message.audioMeta;
-          }
-        } else {
+        let synthesisSucceeded = false;
+        try {
           const response = await requestSpeechSynthesis({
             routeHint,
             universeId,
@@ -318,9 +265,18 @@ export function useVoicePlayback(args: UseVoicePlaybackArgs) {
           audioUrl = String(response?.audioUrl || "").trim();
           if (!audioUrl) throw new Error(resolvePlaybackErrorMessage());
           audioMeta = (response?.meta?.audioMeta as IMessageAudioMeta | undefined) || message.audioMeta;
-          if (audioMeta && onAudioMetaResolved) {
-            await onAudioMetaResolved(message, audioMeta);
-          }
+          synthesisSucceeded = true;
+        } catch (error) {
+          const code = String((error as { errorCode?: unknown })?.errorCode || "");
+          const fallbackUrl = PLAY_SPEECH_CUTOVER_FALLBACK_ERROR_CODES.has(code)
+            ? resolvePersistedPlaybackUrl(message)
+            : "";
+          if (!fallbackUrl) throw error;
+          audioUrl = fallbackUrl;
+          audioMeta = message.audioMeta;
+        }
+        if (synthesisSucceeded && audioMeta && onAudioMetaResolved) {
+          await onAudioMetaResolved(message, audioMeta);
         }
 
         audioUrlRef.current[synthesisCacheKey] = audioUrl;
@@ -347,7 +303,7 @@ export function useVoicePlayback(args: UseVoicePlaybackArgs) {
       inflightRef.current[synthesisCacheKey] = request;
       return await request;
     },
-    [autoplay, enabled, npcId, onAudioMetaResolved, routeHint, sessionId, speed, universeId, setMessageState],
+    [enabled, npcId, onAudioMetaResolved, routeHint, sessionId, speed, universeId, setMessageState],
   );
 
   const playMessage = useCallback(

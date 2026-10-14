@@ -1,18 +1,21 @@
 import "server-only";
-import { OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL } from "consts/ai/voiceCatalog";
 import { estimateTokens } from "utils/ai/tokenUtils";
 import { applySpeechBilling, preflightSpeechBilling } from "./billing";
 import { assertSpeechAudioInputOrThrow, createSpeechError } from "./guards";
 import { openaiAnalyzeSpeechAudio } from "./providers/openaiSpeech";
 import { assertQwenPurposeForAudioOperation, QWEN_OMNI_MODEL } from "./providers/qwenSpeech";
+import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
 import { QWEN_OMNI_AUDIO_CONSENT_PURPOSE_ID } from "consts/legal/voiceDataConsent";
 import { assertSpeechCandidatePreApprovalGateOrThrow } from "./speechProviderPolicy";
+import { VOICE_FEATURE_KEYS } from "consts/system/featureRollout";
+import { assertFeatureAccessOrThrow } from "libs/server-utils/auth/featureAccessPolicy";
 import type {
   ISpeechAudioAnalysisResult,
   ISpeechBillingContext,
   ISpeechAudioInput,
   IValidatedSpeechAudioInput,
 } from "./types";
+import { AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL } from "consts/ai/generated/modelCatalog.generated";
 
 const AUDIO_TOKENS_PER_SECOND_ESTIMATE = 10;
 const ANALYSIS_MAX_OUTPUT_TOKENS = 900;
@@ -54,7 +57,7 @@ export async function preflightSpeechAudioAnalysis(args: {
   billing?: ISpeechBillingContext;
 }) {
   const validated = validateAudioAnalysisFile(args.file, args.maxDurationMs);
-  const modelName = String(args.modelName || OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).trim() || OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL;
+  const modelName = String(args.modelName || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).trim() || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL;
   if (modelName === QWEN_OMNI_MODEL) assertQwenPurposeForAudioOperation(QWEN_OMNI_AUDIO_CONSENT_PURPOSE_ID);
   assertSpeechCandidatePreApprovalGateOrThrow({ provider: "openai", modelName });
   return preflightSpeechBilling({
@@ -68,14 +71,20 @@ export async function preflightSpeechAudioAnalysis(args: {
 
 export async function analyzeSpeechAudio(args: {
   file: ISpeechAudioInput;
+  user: unknown;
   maxDurationMs?: number;
   modelName?: string;
   targetLanguage?: string;
   conversationContext?: string;
   billing?: ISpeechBillingContext;
 }): Promise<ISpeechAudioAnalysisResult> {
+  await assertFeatureAccessOrThrow({
+    featureKey: VOICE_FEATURE_KEYS.pronunciationAssessment,
+    user: args.user,
+  });
+
   const validated = validateAudioAnalysisFile(args.file, args.maxDurationMs);
-  const modelName = String(args.modelName || OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).trim() || OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL;
+  const modelName = String(args.modelName || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).trim() || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL;
   if (modelName === QWEN_OMNI_MODEL) assertQwenPurposeForAudioOperation(QWEN_OMNI_AUDIO_CONSENT_PURPOSE_ID);
 
   assertSpeechCandidatePreApprovalGateOrThrow({ provider: "openai", modelName });
@@ -87,6 +96,7 @@ export async function analyzeSpeechAudio(args: {
     meta: { operation: "speech_audio_analyze", preflight: true, durationMs: validated.durationMs },
   });
 
+  await assertSystemModelEnabledOrThrow({ provider: "openai", modelName, modality: "audio" });
   let result: Awaited<ReturnType<typeof openaiAnalyzeSpeechAudio>>;
   try {
     result = await openaiAnalyzeSpeechAudio({

@@ -17,6 +17,10 @@ import wpCacheService from "libs/services/wpCacheService";
 import { decodeHtmlEntities } from "utils/common";
 import { getRedisClient } from "libs/cache/redisClient";
 import { MARKETING_DEFAULT_CONTENT_CHANNELS } from "consts/marketing/queue";
+import {
+  AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
+  AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+} from "consts/ai/generated/modelCatalog.generated";
 import type { MarketingChannel, MarketingStepStatus } from "consts/marketing/queue";
 import { validateMarketingChannelDraft } from "libs/marketing/bridge/schemaValidator";
 import { getMarketingChannelDraftSchemaExample } from "libs/marketing/bridge/channelDraftContract";
@@ -1882,8 +1886,8 @@ export async function submitMarketingLocalAgentGeneration(args: {
           policyVersion: 1,
           status: "unavailable",
           valid: false,
-          provider: "google",
-          modelName: "gemini-3.5-flash-lite",
+          provider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+          modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
           checkedAt: new Date().toISOString(),
           draftDigest: "",
           findings: [],

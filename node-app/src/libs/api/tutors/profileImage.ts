@@ -1,4 +1,3 @@
-import { DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai";
 import fetchClient from "libs/api/fetchClient";
 import type { BaseImageType } from "types/app";
 import type {
@@ -12,8 +11,9 @@ import {
   resolveTutorProfileImageTemplateKey,
   setPrimaryProfileImage,
 } from "utils/app/tutorProfileImage";
+import { AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 
-const BASE = "/tutors/profile-image";
+const BASE = "/game/personas/profile-image";
 const TUTOR_PROFILE_REFERENCE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 
 export function createTutorProfileImageRequestId() {
@@ -92,7 +92,7 @@ export async function prepareTutorProfileImageForSave(args: {
     brief: "",
     templateKey: resolveTutorProfileImageTemplateKey(args.persona?.personaType),
     variables: {},
-    modelName: DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
+    modelName: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
     aspectRatio: "2:3",
     size: "1K",
     clientRequestId: args.clientRequestId,
@@ -131,7 +131,7 @@ export async function editTutorProfileImage(args: {
     brief: instruction,
     templateKey: resolveTutorProfileImageTemplateKey(args.persona?.personaType),
     variables: {},
-    modelName: DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
+    modelName: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
     aspectRatio: "2:3",
     size: "1K",
     baseImages: [],

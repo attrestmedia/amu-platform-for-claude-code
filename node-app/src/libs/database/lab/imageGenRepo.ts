@@ -763,6 +763,8 @@ export async function listImageAssets(params: {
   searchField?: StudioImageSearchFieldType;
   sourceService?: StudioGenerationSourceServiceType;
   excludeSourceService?: StudioGenerationSourceServiceType;
+  excludeTemplateKeys?: readonly string[];
+  excludeModelNamePrefix?: string;
   sourceSurface?: string;
   createdFrom?: Date;
   createdBefore?: Date;
@@ -793,12 +795,24 @@ function buildImageAssetListCondition(params: {
   searchField?: StudioImageSearchFieldType;
   sourceService?: StudioGenerationSourceServiceType;
   excludeSourceService?: StudioGenerationSourceServiceType;
+  excludeTemplateKeys?: readonly string[];
+  excludeModelNamePrefix?: string;
   sourceSurface?: string;
   createdFrom?: Date;
   createdBefore?: Date;
 }) {
   const cond: Record<string, unknown> = {};
   const andConds: Record<string, unknown>[] = [];
+
+  const excludeTemplateKeys = Array.from(
+    new Set((params.excludeTemplateKeys || []).map((key) => toSafeString(key)).filter(Boolean)),
+  );
+  if (excludeTemplateKeys.length) andConds.push({ templateKey: { $nin: excludeTemplateKeys } });
+
+  const excludeModelNamePrefix = toSafeString(params.excludeModelNamePrefix);
+  if (excludeModelNamePrefix) {
+    andConds.push({ modelName: { $not: new RegExp(`^${escapeRegExp(excludeModelNamePrefix)}`) } });
+  }
 
   const visibility = toSafeString(params.visibility || "all").toLowerCase();
   if (visibility === "private" || visibility === "public") cond.visibility = visibility;
@@ -911,6 +925,8 @@ export async function countImageAssets(params: {
   searchField?: StudioImageSearchFieldType;
   sourceService?: StudioGenerationSourceServiceType;
   excludeSourceService?: StudioGenerationSourceServiceType;
+  excludeTemplateKeys?: readonly string[];
+  excludeModelNamePrefix?: string;
   sourceSurface?: string;
   createdFrom?: Date;
   createdBefore?: Date;

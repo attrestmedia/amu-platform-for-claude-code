@@ -734,7 +734,7 @@ export function getMarketingJobPerformanceUrl(job?: MarketingJobListItem | null)
   const universeId = toSafeString(sourceSnapshot.universeId || job?.universeId);
   const campaignId = toSafeString(sourceSnapshot.campaignId);
   if (!universeId || !campaignId) return "";
-  return `/marketing-oops/workspace?universeId=${encodeURIComponent(universeId)}&tab=performance&campaignId=${encodeURIComponent(campaignId)}`;
+  return `/marketing-oops/workspace/performance?universeId=${encodeURIComponent(universeId)}&campaignId=${encodeURIComponent(campaignId)}`;
 }
 
 export function getMarketingJobSourceKind(job?: MarketingJobListItem | null) {

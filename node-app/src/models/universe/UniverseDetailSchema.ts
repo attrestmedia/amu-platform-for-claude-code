@@ -1,5 +1,6 @@
 import { Schema, type Document } from "mongoose";
 import type { IUniverseDetail } from "types/game";
+import { CHARACTER_SPECIES_MODES } from "consts/game/characterGenesisPolicy";
 
 type ProductDocLike = { priceType?: string };
 
@@ -65,6 +66,7 @@ const GameSettingsSchema = new Schema(
     },
     obstacles: { type: Schema.Types.Mixed, default: {} },
     roads: { type: Schema.Types.Mixed, default: {} },
+    characterSpeciesMode: { type: String, enum: CHARACTER_SPECIES_MODES },
   },
   { _id: false }
 );

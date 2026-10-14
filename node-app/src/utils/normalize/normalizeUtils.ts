@@ -140,7 +140,7 @@ export function normalizeHistory(history: unknown, maxMessages: number, perMessa
 
 // 라우트힌트 정규화
 export function normalizeRouteHint(v: unknown): RouteHintType {
-  return v === "commerce" || v === "tutors" ? v : "ai";
+  return v === "commerce" ? v : "ai";
 }
 
 // 게스트ID 보장 헬퍼

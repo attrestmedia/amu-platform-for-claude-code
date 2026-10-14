@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { MARKETING_OOPS_ICON_SVG } from "src/libs/apps/layout/metadata";
 import { ServiceThemeScope } from "components/module/theme/ServiceThemeScope";
 import { ServiceAccessGate } from "components/module/service";
+import { MarketingOopsWorkspaceFrame } from "components/template/marketing-oops/workspace-shell";
 
 const MARKETING_OOPS_TITLE = "1인 사업자의 AI 마케팅 운영팀 | Marketing Oops";
 const MARKETING_OOPS_DESCRIPTION =
@@ -55,7 +56,9 @@ export default function MarketingOopsLayout({ children }: { children: ReactNode 
   // 하위 workspace·connections에도 함께 적용해 세 화면이 하나의 서비스로 읽히게 한다.
   return (
     <ServiceAccessGate serviceKey="marketing-oops">
-      <ServiceThemeScope service="marketing-oops">{children}</ServiceThemeScope>
+      <ServiceThemeScope service="marketing-oops">
+        <MarketingOopsWorkspaceFrame>{children}</MarketingOopsWorkspaceFrame>
+      </ServiceThemeScope>
     </ServiceAccessGate>
   );
 }

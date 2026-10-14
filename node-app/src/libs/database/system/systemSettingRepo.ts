@@ -57,3 +57,91 @@ export async function setSystemSetting(args: {
     { upsert: true, new: true },
   ).lean<ISystemSettingDocument>();
 }
+
+export async function insertSystemSettingIfAbsent(args: {
+  key: string;
+  value: Record<string, unknown>;
+  description?: string;
+  updatedBy?: string;
+}): Promise<{ inserted: boolean }> {
+  assertWritableSystemSettingKey(args.key);
+  const Model = await getSystemSettingModel();
+  const result = await Model.updateOne(
+    { key: args.key, scope: "global" },
+    {
+      $setOnInsert: {
+        key: args.key,
+        scope: "global",
+        value: args.value,
+        description: args.description || "",
+        updatedBy: args.updatedBy || "",
+      },
+    },
+    { upsert: true },
+  );
+  return { inserted: Number(result.upsertedCount || 0) === 1 };
+}
+
+export async function replaceSystemSettingValueIfUnchanged(args: {
+  key: string;
+  expectedUpdatedAt: Date;
+  value: Record<string, unknown>;
+  updatedBy?: string;
+}): Promise<{ applied: boolean }> {
+  assertWritableSystemSettingKey(args.key);
+  const Model = await getSystemSettingModel();
+  const result = await Model.updateOne(
+    { key: args.key, scope: "global", updatedAt: args.expectedUpdatedAt },
+    {
+      $set: {
+        value: args.value,
+        updatedBy: args.updatedBy || "",
+      },
+    },
+  );
+  return { applied: Number(result.matchedCount || 0) === 1 };
+}
+
+export async function deleteSystemSettingIfUnchanged(args: {
+  key: string;
+  expectedUpdatedAt: Date;
+}): Promise<{ deleted: boolean }> {
+  assertWritableSystemSettingKey(args.key);
+  const Model = await getSystemSettingModel();
+  const result = await Model.deleteOne({
+    key: args.key,
+    scope: "global",
+    updatedAt: args.expectedUpdatedAt,
+  });
+  return { deleted: Number(result.deletedCount || 0) === 1 };
+}
+
+export async function readSystemSettingDocument(key: string): Promise<{
+  read: SystemSettingRead;
+  updatedAt: Date | null;
+}> {
+  const Model = await getSystemSettingModel();
+  const doc = await Model.findOne({ key, scope: "global" }).lean<ISystemSettingDocument | null>();
+  const updatedAt = doc?.updatedAt instanceof Date && Number.isFinite(doc.updatedAt.getTime())
+    ? doc.updatedAt
+    : null;
+  return { read: classifySystemSettingDocument(doc), updatedAt };
+}
+
+export async function listSystemSettingsByKeyPrefix(prefix: string): Promise<Array<{
+  key: string;
+  read: SystemSettingRead;
+  updatedAt: Date | null;
+}>> {
+  const Model = await getSystemSettingModel();
+  const escapedPrefix = String(prefix).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const docs = await Model.find({ key: { $regex: `^${escapedPrefix}` }, scope: "global" })
+    .lean<ISystemSettingDocument[]>();
+  return docs.map((doc) => ({
+    key: doc.key,
+    read: classifySystemSettingDocument(doc),
+    updatedAt: doc.updatedAt instanceof Date && Number.isFinite(doc.updatedAt.getTime())
+      ? doc.updatedAt
+      : null,
+  }));
+}

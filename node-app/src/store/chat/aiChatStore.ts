@@ -18,7 +18,7 @@ import { dispatchCoinUpdated } from "utils/payment";
 import { PROMPT_OPTION_CHAR_CAPS } from "consts/ai/promptCaps";
 import { promptLimitCap } from "utils/ai";
 import { ensureGuestId, normalizeRouteHint } from "utils/normalize";
-import { DEFAULT_TEXT_MODEL_BY_PROVIDER, TEXT_MODEL_MAP } from "consts/ai";
+import { AI_DEFAULT_TEXT_MODEL_BY_PROVIDER, AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 
 /**
  * @docHint
@@ -69,7 +69,7 @@ export const useAIChatStore = create<AIChatState & AIChatActions>((set, get) => 
 
     const guestOptions: SendGuestOptions = typeof guest === "string" ? { guestId: guest } : guest || {};
     const rawHint = guestOptions.routeHint;
-    const routeHint = rawHint === "tutors" ? "tutors" : normalizeRouteHint(rawHint);
+    const routeHint = normalizeRouteHint(rawHint);
     const universeId = guestOptions.universeId ?? useGameStore.getState().universeId;
     const loggedIn = Boolean(useAuthStore.getState().user?.id);
 
@@ -79,7 +79,7 @@ export const useAIChatStore = create<AIChatState & AIChatActions>((set, get) => 
     const isCommerce = resolveIsCommerce(derivedRouteHint);
     const effectiveRoute: RouteHintType = isCommerce ? "commerce" : derivedRouteHint;
 
-    // commerce를 제외한 모든 라우트(ai/tutors 등)는 비로그인 호출 불가(withAuth) → 클라 조기 차단
+    // commerce를 제외한 ai 라우트는 비로그인 호출 불가(withAuth) → 클라 조기 차단
     if (effectiveRoute !== "commerce" && !loggedIn) {
       setError("로그인이 필요합니다.", CHAT_ERROR_TYPE.SYSTEM_ERROR);
       return { content: "", isError: true, error: "로그인이 필요합니다.", errorCode: "LOGIN_REQUIRED" };
@@ -186,11 +186,11 @@ export const useAIChatStore = create<AIChatState & AIChatActions>((set, get) => 
       // modelName은 서버 pricing preflight가 fail-closed라서 반드시 필요
       const requestedModelName = String(guestOptions.modelName || "").trim();
       const allowedProviderModels =
-        (TEXT_MODEL_MAP as Record<string, readonly string[] | undefined>)[effectiveProvider] || [];
+        (AI_TEXT_MODEL_MAP as Record<string, readonly string[] | undefined>)[effectiveProvider] || [];
       const modelName = allowedProviderModels.includes(requestedModelName)
         ? requestedModelName
-        : (DEFAULT_TEXT_MODEL_BY_PROVIDER as Record<string, string | undefined>)[effectiveProvider] ||
-          DEFAULT_TEXT_MODEL_BY_PROVIDER.google;
+        : (AI_DEFAULT_TEXT_MODEL_BY_PROVIDER as Record<string, string | undefined>)[effectiveProvider] ||
+          AI_DEFAULT_TEXT_MODEL_BY_PROVIDER.google;
 
       const response = await chatWithAI({
         routeHint: effectiveRoute,

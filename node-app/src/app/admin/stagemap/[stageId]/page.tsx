@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { use, useEffect, useState, useMemo, useCallback } from "react";
 import { MapPin } from "lucide-react";
 import { toast } from "sonner";
 import type { IStageDoc } from "types/game/stage-doc";
@@ -14,13 +14,13 @@ import { toErrorMessage } from "utils/common";
 import { setUniverseDefaultStage } from "libs/api/universe";
 
 interface PageProps {
-  params: { stageId: string };
+  params: Promise<{ stageId: string }>;
 }
 
 export default function StageMapEditorPage({ params }: PageProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { stageId } = params;
+  const { stageId } = use(params);
 
   const isReadOnly = useMemo(() => {
     const mode = (searchParams.get("mode") || "").toLowerCase();

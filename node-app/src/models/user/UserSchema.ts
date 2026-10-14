@@ -82,6 +82,8 @@ const UserSchema: Schema = new mongoose.Schema<IUserDocument>(
             required: true,
           },
           provider: { type: String },
+          displayedReleaseId: { type: String },
+          displayedContentSha256: { type: String },
         },
         { _id: false },
       ),

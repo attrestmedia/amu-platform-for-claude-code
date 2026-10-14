@@ -5,14 +5,16 @@ import { Menu } from "lucide-react";
 import { lang } from "components/module/i18n";
 
 type WorkspaceSidebarToggleProps = {
+  id?: string;
   expanded: boolean;
   controlsId?: string;
   onToggle: () => void;
 };
 
-export function WorkspaceSidebarToggle({ expanded, controlsId, onToggle }: WorkspaceSidebarToggleProps) {
+export function WorkspaceSidebarToggle({ id, expanded, controlsId, onToggle }: WorkspaceSidebarToggleProps) {
   return (
     <Button
+      id={id}
       variant="blank"
       size="icon-lg"
       className="rounded-md focus-visible-ring"

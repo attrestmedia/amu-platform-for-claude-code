@@ -7,7 +7,6 @@ import { normalizeAspectRatioClient } from "../ai";
 import {
   DEFAULT_IMAGE_SIZE,
   ASPECT_TO_OPENAI_COMPAT_SIZE,
-  IMAGE_SELECTABLE_MODEL_MAP,
   OPENAI_COMPAT_IMAGE_SIZES,
   OPENAI_COMPAT_UI_RATIOS,
   supportsOpenAIFlexibleImageSize,
@@ -20,6 +19,7 @@ import {
   type OpenAICompatImageSize,
   type SupportedAspectRatio,
 } from "consts/ai";
+import { AI_IMAGE_SELECTABLE_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 import type { ImageProviderType, UiScopeType } from "types/ai";
 import type { ImagePromptMetaType, PromptItemExtendedType, PromptItemType, PromptVisibilityType } from "types/app";
 import { toSafeString, toTimestamp, toSortIndex } from "utils/common";
@@ -236,9 +236,10 @@ export function coerceOpenAICompatImageSize(raw: unknown): OpenAICompatImageSize
 
 export function inferProviderFromModelName(modelName?: string): ImageProviderType {
   const m = String(modelName || "").trim();
-  if (m && (IMAGE_SELECTABLE_MODEL_MAP.openai as readonly string[]).includes(m)) return "openai";
-  if (m && (IMAGE_SELECTABLE_MODEL_MAP.xai as readonly string[]).includes(m)) return "xai";
-  if (m && (IMAGE_SELECTABLE_MODEL_MAP.zai as readonly string[]).includes(m)) return "zai";
+  const imageModels = AI_IMAGE_SELECTABLE_MODEL_MAP as Readonly<Record<ImageProviderType, readonly string[]>>;
+  if (m && imageModels.openai.includes(m)) return "openai";
+  if (m && imageModels.xai.includes(m)) return "xai";
+  if (m && imageModels.zai.includes(m)) return "zai";
   return "google";
 }
 

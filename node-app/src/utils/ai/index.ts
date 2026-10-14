@@ -40,6 +40,8 @@ export {
   normalizeTextProvider,
   normalizeImageProvider,
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
+  pickClaudePricingVariantByInputTokens,
   supportsCustomGeminiTemperature,
   supportsCustomOpenAITemperature,
   inferImageProviderFromModelNameRaw,

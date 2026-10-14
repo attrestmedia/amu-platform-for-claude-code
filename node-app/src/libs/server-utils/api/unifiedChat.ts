@@ -8,12 +8,13 @@ import {
   HarmBlockThreshold,
 } from "@google/genai";
 import { COMMERCE_NAMESPACE_KEY } from "consts/app";
+import { AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL } from "consts/ai/generated/modelCatalog.generated";
+
 import { logger } from "utils/log";
 import { parseAIResponse, processAndCleanHistory } from "utils/ai";
 import {
   billAIUsageOrThrow,
   billCommerceAIUsageOrThrow,
-  assertAIUsageBalanceOrThrow,
   assertPricingPreflightOrThrow,
 } from "libs/services/aiUsageBilling";
 import {
@@ -27,9 +28,11 @@ import type { ITokenUsageBreakdown } from "types/payment";
 import { resolveUpstreamModelName } from "consts/ai/modelRole";
 import {
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
   isXaiLongContextTieredTextModel,
   hasValidXaiInputTokenCount,
   pickXaiPricingVariantByInputTokens,
+  pickClaudePricingVariantByInputTokens,
   isOpenAIGpt6TextModel,
   pickOpenAIGpt6PricingVariantByInputTokens,
   supportsCustomGeminiTemperature,
@@ -39,7 +42,6 @@ import {
 import { toUnknownRecord } from "utils/common/typeUtils";
 import {
   assertSystemModelSelectableOrThrow,
-  assertSystemModelSupportsImageInputOrThrow,
   resolveSystemReasoningEffort,
 } from "libs/server-utils/api/systemModelControl";
 import {
@@ -52,6 +54,7 @@ import {
 } from "libs/server-utils/secure/platformAiClients";
 import { claimProviderOperationOrThrow } from "libs/server-utils/api/providerOperationGuard";
 import { assertQwenProviderCallReady, qwenOmniChat, QWEN_OMNI_MODEL } from "libs/server-utils/audio/providers/qwenSpeech";
+import { AI_TEXT_MODEL_CAPABILITIES } from "consts/ai/generated/modelCatalog.generated";
 
 /**
  * @docHint
@@ -109,12 +112,11 @@ type UnifiedChatRequest = {
   universeId?: unknown;
   npcId?: unknown;
   routeHint?: unknown;
+  sessionId?: unknown;
   chatModelService?: unknown;
   options?: { promptOptions?: unknown };
   voiceInput?: unknown;
-  imageInput?: unknown;
   operationId?: unknown;
-  magazineContext?: unknown;
 };
 
 type BillingSummary = { ok: boolean; coins: number };
@@ -289,7 +291,7 @@ function buildVoiceInputContext(value: unknown, message: string) {
   return [
     "The current user message was spoken through the microphone and transcribed from the user's real voice.",
     hasDirectAudioAnalysis
-      ? `The original recording was directly analyzed by ${String(assessment.modelName || "gpt-audio").slice(0, 80)} before this chat turn.`
+      ? `The original recording was directly analyzed by ${String(assessment.modelName || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).slice(0, 80)} before this chat turn.`
       : "The original recording was not directly available to this text model; use the acoustic STT evidence below.",
     hasDirectAudioAnalysis && assessment.heardText
       ? `Direct audio model heard: ${String(assessment.heardText).trim().slice(0, 1000)}`
@@ -312,23 +314,6 @@ function buildVoiceInputContext(value: unknown, message: string) {
   ]
     .filter(Boolean)
     .join("\n");
-}
-
-function buildMagazineContextPrompt(value: unknown) {
-  const context = toUnknownRecord(value);
-  if (context.source !== "article-experience") return "";
-  const title = String(context.title || "").trim().slice(0, 240);
-  const question = String(context.question || "").trim().slice(0, 400);
-  const sectionId = String(context.sectionId || "").trim().slice(0, 128);
-  const returnSectionId = String(context.returnSectionId || "").trim().slice(0, 128);
-  if (!title || !question || !sectionId || !returnSectionId) return "";
-  return [
-    "[Magazine article context — server authoritative, do not expose internal IDs]",
-    `Article: ${title}`,
-    `Question: ${question}`,
-    `Current section: ${sectionId}`,
-    "Answer the user's situation using the article's evidence and clearly distinguish general guidance from certainty.",
-  ].join("\n");
 }
 
 // --- Provider runners ---
@@ -515,7 +500,9 @@ async function runDeepSeekTextChat(args: RunnerArgs): Promise<RunnerResult> {
 async function runZaiTextChat(args: RunnerArgs): Promise<RunnerResult> {
   const zai = await getPlatformZaiClient();
   const { model, systemPrompt, message, processedHistory, maxOutputTokens, imageInput } = args;
-  if (imageInput && model === "glm-5.3") {
+  const supportsImageInput = (AI_TEXT_MODEL_CAPABILITIES as Record<string, { supportsImageInput: boolean }>)[model]
+    ?.supportsImageInput;
+  if (imageInput && supportsImageInput === false) {
     const err = new Error("model_image_input_unsupported") as Error & { errorCode: string; status: number };
     err.errorCode = "MODEL_IMAGE_INPUT_UNSUPPORTED";
     err.status = 400;
@@ -710,7 +697,8 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
   const needsShortLongVariants =
     (provider === "google" && isGoogleProTextModel(requestedModel)) ||
     (provider === "xai" && isXaiLongContextTieredTextModel(requestedModel)) ||
-    (provider === "openai" && isOpenAIGpt6TextModel(requestedModel));
+    (provider === "openai" && isOpenAIGpt6TextModel(requestedModel)) ||
+    (provider === "claude" && isClaudeLongContextTieredTextModel(requestedModel));
   // 가격표 미설정 모델 차단 (fail-closed)
   await assertPricingPreflightOrThrow({
     provider: provider as BillableProviderType,
@@ -725,14 +713,6 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
 
   const { message, history, universeId, npcId, routeHint } = getSharedRequestBase(data);
   const { billToUniverse, app } = getBillingContext(routeHint);
-  const imageInput =
-    routeHint === "tutors" && data.imageInput ? (data.imageInput as ChatImageInputType) : undefined;
-  if (imageInput) {
-    await assertSystemModelSupportsImageInputOrThrow({
-      provider,
-      modelName: requestedModel,
-    });
-  }
 
   logger.log(`[API] UnifiedChat(${provider}):`, {
     model: requestedModel,
@@ -741,7 +721,6 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
     routeHint,
     messageLen: message.length,
     historyLen: history.length,
-    imageAttached: Boolean(imageInput),
   });
 
   const universeTypeHint = user && user.__resolvedUniverseId === universeId ? user.__resolvedUniverseType : null;
@@ -753,14 +732,13 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
     user,
     promptOptions: promptOptions as Parameters<typeof composeSystemPromptOrThrow>[0]["promptOptions"],
     universeTypeHint,
+    narrativeDirector: {
+      uid: String(user?.uid || user?.ID || "").trim(),
+      sessionId: data.sessionId,
+    },
   });
-  const magazineContextPrompt = buildMagazineContextPrompt(data.magazineContext);
-  const authoritativeSystemPrompt = magazineContextPrompt
-    ? `${serverSystemPrompt}\n\n${magazineContextPrompt}`
-    : serverSystemPrompt;
-  // Tutors는 TUTORS-GATE-STT-DISCLOSURE가 닫힌 동안 text-only다.
-  // 공유 helper가 직접 호출되거나 위조된 voiceInput이 전달돼도 음성 코칭/점수 prompt를 만들지 않는다.
-  const voiceInputContext = routeHint === "tutors" ? "" : buildVoiceInputContext(data.voiceInput, message);
+  const authoritativeSystemPrompt = serverSystemPrompt;
+  const voiceInputContext = buildVoiceInputContext(data.voiceInput, message);
 
   const { processedHistory } = processAndCleanHistory(history, message, CLEAN_LABEL[provider]) as {
     processedHistory: ChatHistoryEntry[];
@@ -774,18 +752,6 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
     error.status = 400;
     throw error;
   }
-  const estimatedInputTokens = Math.max(
-    1,
-    Math.ceil(
-      `${authoritativeSystemPrompt}\n${message}\n${processedHistory.map((item) => String(item.content || "")).join("\n")}`.length / 3,
-    ),
-  );
-  const preflightMeta = {
-    route: `${routeHint}/${provider}:preflight`,
-    npcId,
-    universeId,
-    ...(operationId ? { operationId } : {}),
-  };
   type UnifiedChatSuccess = {
     result: string;
     translation?: string;
@@ -811,22 +777,6 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
   let providerResponseReceived = false;
   let providerFailureDisposition: ProviderOperationFailureDisposition | null = null;
   try {
-    if (routeHint === "tutors") {
-      await assertAIUsageBalanceOrThrow({
-        uid: user?.uid || user?.ID || "",
-        app,
-        provider: provider as BillableProviderType,
-        modelName: requestedModel,
-        ...((provider === "xai" && isXaiLongContextTieredTextModel(requestedModel)) ||
-        (provider === "openai" && isOpenAIGpt6TextModel(requestedModel))
-          ? { variant: "long" }
-          : {}),
-        modality: "text",
-        usage: { text: { input: estimatedInputTokens, output: MAX_OUTPUT_TOKENS } },
-        meta: preflightMeta,
-      });
-    }
-
     let rawText = "";
     let usage: RunnerResult["usage"] = { input: 0, output: 0 };
     let finishReason: RunnerResult["finishReason"];
@@ -840,7 +790,6 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
         message,
         processedHistory,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
-        imageInput,
         ...(provider === "qwen"
           ? {
               user,
@@ -899,6 +848,8 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
           ? pickXaiPricingVariantByInputTokens(usage.input)
           : provider === "openai" && isOpenAIGpt6TextModel(requestedModel)
             ? pickOpenAIGpt6PricingVariantByInputTokens(usage.input)
+            : provider === "claude" && isClaudeLongContextTieredTextModel(requestedModel)
+              ? pickClaudePricingVariantByInputTokens(usage.input)
         : undefined;
 
     // billing

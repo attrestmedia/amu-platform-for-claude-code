@@ -6,7 +6,10 @@
  * @scope agent-api
  */
 import { NextRequest, NextResponse } from "next/server";
+import { AI_MODEL_ROLE_POLICY } from "consts/ai/generated/modelPolicy.generated";
+import { roleRefToProviderModel } from "consts/ai/modelPolicy";
 import { validateAgentKey } from "libs/server-utils/auth/agentKeyAuth";
+import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
 import {
   AGENT_PRICING_EXTRACTION_POLICY,
   enforceAgentRequestRateLimit,
@@ -22,10 +25,13 @@ const REQUIRED_SCOPE = "ai:provider-catalog:extract";
 
 // 외부 유료 호출이므로 모델을 저비용 추출용으로 고정한다. 클라이언트가 상위 모델로 올릴 수 없다.
 // gemini-2.5-flash-lite는 제외한다 — 신규 사용자에게 제공되지 않아 이 자격증명으로는 404다
-// ("no longer available to new users. Please update your code to use models/gemini-3.5-flash-lite").
+// ("no longer available to new users. Please update your code to use models/gemini-3.8-flash").
 // 자동 승격 alias(gemini-flash-lite-latest)도 비용 예측이 어려워 넣지 않는다.
-const ALLOWED_MODELS = new Set(["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]);
-const DEFAULT_MODEL = "gemini-3.5-flash-lite";
+const PROVIDER_PRICING_EXTRACTION_ROLE = AI_MODEL_ROLE_POLICY.internalTools.providerPricingExtraction;
+const ALLOWED_MODELS = new Set(
+  PROVIDER_PRICING_EXTRACTION_ROLE.allowedModels.map((ref) => roleRefToProviderModel(ref).modelName),
+);
+const DEFAULT_MODEL = roleRefToProviderModel(PROVIDER_PRICING_EXTRACTION_ROLE.defaultModel).modelName;
 
 function toSafeString(v: unknown) {
   return String(v || "").trim();
@@ -89,6 +95,8 @@ export async function POST(request: NextRequest) {
     // tools와 generationConfig는 서버가 고정한다 — 클라이언트가 출력 상한을 올려 비용을 키울 수 없다.
     const tools: Record<string, unknown>[] = [{ url_context: {} }];
     if (body.allowSearch === true) tools.push({ google_search: {} });
+
+    await assertSystemModelEnabledOrThrow({ provider: "google", modelName: model, modality: "text" });
 
     const upstream = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,

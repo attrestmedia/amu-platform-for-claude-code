@@ -4,15 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useGlobalNotifications } from "components/module/notifications/GlobalNotificationProvider";
 import { enqueueStudioContentJob, getStudioContentMeta } from "libs/api/lab";
 import type { UserScopeType, TextProviderType } from "types/ai";
-import type {
-  BaseImageType,
-  ContentStudioDoneMetaType,
-  PromptVisibilityType,
-} from "types/app";
+import type { BaseImageType, ContentStudioDoneMetaType, PromptVisibilityType } from "types/app";
 import { persistCoinUpdated } from "utils/payment";
 import { toErrorLike } from "utils/common";
-
-const GEN_STUDIO_CUSTOM_PROMPT_TEMPLATE_KEY = "__gen_studio_custom_prompt__";
+import { GEN_STUDIO_CUSTOM_PROMPT_TEMPLATE_KEY } from "consts/app";
 
 export type ContentStudioGenerationRequest = {
   isCustomMode: boolean;
@@ -137,7 +132,9 @@ export function useContentStudioGeneration({
         if (!jobId) throw new Error("Content generation job enqueue failed.");
 
         onGenerationStarted?.({ requestId, jobCount: isEmbedded ? 1 : request.n });
-        window.dispatchEvent(new CustomEvent("amu:studio-content-job-queued", { detail: { clientRequestId: requestId, jobId } }));
+        window.dispatchEvent(
+          new CustomEvent("amu:studio-content-job-queued", { detail: { clientRequestId: requestId, jobId } }),
+        );
 
         const [job] = await watchContentJobs([jobId]);
         const jobAssets = (job?.assets || [])
@@ -203,7 +200,18 @@ export function useContentStudioGeneration({
         if (mountedRef.current) setLoading(false);
       }
     },
-    [embedSessionId, isEmbedded, mode, onDone, onError, onGenerationFailed, onGenerationStarted, onSuccess, universeId, watchContentJobs],
+    [
+      embedSessionId,
+      isEmbedded,
+      mode,
+      onDone,
+      onError,
+      onGenerationFailed,
+      onGenerationStarted,
+      onSuccess,
+      universeId,
+      watchContentJobs,
+    ],
   );
 
   const retry = useCallback(() => {

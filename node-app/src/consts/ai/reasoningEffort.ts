@@ -6,6 +6,8 @@
  * @scope shared
  */
 
+import { AI_MODEL_REASONING_EFFORT_POLICY } from "./generated/modelCatalog.generated";
+import type { AssertAssignable } from "./catalogShapeAssertion";
 export const REASONING_EFFORT_LEVELS = ["none", "low", "medium", "high", "xhigh", "max"] as const;
 export type ReasoningEffortLevelType = (typeof REASONING_EFFORT_LEVELS)[number];
 
@@ -27,22 +29,16 @@ type ReasoningEffortPolicy = {
  * 2026-09-01 확정: low. 이관 전 코드 상수는 커밋 이력에서 high였으나 low로 결론냈다.
  * **운영 조정은 코드가 아니라 시스템 컨트롤 화면에서 한다.** 여기 값은 DB가 비었을 때의 폴백이다.
  */
-export const REASONING_EFFORT_POLICY: Record<string, ReasoningEffortPolicy> = {
-  // GLM의 OpenAI-compatible 확장은 GPT-6와 지원 범위가 다르므로 기존 선택지를 유지한다.
-  "zai:glm-5.3:text": { levels: ["low", "high", "max"], policyDefault: "low" },
-  "zai:glm-5.3-flash:text": { levels: ["low", "high", "max"], policyDefault: "low" },
-  // OpenAI GPT-6 공식 문서: Astra는 none을 지원하지 않고 Sol/Luna는 지원한다.
-  "openai:gpt-6-astra:text": { levels: ["low", "medium", "high", "xhigh", "max"], policyDefault: "low" },
-  "openai:gpt-6-sol:text": { levels: REASONING_EFFORT_LEVELS, policyDefault: "low" },
-  "openai:gpt-6-luna:text": { levels: REASONING_EFFORT_LEVELS, policyDefault: "low" },
-};
+export type ReasoningEffortCanonicalShape = [
+  AssertAssignable<typeof AI_MODEL_REASONING_EFFORT_POLICY, Record<string, ReasoningEffortPolicy>>,
+];
 
 function policyKey(provider: string, modelName: string, modality: string) {
   return `${String(provider || "").trim().toLowerCase()}:${String(modelName || "").trim()}:${modality}`;
 }
 
 export function getReasoningEffortPolicy(provider: string, modelName: string, modality: string) {
-  return REASONING_EFFORT_POLICY[policyKey(provider, modelName, modality)] || null;
+  return (AI_MODEL_REASONING_EFFORT_POLICY as Record<string, ReasoningEffortPolicy>)[policyKey(provider, modelName, modality)] || null;
 }
 
 export function supportsReasoningEffort(provider: string, modelName: string, modality: string) {

@@ -1,5 +1,5 @@
 export type RouteHintBaseType = "ai" | "commerce";
-export type RouteHintType = RouteHintBaseType | "tutors";
+export type RouteHintType = RouteHintBaseType;
 export type SystemPromptOptionsType = {
   language?: "ko" | "en";
   allowNative?: boolean;

@@ -1,7 +1,7 @@
 import type { IUpdateUserData } from "types/user";
+import type { RouteHintType } from "types/ai";
 import type { LanguageType } from "types/language";
 import type { IExtendedNpcData } from "types/game";
-import { type RouteHintType } from "types/ai";
 import { SYSTEM_CODES } from "consts/ai";
 import { PROMPT_LIMITS } from "consts/auth";
 import { GAME_CONSTANTS as GC, PERSONA_MOOD_TYPES } from "consts/game";
@@ -63,7 +63,6 @@ export function buildSystemPrompt(
   addTranslation: string = "",
   isCommerceUniverse: boolean,
   log?: boolean,
-  routeHint?: RouteHintType,
 ): string {
   const {
     name: npcName = "알 수 없음",
@@ -97,9 +96,7 @@ export function buildSystemPrompt(
   const currentNpcLanguage = normalizeNpcLanguage(universeId, npcLanguage, currentUserLanguage);
 
   // SystemCodeType 값들을 문자열로 변환
-  const systemCodeOptions = SYSTEM_CODES.filter(
-    (code) => routeHint === "tutors" || code !== "request-image",
-  ).join(" | ");
+  const systemCodeOptions = SYSTEM_CODES.filter((code) => code !== "request-image").join(" | ");
   const moodTypeOptions = PERSONA_MOOD_TYPES.join(" | ");
 
   const userCharName = currentUserCharacter?.name;

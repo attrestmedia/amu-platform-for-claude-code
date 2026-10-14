@@ -1,3 +1,10 @@
+import {
+  AI_ELEVENLABS_APPROVED_VOICE_CATALOG,
+  AI_ELEVENLABS_APPROVED_VOICE_IDS,
+  AI_ELEVENLABS_DEFAULT_STT_MODEL,
+  AI_ELEVENLABS_DEFAULT_TTS_MODEL,
+} from "./generated/modelCatalog.generated";
+import type { AssertAssignable } from "./catalogShapeAssertion";
 export interface IOpenAiVoiceCatalogEntry {
   provider: "openai";
   voiceId:
@@ -28,17 +35,14 @@ export const PERSONA_BINARY_GENDER_OPTIONS = [
   { value: "여성", label: { ko: "여성", en: "Female" } },
 ] as const satisfies readonly { value: PersonaBinaryGenderValue; label: { ko: string; en: string } }[];
 
-export const OPENAI_DEFAULT_STT_MODEL = "gpt-4o-mini-transcribe" as const;
-export const OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL = "gpt-audio" as const;
-export const OPENAI_DEFAULT_TTS_MODEL = "gpt-4o-mini-tts" as const;
 // MB-20260927 D2 후보. 기본 모델·실행 가능 여부는 별도 정책 카탈로그가 소유한다.
 export const OPENAI_GPT_AUDIO_CANDIDATE_MODEL = "gpt-audio-1.5" as const;
 export const OPENAI_GPT_TRANSCRIBE_CANDIDATE_MODEL = "gpt-transcribe" as const;
 export const OPENAI_DEFAULT_TTS_SPEED = 1.2 as const;
 export const OPENAI_TTS_SPEED_RANGE = { min: 0.25, max: 4, step: 0.25 } as const;
 export const ELEVENLABS_TTS_SPEED_RANGE = { min: 0.7, max: 1.2, step: 0.05 } as const;
-export const ELEVENLABS_DEFAULT_TTS_MODEL = "eleven-flash-v2-5" as const;
-export const ELEVENLABS_DEFAULT_STT_MODEL = "scribe-v2" as const;
+export const ELEVENLABS_DEFAULT_TTS_MODEL = AI_ELEVENLABS_DEFAULT_TTS_MODEL;
+export const ELEVENLABS_DEFAULT_STT_MODEL = AI_ELEVENLABS_DEFAULT_STT_MODEL;
 
 /**
  * ElevenLabs voice ID는 계정에 귀속된 opaque 값이다. **추측해서 적지 않는다.**
@@ -91,274 +95,19 @@ export type ElevenLabsVoiceOperationalTerms = {
   observedAt: string | null;
 };
 
+export type VoiceCatalogCanonicalShape = [
+  AssertAssignable<typeof AI_ELEVENLABS_APPROVED_VOICE_CATALOG, readonly ElevenLabsApprovedVoiceCatalogEntry[]>,
+  AssertAssignable<typeof AI_ELEVENLABS_APPROVED_VOICE_IDS, readonly string[]>,
+];
+
 /**
  * voiceId는 opaque 값이라 추측이 곧 오작동이고, 요율·권리 확인 없이 넣으면 예산 산출이 무의미해진다.
  */
-export const ELEVENLABS_APPROVED_VOICE_CATALOG: readonly ElevenLabsApprovedVoiceCatalogEntry[] = [
-  // 2026-09-10 계정 조회(GET /api/admin/speech-voices)로 확인한 premade voice 21건 중 3건을 승인했다.
-  // 21건 전부 category=premade · 요율 없음이었고, 그중 내레이션에 필요한 성격(서술·설명·중립)만 골랐다.
-  //
-  // **locales에 "ko"를 넣지 않았다.** 계정 라벨이 전부 language=en이고 한국어 산출 품질을 아직 듣지 못했다.
-  // multilingual/flash 모델이 한국어를 처리하는 것과 이 음색이 한국어에서 쓸 만한지는 다른 문제다.
-  // 한국어 승인은 EL-402의 청취 평가(최소 2인 rubric) 뒤에 별도로 추가한다.
-  //
-  // voiceRevision은 관측일이다. premade voice는 공개 revision을 제공하지 않으므로 재조회 시점을 쓴다 —
-  // provider가 음색을 조정하면 이 값을 올려 캐시를 무효화한다.
-  {
-    provider: "elevenlabs",
-    voiceId: "JBFqnCBsd6RMkjVDRZzb",
-    voiceRevision: "2026-09-10",
-    label: "George",
-    locales: ["en"],
-    tags: ["서술형", "따뜻함", "낮은 톤"],
-    rightsStatus: "verified_commercial",
-    usage: "production",
-    sourceCategory: "premade",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-10",
-    evidence: ["GET /api/admin/speech-voices 2026-09-10 — category=premade, observedRate=null"],
-    operationalTerms: {
-      noticePeriodDays: null,
-      disableAt: null,
-      liveModerationEnabled: null,
-      rate: null,
-      availableForTiers: null,
-      observedAt: null,
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "XrExE9yKIg1WjnnlVkGX",
-    voiceRevision: "2026-09-10",
-    label: "Matilda",
-    locales: ["en"],
-    tags: ["설명형", "또렷함", "차분함"],
-    rightsStatus: "verified_commercial",
-    usage: "production",
-    sourceCategory: "premade",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-10",
-    evidence: ["GET /api/admin/speech-voices 2026-09-10 — category=premade, observedRate=null"],
-    operationalTerms: {
-      noticePeriodDays: null,
-      disableAt: null,
-      liveModerationEnabled: null,
-      rate: null,
-      availableForTiers: null,
-      observedAt: null,
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "SAz9YHcvj6GT2YYXdXww",
-    voiceRevision: "2026-09-10",
-    label: "River",
-    locales: ["en"],
-    tags: ["중립", "정보 전달", "편안함"],
-    rightsStatus: "verified_commercial",
-    usage: "production",
-    sourceCategory: "premade",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-10",
-    evidence: ["GET /api/admin/speech-voices 2026-09-10 — category=premade, observedRate=null"],
-    operationalTerms: {
-      noticePeriodDays: null,
-      disableAt: null,
-      liveModerationEnabled: null,
-      rate: null,
-      availableForTiers: null,
-      observedAt: null,
-    },
-  },
-
-  // ---------------------------------------------------------------------------
-  // 2026-09-12 EL-402 — 한국어 청취 평가를 거친 Voice 6건 (사용자가 계정에 추가)
-  //
-  // 종전 승인 3건(George·Matilda·River)은 전부 영어 화자이고, 사용자 청취 결과
-  // "영어권 사람이 어설픈 한국어를 하는 느낌"으로 판정됐다. GET /v1/voices 실측에서도
-  // 계정 voice 21건 전부 language=en이고 ko verified가 0건이었다. 한국어 내레이션은
-  // 모델 파라미터가 아니라 **Voice**가 없어서 성립하지 않았던 것이다.
-  //
-  // 아래 6건은 전부 `sharing.rate = 1`(요율 배율 없음) · `notice_period = 730일` ·
-  // `financial_rewards_enabled = false` · `status = "copied"`이며, `eleven_multilingual_v2`
-  // 기준 6건 모두 ko verified다(Yohan Koo만 eleven_flash_v2_5 ko verified가 없다).
-  //
-  // 2026-09-12 공식 Voice Library/VLA·유료 플랜 조건과 계정 운영 조건을 재확인해
-  // 상업 이용 가능 상태로 승격했다. `operationalTerms`는 권리 자체가 아니라
-  // provider가 바꿀 수 있는 철회·요율·모더레이션 관측값이다.
-  //
-  // locales에 "ko"가 들어간 것은 **이 voice들이 한국어 화자라는 관측 사실**이며
-  // 서비스 승인은 usage=production + rightsStatus=verified_commercial이 함께 선다.
-  // ---------------------------------------------------------------------------
-  {
-    provider: "elevenlabs",
-    voiceId: "uyVNoMrnUku1dZyVEXwD",
-    voiceRevision: "2026-09-11",
-    label: "Anna Kim - Tender, Calm and Clear",
-    locales: ["ko"],
-    tags: ["서술형", "차분함", "또렷함"],
-    rightsStatus: "verified_commercial",
-    sourceCategory: "library_professional",
-    usage: "production",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-11",
-    evidence: [
-      "GET /v1/voices 2026-09-11 — category=professional, labels.language=ko, sharing.rate=1, notice_period=730, financial_rewards_enabled=false",
-      "GET /v1/shared-voices?language=ko 2026-09-11 — Voice Library 원본 rate=1",
-      "정본: .agent/legal/elevenlabs/voice-library-rights-determination.md §1·§5 — Voice Library/VLA·유료 플랜 상업 이용 판정",
-      "use_case=narrative_story",
-    ],
-    operationalTerms: {
-      noticePeriodDays: 730,
-      disableAt: null,
-      liveModerationEnabled: false,
-      rate: 1,
-      availableForTiers: [],
-      observedAt: "2026-09-11",
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "Lb7qkOn5hF8p7qfCDH8q",
-    voiceRevision: "2026-09-11",
-    label: "Annie - Friendly, Soft and Clear",
-    locales: ["ko"],
-    tags: ["서술형", "부드러움", "또렷함"],
-    rightsStatus: "verified_commercial",
-    sourceCategory: "library_professional",
-    usage: "production",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-11",
-    evidence: [
-      "GET /v1/voices 2026-09-11 — category=professional, labels.language=ko, sharing.rate=1, notice_period=730, financial_rewards_enabled=false",
-      "GET /v1/shared-voices?language=ko 2026-09-11 — Voice Library 원본 rate=1",
-      "정본: .agent/legal/elevenlabs/voice-library-rights-determination.md §1·§5 — Voice Library/VLA·유료 플랜 상업 이용 판정",
-      "use_case=narrative_story",
-    ],
-    operationalTerms: {
-      noticePeriodDays: 730,
-      disableAt: null,
-      liveModerationEnabled: false,
-      rate: 1,
-      availableForTiers: [],
-      observedAt: "2026-09-11",
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "zXNMXSB7uul4lbmpaVAn",
-    voiceRevision: "2026-09-11",
-    label: "Dahye - Clear Korean Explainer",
-    locales: ["ko"],
-    tags: ["설명형", "또렷함", "서울 억양"],
-    rightsStatus: "verified_commercial",
-    sourceCategory: "library_professional",
-    usage: "production",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-11",
-    evidence: [
-      "GET /v1/voices 2026-09-11 — category=professional, labels.language=ko, sharing.rate=1, notice_period=730, financial_rewards_enabled=false",
-      "GET /v1/shared-voices?language=ko 2026-09-11 — Voice Library 원본 rate=1",
-      "정본: .agent/legal/elevenlabs/voice-library-rights-determination.md §1·§5 — Voice Library/VLA·유료 플랜 상업 이용 판정",
-      "use_case=informative_educational",
-    ],
-    operationalTerms: {
-      noticePeriodDays: 730,
-      disableAt: null,
-      liveModerationEnabled: false,
-      rate: 1,
-      availableForTiers: [],
-      observedAt: "2026-09-11",
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "5I7B1di44aCL15NkP0jn",
-    voiceRevision: "2026-09-11",
-    label: "Kanna - Calm & Friendly",
-    locales: ["ko"],
-    tags: ["대화형", "차분함", "친근함"],
-    rightsStatus: "verified_commercial",
-    sourceCategory: "library_professional",
-    usage: "production",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-11",
-    evidence: [
-      "GET /v1/voices 2026-09-11 — category=professional, labels.language=ko, sharing.rate=1, notice_period=730, financial_rewards_enabled=false",
-      "GET /v1/shared-voices?language=ko 2026-09-11 — Voice Library 원본 rate=1",
-      "정본: .agent/legal/elevenlabs/voice-library-rights-determination.md §1·§5 — Voice Library/VLA·유료 플랜 상업 이용 판정",
-      "use_case=entertainment_tv",
-    ],
-    operationalTerms: {
-      noticePeriodDays: 730,
-      disableAt: null,
-      liveModerationEnabled: false,
-      rate: 1,
-      availableForTiers: [],
-      observedAt: "2026-09-11",
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "CxErO97xpQgQXYmapDKX",
-    voiceRevision: "2026-09-11",
-    label: "Theo - Warm, Smooth and Soft",
-    locales: ["ko"],
-    tags: ["대화형", "따뜻함", "부드러움"],
-    rightsStatus: "verified_commercial",
-    sourceCategory: "library_professional",
-    usage: "production",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-11",
-    evidence: [
-      "GET /v1/voices 2026-09-11 — category=professional, labels.language=ko, sharing.rate=1, notice_period=730, financial_rewards_enabled=false",
-      "GET /v1/shared-voices?language=ko 2026-09-11 — Voice Library 원본 rate=1",
-      "정본: .agent/legal/elevenlabs/voice-library-rights-determination.md §1·§5 — Voice Library/VLA·유료 플랜 상업 이용 판정",
-      "use_case=conversational",
-    ],
-    operationalTerms: {
-      noticePeriodDays: 730,
-      disableAt: null,
-      liveModerationEnabled: false,
-      rate: 1,
-      availableForTiers: [],
-      observedAt: "2026-09-11",
-    },
-  },
-  {
-    provider: "elevenlabs",
-    voiceId: "4JJwo477JUAx3HV0T7n7",
-    voiceRevision: "2026-09-11",
-    label: "Yohan Koo - Encouraging, Clear and Airy",
-    locales: ["ko"],
-    tags: ["대화형", "또렷함", "격려형"],
-    rightsStatus: "verified_commercial",
-    sourceCategory: "library_professional",
-    usage: "production",
-    creditMultiplier: 1,
-    verifiedAt: "2026-09-11",
-    evidence: [
-      "GET /v1/voices 2026-09-11 — category=professional, labels.language=ko, sharing.rate=1, notice_period=730, financial_rewards_enabled=false",
-      "GET /v1/shared-voices?language=ko 2026-09-11 — Voice Library 원본 rate=1",
-      "정본: .agent/legal/elevenlabs/voice-library-rights-determination.md §1·§5 — Voice Library/VLA·유료 플랜 상업 이용 판정",
-      "use_case=conversational",
-    ],
-    operationalTerms: {
-      noticePeriodDays: 730,
-      disableAt: null,
-      liveModerationEnabled: false,
-      rate: 1,
-      availableForTiers: [],
-      observedAt: "2026-09-11",
-    },
-  },
-];
-
-const _ELEVENLABS_VOICE_MAP = new Map(
-  ELEVENLABS_APPROVED_VOICE_CATALOG.map((entry) => [entry.voiceId, entry]),
+const _ELEVENLABS_VOICE_MAP = new Map<string, ElevenLabsApprovedVoiceCatalogEntry>(
+  AI_ELEVENLABS_APPROVED_VOICE_CATALOG.map((entry) => [entry.voiceId, entry]),
 );
 
-export function getElevenLabsVoiceCatalogEntry(voiceId: string) {
+export function getElevenLabsVoiceCatalogEntry(voiceId: string): ElevenLabsApprovedVoiceCatalogEntry | undefined {
   return _ELEVENLABS_VOICE_MAP.get(String(voiceId || "").trim());
 }
 
@@ -370,7 +119,6 @@ export function isApprovedElevenLabsVoiceId(voiceId: string, options: { producti
     : true;
 }
 
-export const ELEVENLABS_APPROVED_VOICE_IDS = ELEVENLABS_APPROVED_VOICE_CATALOG.map((entry) => entry.voiceId);
 export const TTS_PREVIEW_ASSET_LIMIT = { private: 5, public: 5 } as const;
 export const TTS_PREVIEW_GENERATION_LEASE_MS = 5 * 60 * 1000;
 export const TTS_PREVIEW_FAILED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;

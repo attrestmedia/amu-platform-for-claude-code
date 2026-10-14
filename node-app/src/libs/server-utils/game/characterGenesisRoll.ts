@@ -10,17 +10,19 @@ import type {
 import { CHARACTER_SPECIES_IDS, type CharacterSpeciesId } from "consts/game/characterGenesisPolicy";
 
 export const CHARACTER_GENESIS_ALGORITHM_VERSION = 1;
-export const CHARACTER_GENESIS_POLICY_VERSION = 1;
+export const CHARACTER_GENESIS_POLICY_VERSION = 2;
+// Keep total base stats independent of rarity; 0.35 preserves the current common-tier budget.
+export const GENESIS_STAT_BUDGET_FACTOR = 0.35;
 export const RARITY_ROLL_TOTAL = 1_000_000;
 
 export const RARITY_TABLE = [
-  { tier: "common", weight: 700_000, potentialBand: "faint", budgetFactor: 0.35 },
-  { tier: "uncommon", weight: 200_000, potentialBand: "steady", budgetFactor: 0.43 },
-  { tier: "rare", weight: 88_900, potentialBand: "bright", budgetFactor: 0.51 },
-  { tier: "epic", weight: 10_000, potentialBand: "charged", budgetFactor: 0.59 },
-  { tier: "legendary", weight: 1_000, potentialBand: "remarkable", budgetFactor: 0.68 },
-  { tier: "mythic", weight: 90, potentialBand: "mythic", budgetFactor: 0.78 },
-  { tier: "celestial", weight: 10, potentialBand: "celestial", budgetFactor: 0.88 },
+  { tier: "common", weight: 700_000, potentialBand: "faint" },
+  { tier: "uncommon", weight: 200_000, potentialBand: "steady" },
+  { tier: "rare", weight: 88_900, potentialBand: "bright" },
+  { tier: "epic", weight: 10_000, potentialBand: "charged" },
+  { tier: "legendary", weight: 1_000, potentialBand: "remarkable" },
+  { tier: "mythic", weight: 90, potentialBand: "mythic" },
+  { tier: "celestial", weight: 10, potentialBand: "celestial" },
 ] as const;
 
 export type CharacterGenesisRarityTier = (typeof RARITY_TABLE)[number]["tier"];
@@ -69,7 +71,6 @@ function chooseArchetype(archetypes: IArchetypeDefinition[], requestedId: string
 
 function rollStats(
   ruleset: IUniverseNarrativeRuleset,
-  rarityFactor: number,
   archetype: IArchetypeDefinition,
   rng: CharacterGenesisRng,
 ) {
@@ -80,7 +81,10 @@ function rollStats(
 
   const minTotal = definitions.reduce((sum, entry) => sum + Math.ceil(entry.min), 0);
   const maxTotal = definitions.reduce((sum, entry) => sum + Math.floor(entry.max), 0);
-  const statBudget = Math.max(minTotal, Math.min(maxTotal, Math.round(minTotal + (maxTotal - minTotal) * rarityFactor)));
+  const statBudget = Math.max(
+    minTotal,
+    Math.min(maxTotal, Math.round(minTotal + (maxTotal - minTotal) * GENESIS_STAT_BUDGET_FACTOR)),
+  );
   let remainingExtra = statBudget - minTotal;
   const stats = {} as NarrativeStatValues;
 
@@ -98,6 +102,22 @@ function rollStats(
     const modifier = Number(archetype.statModifiers?.[entry.id] || 0);
     stats[entry.id] = Math.max(min, Math.min(max, min + extra + modifier));
   });
+
+  const sumStats = () => definitions.reduce((sum, entry) => sum + stats[entry.id], 0);
+  for (const entry of definitions) {
+    const difference = statBudget - sumStats();
+    if (difference === 0) break;
+
+    const min = Math.ceil(entry.min);
+    const max = Math.floor(entry.max);
+    const current = stats[entry.id];
+    const adjustment = difference > 0
+      ? Math.min(difference, max - current)
+      : -Math.min(-difference, current - min);
+    if (adjustment !== 0) stats[entry.id] = current + adjustment;
+  }
+
+  if (sumStats() !== statBudget) throw new Error("genesis_stat_budget_unbalanced");
 
   return { stats, statBudget };
 }
@@ -167,7 +187,7 @@ export function rollCharacterGenesis(input: CharacterGenesisRollInput): Characte
       ? affinityEntries.map((entry) => [entry.targetAttributeId, entry.multiplier])
       : [[primaryAttributeId, 1]],
   );
-  const rolledStats = rollStats(input.ruleset, rarity.budgetFactor, archetype, rng);
+  const rolledStats = rollStats(input.ruleset, archetype, rng);
 
   return {
     rulesetVersion: input.ruleset.rulesetVersion,

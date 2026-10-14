@@ -1,38 +1,88 @@
 import "server-only";
-import { ELEVENLABS_DEFAULT_TTS_MODEL, OPENAI_DEFAULT_TTS_MODEL, OPENAI_DEFAULT_TTS_SPEED } from "consts/ai/voiceCatalog";
+import { randomUUID } from "node:crypto";
+import { ELEVENLABS_DEFAULT_TTS_MODEL, OPENAI_DEFAULT_TTS_SPEED } from "consts/ai/voiceCatalog";
 import { applySpeechBilling, estimateSpeechSynthesisUsageFromText, preflightSpeechBilling, toSpeechResponseUsage } from "./billing";
 import { assertSpeechSynthesisTextOrThrow, createSpeechError } from "./guards";
 import { resolveElevenLabsApiKey } from "./providers/elevenlabsCredential";
 import { elevenLabsSynthesizeSpeech } from "./providers/elevenlabsSpeech";
 import { openaiSynthesizeSpeech } from "./providers/openaiSpeech";
-import { assertSpeechBudgetOrThrow, recordSpeechSpend } from "./speechBudgetGuard";
+import {
+  markSpeechBudgetUnknownOutcome,
+  releaseSpeechBudget,
+  reserveSpeechBudgetOrThrow,
+  settleSpeechBudget,
+} from "./speechBudgetReservation";
+import { buildSpeechOperationId } from "./speechBillingLedger";
 import {
   assertSpeechCandidatePreApprovalGateOrThrow,
   assertSpeechProviderCapabilityOrThrow,
 } from "./speechProviderPolicy";
 import { resolveVoiceProfile } from "./voiceProfileResolver";
+import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
+import {
+  isOverseasTransferRefused,
+  OVERSEAS_TRANSFER_REFUSAL_PROCESSOR_KEYS,
+} from "libs/server-utils/auth/overseasTransferRefusalService";
 import type { ISpeechSynthesizeRequest, ISpeechSynthesizeServiceResult } from "./types";
 import type { BillableProviderType } from "types/ai";
 
+async function assertElevenLabsTransferAllowed(args: ISpeechSynthesizeRequest) {
+  const user = args.user && typeof args.user === "object" ? args.user as Record<string, unknown> : {};
+  const uid = String(args.billing?.uid || user.uid || user.ID || "").trim();
+  if (!uid) {
+    throw createSpeechError(
+      "ElevenLabs 국외 이전 거부 상태를 확인할 수 없어 음성 처리를 차단했습니다.",
+      "OVERSEAS_TRANSFER_REFUSAL_UNAVAILABLE",
+      503,
+    );
+  }
+
+  let refused: boolean;
+  try {
+    refused = await isOverseasTransferRefused({
+      uid,
+      processorKey: OVERSEAS_TRANSFER_REFUSAL_PROCESSOR_KEYS[0],
+    });
+  } catch {
+    throw createSpeechError(
+      "ElevenLabs 국외 이전 거부 상태를 확인할 수 없어 음성 처리를 차단했습니다.",
+      "OVERSEAS_TRANSFER_REFUSAL_UNAVAILABLE",
+      503,
+    );
+  }
+
+  if (refused) {
+    throw createSpeechError(
+      "국외 이전 거부 설정으로 ElevenLabs 음성 처리를 차단했습니다.",
+      "OVERSEAS_TRANSFER_REFUSED",
+      403,
+    );
+  }
+}
+
 export async function synthesizeSpeech(args: ISpeechSynthesizeRequest): Promise<ISpeechSynthesizeServiceResult> {
-  const provider = args.provider || "openai";
+  const provider = args.provider || "elevenlabs";
   if (provider !== "openai" && provider !== "elevenlabs") {
-    throw createSpeechError("현재 O1 단계에서는 OpenAI 음성만 지원합니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
+    throw createSpeechError("지원하지 않는 speech provider입니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
       provider,
     });
   }
 
   const text = assertSpeechSynthesisTextOrThrow(args.text);
+  const requestedModelName = args.modelName || args.voiceProfile?.modelName || args.persona?.voiceProfile?.modelName;
+  const capability = await assertSpeechProviderCapabilityOrThrow({
+    provider,
+    modelName: requestedModelName,
+    role: "speech_tts",
+    capability: "tts_http",
+  });
+  const modelName = String(
+    capability?.modelName || requestedModelName || (provider === "elevenlabs" ? ELEVENLABS_DEFAULT_TTS_MODEL : ""),
+  ).trim();
   if (provider === "elevenlabs") {
-    await assertSpeechProviderCapabilityOrThrow({
-      provider,
-      modelName: args.modelName || ELEVENLABS_DEFAULT_TTS_MODEL,
-      role: "speech_tts",
-      capability: "tts_http",
-    });
+    await assertElevenLabsTransferAllowed(args);
   }
-  const resolvedVoice = resolveVoiceProfile({ ...args, text });
-  const modelName = String(args.modelName || resolvedVoice.modelName || OPENAI_DEFAULT_TTS_MODEL).trim() || OPENAI_DEFAULT_TTS_MODEL;
+  const resolvedVoice = resolveVoiceProfile({ ...args, modelName, text });
   if (provider === "openai") {
     assertSpeechCandidatePreApprovalGateOrThrow({ provider, modelName });
   }
@@ -62,40 +112,69 @@ export async function synthesizeSpeech(args: ISpeechSynthesizeRequest): Promise<
 
   // EL-204-S3. 코인 preflight와 별개 축이다 — 그쪽은 이용자 잔액, 이쪽은 조직 지출 상한이다.
   // 강제 대상이 아닌 provider에서는 아무것도 하지 않는다.
-  const budgetDecision = await assertSpeechBudgetOrThrow({
+  const sessionId = String(args.billing?.meta?.sessionId || "").trim();
+  const clientId = String(args.billing?.meta?.clientId || "").trim();
+  const reservation = await reserveSpeechBudgetOrThrow({
+    role: "speech_tts",
     provider,
     modelName,
     unit: "character",
     quantity: estimatedFixed?.characters ?? 0,
     billing: args.billing,
     user: args.user,
+    reservationKey: sessionId && clientId
+      ? `${buildSpeechOperationId({ operation: "speech_synthesize", sessionId, clientId })}:${randomUUID()}`
+      : undefined,
   });
 
-  const providerResult = provider === "elevenlabs"
-    ? await elevenLabsSynthesizeSpeech({
-        apiKey: await resolveElevenLabsApiKey(),
+  let providerResult:
+    | Awaited<ReturnType<typeof elevenLabsSynthesizeSpeech>>
+    | Awaited<ReturnType<typeof openaiSynthesizeSpeech>>;
+  let providerDispatchStarted = false;
+  try {
+    if (provider === "elevenlabs") {
+      const apiKey = await resolveElevenLabsApiKey();
+      await assertSystemModelEnabledOrThrow({ provider, modelName, modality: "audio" });
+      providerResult = await elevenLabsSynthesizeSpeech({
+        apiKey,
         text,
         modelName,
         format: args.format,
         speed,
         voiceProfile: resolvedVoice,
-      })
-    : await openaiSynthesizeSpeech({
-        text,
-        modelName,
-        format: args.format,
-        speed,
-        voiceProfile: resolvedVoice,
+      }).catch((error: unknown) => {
+        providerDispatchStarted = true;
+        throw error;
       });
+      providerDispatchStarted = true;
+    } else {
+      await assertSystemModelEnabledOrThrow({ provider, modelName, modality: "audio" });
+      providerResult = await openaiSynthesizeSpeech({
+        text,
+        modelName,
+        format: args.format,
+        speed,
+        voiceProfile: resolvedVoice,
+      }).catch((error: unknown) => {
+        providerDispatchStarted = true;
+        throw error;
+      });
+      providerDispatchStarted = true;
+    }
+  } catch (error) {
+    if (providerDispatchStarted) {
+      await markSpeechBudgetUnknownOutcome({ reservation, reason: "provider_outcome_unknown" });
+    } else {
+      await releaseSpeechBudget({ reservation, reason: "provider_not_dispatched" });
+    }
+    throw error;
+  }
 
   const usage = providerResult.usage || (provider === "openai" ? estimatedUsage : undefined);
   const fixedUsage = providerResult.fixedUsage || estimatedFixed;
-  await recordSpeechSpend({
-    decision: budgetDecision,
-    provider,
-    modelName,
-    unit: "character",
-    quantity: fixedUsage?.characters ?? estimatedFixed?.characters ?? 0,
+  await settleSpeechBudget({
+    reservation,
+    actualQuantity: fixedUsage?.characters ?? estimatedFixed?.characters ?? 0,
   });
   const billing = await applySpeechBilling({
     provider: provider as BillableProviderType,

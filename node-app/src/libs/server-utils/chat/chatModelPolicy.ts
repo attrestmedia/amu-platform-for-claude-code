@@ -1,24 +1,13 @@
 import "server-only";
 import { buildAmuChatFallbackChain, TEXT_MODEL_GUIDE_BY_MODEL, TEXT_PROVIDER_TYPES } from "consts/ai";
-import { MONGODB_USER_MODEL_PREFIX } from "consts/db";
-import { MONGODB_USERS_URL } from "consts/env/server";
 import {
   deleteUserAiChatPreference,
   findUserAiChatPreference,
   upsertUserAiChatPreference,
 } from "libs/database/user";
-import { getModel } from "libs/database/modelCache";
 import { getUniverseById, getUniverseDetail } from "libs/database/universe";
 import { listSystemModelCatalog, type SystemModelCatalogItem } from "libs/server-utils/api/systemModelControl";
 import { resolvePlatformCredential } from "libs/server-utils/secure/platformCredentialResolver";
-import { normalizeTutorsState } from "libs/services/tutors/tutorsState";
-import {
-  isAudioCapableChatModel,
-  normalizeChatInputModality,
-  resolveTutorsAudioTurnPolicy,
-} from "libs/server-utils/audio";
-import { getSpeechRuntimeControls } from "libs/server-utils/system/speechRuntimeControls";
-import { UserSchema, type IUserDocument } from "models/user";
 import { filterSelectableSystemModels, resolveSystemModelAccessActor } from "libs/server-utils/ai/systemModelAccess";
 import type { PlatformCredentialKey } from "consts/secure/platformCredentials";
 import type {
@@ -30,11 +19,30 @@ import type {
   IChatModelPolicyResult,
   TextProviderType,
 } from "types/ai";
-import type { ITutorsState } from "types/app";
 import { pickString, toUnknownRecord } from "utils/common/typeUtils";
 import { logger } from "utils/log";
 
 type CodedError = Error & { errorCode: string; status: number; detail?: unknown };
+
+function normalizeChatInputModality(value: unknown): ChatInputModalityType {
+  return value === "audio" ? "audio" : "text";
+}
+
+function isAudioCapableChatModel(item: {
+  modality: string;
+  enabled: boolean;
+  deprecated: boolean;
+  supportsAudioInput: boolean;
+  supportsAudioUnderstanding: boolean;
+}): boolean {
+  return (
+    item.modality === "text" &&
+    item.enabled &&
+    !item.deprecated &&
+    item.supportsAudioInput &&
+    item.supportsAudioUnderstanding
+  );
+}
 
 export type ResolveChatModelPolicyArgs = {
   uid: string;
@@ -45,8 +53,6 @@ export type ResolveChatModelPolicyArgs = {
   personaId?: string;
   requestedProvider?: unknown;
   requestedModelName?: unknown;
-  tutorsState?: ITutorsState;
-  allowUnselectedTutor?: boolean;
   /** TUTORS-193 D1 — 신뢰하지 않는 클라이언트 값. 서버가 normalizeChatInputModality로 확정한다. */
   inputModality?: unknown;
 };
@@ -122,24 +128,9 @@ async function loadTextProviderAvailability(items: SystemModelCatalogItem[]) {
   return new Map(results);
 }
 
-async function loadTutorsState(uid: string) {
-  const modelName = `${MONGODB_USER_MODEL_PREFIX}${uid}`;
-  const UserModel = await getModel<IUserDocument>(MONGODB_USERS_URL, modelName, UserSchema, modelName);
-  const doc = await UserModel.findOne({ uid }).lean<IUserDocument>();
-  if (!doc) throw codedError("유저 데이터를 찾을 수 없습니다.", "USER_NOT_FOUND", 404);
-  const selectedPersonas = toUnknownRecord(doc.selectedPersonas);
-  return normalizeTutorsState(selectedPersonas.tutors);
-}
-
 function buildPreferenceScopes(args: { service: ChatModelServiceType; universeId: string; personaId: string }) {
   if (args.service === "amu") {
     return [{ scopeType: "service" as const, scopeId: "default" }];
-  }
-  if (args.service === "tutors") {
-    return [
-      { scopeType: "persona" as const, scopeId: args.personaId },
-      { scopeType: "service" as const, scopeId: "default" },
-    ];
   }
   return [
     { scopeType: "persona" as const, scopeId: `${args.universeId}:${args.personaId}` },
@@ -190,6 +181,8 @@ export async function resolveChatModelPolicy(args: ResolveChatModelPolicyArgs): 
   const requestedProvider = toTextProvider(args.requestedProvider);
   const requestedModelName = pickString(args.requestedModelName);
   const inputModality: ChatInputModalityType = normalizeChatInputModality(args.inputModality);
+  const audioTurnAvailable = false;
+  const audioTurnReasonCode: IChatModelPolicyResult["audioTurnReasonCode"] = "gate_closed";
 
   if (Boolean(requestedProvider) !== Boolean(requestedModelName)) {
     throw codedError("provider와 modelName을 함께 입력해야 합니다.", "CHAT_MODEL_REQUEST_INVALID", 400);
@@ -200,12 +193,7 @@ export async function resolveChatModelPolicy(args: ResolveChatModelPolicyArgs): 
     (item) => item.modality === "text" && Boolean(toTextProvider(item.provider)),
   );
 
-  // TUTORS-193 D5 — inputModality === "audio"여도 options·selected·fallbackChain은 바꾸지 않는다.
-  // 필터링은 클라이언트 표시와 라우트 거부로 처리한다. 여기서 카탈로그를 필터하면 audio 요청 하나가
-  // 사용자의 저장된 텍스트 모델 선호를 덮어쓰는 side effect가 생긴다
-  // (saveChatModelPreference가 이 함수를 그대로 재사용한다).
-  const speechRuntimeControls = await getSpeechRuntimeControls();
-  const audioTurnPolicy = resolveTutorsAudioTurnPolicy(speechRuntimeControls.tutorsAudioTurn);
+  // Keep audio capability metadata available to existing clients, while the retired Tutors turn remains closed.
 
   if (args.service === "amu") {
     const catalog = toSelectableTextCatalog(textCatalog, args.actor);
@@ -290,14 +278,6 @@ export async function resolveChatModelPolicy(args: ResolveChatModelPolicyArgs): 
           ? "fallback"
           : "policy_default";
 
-    const hasAudioCapableAvailableOption = options.some((option) => option.audioEligible && option.state === "available");
-    const audioTurnAvailable = audioTurnPolicy.gateOpen && hasAudioCapableAvailableOption;
-    const audioTurnReasonCode: IChatModelPolicyResult["audioTurnReasonCode"] = !audioTurnPolicy.gateOpen
-      ? "gate_closed"
-      : !hasAudioCapableAvailableOption
-        ? "no_audio_capable_model"
-        : undefined;
-
     return {
       service: args.service,
       scopeType: "service",
@@ -362,15 +342,6 @@ export async function resolveChatModelPolicy(args: ResolveChatModelPolicyArgs): 
 
   // G-MCG-01: 정책 기본이 선택 불가능한지 판별하기 위해 전체 카탈로그(선택 불가 포함)에서 의도 기본값을 찾는다.
   const intendedDefault = selectPolicyDefault(textCatalog, configuredDefault);
-
-  let tutorsState = args.tutorsState;
-  if (args.service === "tutors") {
-    tutorsState = tutorsState || (await loadTutorsState(uid));
-    const selected = tutorsState.selected.find((item) => item.personaId === personaId);
-    if (!selected && !args.allowUnselectedTutor) {
-      throw codedError("선택되지 않은 선생님입니다.", "TUTORS_PERSONA_NOT_SELECTED", 400);
-    }
-  }
 
   const defaultKey = chatModelKey(policyDefault.provider, policyDefault.modelName);
   const options = catalog.map((item) => {
@@ -437,14 +408,6 @@ export async function resolveChatModelPolicy(args: ResolveChatModelPolicyArgs): 
     displayName: selectedOption.displayName,
   };
   const recommended = toModelReference(policyDefault);
-  const hasAudioCapableAvailableOption = options.some((option) => option.audioEligible && option.state === "available");
-  const audioTurnAvailable = audioTurnPolicy.gateOpen && hasAudioCapableAvailableOption;
-  const audioTurnReasonCode: IChatModelPolicyResult["audioTurnReasonCode"] = !audioTurnPolicy.gateOpen
-    ? "gate_closed"
-    : !hasAudioCapableAvailableOption
-      ? "no_audio_capable_model"
-      : undefined;
-
   return {
     service: args.service,
     scopeType: scope.scopeType,

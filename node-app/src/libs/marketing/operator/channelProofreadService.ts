@@ -1,6 +1,6 @@
 import "server-only";
 
-import { TEXT_MODEL_MAP } from "consts/ai";
+import { AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 import type { MarketingChannel } from "consts/marketing/queue";
 import {
   createMarketingAsset,
@@ -29,8 +29,10 @@ import { assertSystemModelSelectableOrThrow } from "libs/server-utils/api/system
 import type { AiProviderType } from "types/ai";
 import {
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
   isXaiLongContextTieredTextModel,
   pickXaiPricingVariantByInputTokens,
+  pickClaudePricingVariantByInputTokens,
 } from "utils/ai/providerHelper";
 import { isUnknownRecord, toSafeString, type UnknownRecord } from "utils/common/typeUtils";
 import { logger } from "utils/log";
@@ -45,9 +47,9 @@ const CORRECTABLE_FIELDS: Record<SupportedManualChannel, readonly string[]> = {
 };
 
 function resolveProofreadModel(providerRaw: unknown, modelRaw: unknown) {
-  const provider = toSafeString(providerRaw) as keyof typeof TEXT_MODEL_MAP;
+  const provider = toSafeString(providerRaw) as keyof typeof AI_TEXT_MODEL_MAP;
   const modelName = toSafeString(modelRaw);
-  const allowed = (TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
+  const allowed = (AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
   return allowed.includes(modelName) ? { provider, modelName } : null;
 }
 
@@ -212,7 +214,8 @@ export async function correctMarketingChannelTypos(args: {
   });
   const needsTieredVariants =
     (selectedModel.provider === "google" && isGoogleProTextModel(selectedModel.modelName)) ||
-    (selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName));
+    (selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName)) ||
+    (selectedModel.provider === "claude" && isClaudeLongContextTieredTextModel(selectedModel.modelName));
   await assertPricingPreflightOrThrow({
     provider: selectedModel.provider,
     modelName: selectedModel.modelName,
@@ -225,7 +228,8 @@ export async function correctMarketingChannelTypos(args: {
     app: "ai_marketing_proofread",
     provider: selectedModel.provider,
     modelName: selectedModel.modelName,
-    ...(selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName)
+    ...((selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName)) ||
+    (selectedModel.provider === "claude" && isClaudeLongContextTieredTextModel(selectedModel.modelName))
       ? { variant: "long" }
       : {}),
     usage: {
@@ -290,6 +294,8 @@ export async function correctMarketingChannelTypos(args: {
         : "short"
       : provider === "xai" && isXaiLongContextTieredTextModel(aiResult.modelName)
         ? pickXaiPricingVariantByInputTokens(aiResult.usage.inputTokens)
+        : provider === "claude" && isClaudeLongContextTieredTextModel(aiResult.modelName)
+          ? pickClaudePricingVariantByInputTokens(aiResult.usage.inputTokens)
         : undefined;
   const billingParams = {
     uid,

@@ -1,7 +1,7 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import {
   ELEVENLABS_DEFAULT_STT_MODEL,
-  OPENAI_DEFAULT_STT_MODEL,
   OPENAI_GPT_TRANSCRIBE_CANDIDATE_MODEL,
 } from "consts/ai/voiceCatalog";
 import type { ISpeechTranscribeResponse } from "types/ai";
@@ -25,13 +25,59 @@ import {
   qwenTranscribeSpeech,
 } from "./providers/qwenSpeech";
 import { QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID } from "consts/legal/voiceDataConsent";
-import { assertSpeechBudgetOrThrow, recordSpeechSpend } from "./speechBudgetGuard";
+import {
+  markSpeechBudgetUnknownOutcome,
+  releaseSpeechBudget,
+  reserveSpeechBudgetOrThrow,
+  settleSpeechBudget,
+  type SpeechBudgetReservation,
+} from "./speechBudgetReservation";
+import { buildSpeechOperationId } from "./speechBillingLedger";
 import {
   assertSpeechCandidatePreApprovalGateOrThrow,
   assertSpeechProviderCapabilityOrThrow,
 } from "./speechProviderPolicy";
 import { claimProviderOperationOrThrow } from "libs/server-utils/api/providerOperationGuard";
+import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
+import {
+  isOverseasTransferRefused,
+  OVERSEAS_TRANSFER_REFUSAL_PROCESSOR_KEYS,
+} from "libs/server-utils/auth/overseasTransferRefusalService";
 import type { ISpeechTranscribeRequest } from "./types";
+
+async function assertElevenLabsTransferAllowed(args: ISpeechTranscribeRequest) {
+  const user = args.user && typeof args.user === "object" ? args.user as Record<string, unknown> : {};
+  const uid = String(args.billing?.uid || user.uid || user.ID || "").trim();
+  if (!uid) {
+    throw createSpeechError(
+      "ElevenLabs 국외 이전 거부 상태를 확인할 수 없어 음성 처리를 차단했습니다.",
+      "OVERSEAS_TRANSFER_REFUSAL_UNAVAILABLE",
+      503,
+    );
+  }
+
+  let refused: boolean;
+  try {
+    refused = await isOverseasTransferRefused({
+      uid,
+      processorKey: OVERSEAS_TRANSFER_REFUSAL_PROCESSOR_KEYS[0],
+    });
+  } catch {
+    throw createSpeechError(
+      "ElevenLabs 국외 이전 거부 상태를 확인할 수 없어 음성 처리를 차단했습니다.",
+      "OVERSEAS_TRANSFER_REFUSAL_UNAVAILABLE",
+      503,
+    );
+  }
+
+  if (refused) {
+    throw createSpeechError(
+      "국외 이전 거부 설정으로 ElevenLabs 음성 처리를 차단했습니다.",
+      "OVERSEAS_TRANSFER_REFUSED",
+      403,
+    );
+  }
+}
 
 function validateQwenAsrFile(args: ISpeechTranscribeRequest) {
   const maxDurationMs = Math.min(QWEN_ASR_MAX_DURATION_MS, Math.max(1, Number(args.maxDurationMs || QWEN_ASR_MAX_DURATION_MS)));
@@ -89,6 +135,7 @@ async function transcribeQwenSpeech(args: ISpeechTranscribeRequest): Promise<ISp
   if (lease.kind === "replay") return lease.result as ISpeechTranscribeResponse;
   let providerDispatchStarted = false;
   let providerResponseReceived = false;
+  let reservation: SpeechBudgetReservation = { enforced: false };
   try {
     await assertQwenProviderCallReady({
       modelName: QWEN_ASR_MODEL,
@@ -114,14 +161,21 @@ async function transcribeQwenSpeech(args: ISpeechTranscribeRequest): Promise<ISp
       meta: { ...billingMeta, usageSource: "estimated_from_server_duration", preflight: true },
     });
     const durationSeconds = (validatedFile.actualDurationMs || 0) / 1000;
-    const budgetDecision = await assertSpeechBudgetOrThrow({
+    const sessionId = String(args.billing?.meta?.sessionId || "").trim();
+    const clientId = String(args.billing?.meta?.clientId || "").trim();
+    reservation = await reserveSpeechBudgetOrThrow({
+      role: "speech_stt",
       provider: "qwen",
       modelName,
       unit: "audio_second",
       quantity: durationSeconds,
       billing: args.billing,
       user: args.user,
+      reservationKey: sessionId && clientId
+        ? `${buildSpeechOperationId({ operation: "speech_transcribe", sessionId, clientId })}:${randomUUID()}`
+        : undefined,
     });
+    await assertSystemModelEnabledOrThrow({ provider: "qwen", modelName, modality: "audio" });
     const providerResult = await qwenTranscribeSpeech(validatedFile, args.user, {
       onDispatch: () => { providerDispatchStarted = true; },
       onResponse: () => { providerResponseReceived = true; },
@@ -131,12 +185,9 @@ async function transcribeQwenSpeech(args: ISpeechTranscribeRequest): Promise<ISp
         providerCallState: "completed",
       });
     }
-    await recordSpeechSpend({
-      decision: budgetDecision,
-      provider: "qwen",
-      modelName,
-      unit: "audio_second",
-      quantity: durationSeconds,
+    await settleSpeechBudget({
+      reservation,
+      actualQuantity: durationSeconds,
     });
     const billing = await applySpeechBilling({
       provider: "qwen",
@@ -179,6 +230,11 @@ async function transcribeQwenSpeech(args: ISpeechTranscribeRequest): Promise<ISp
       responseReceived: providerResponseReceived,
       error,
     });
+    if (disposition === "release") {
+      await releaseSpeechBudget({ reservation, reason: "provider_not_dispatched" });
+    } else {
+      await markSpeechBudgetUnknownOutcome({ reservation, reason: "provider_outcome_unknown" });
+    }
     if (disposition === "release") await lease.release();
     else await lease.markUnresolved(disposition);
     throw error;
@@ -186,7 +242,7 @@ async function transcribeQwenSpeech(args: ISpeechTranscribeRequest): Promise<ISp
 }
 
 export async function preflightTranscribeSpeech(args: ISpeechTranscribeRequest) {
-  const provider = args.provider || "openai";
+  const provider = args.provider || "elevenlabs";
   if (provider === "qwen") {
     const validatedFile = validateQwenAsrFile(args);
     const modelName = String(args.modelName || QWEN_ASR_MODEL).trim();
@@ -218,15 +274,16 @@ export async function preflightTranscribeSpeech(args: ISpeechTranscribeRequest) 
     });
   }
   if (provider !== "openai" && provider !== "elevenlabs") {
-    throw createSpeechError("현재 O1 단계에서는 OpenAI 음성만 지원합니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
+    throw createSpeechError("지원하지 않는 speech provider입니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
       provider,
     });
   }
 
   const validatedFile = assertSpeechAudioInputOrThrow(args.file, { maxDurationMs: args.maxDurationMs });
-  const modelName = String(args.modelName || (provider === "elevenlabs" ? ELEVENLABS_DEFAULT_STT_MODEL : OPENAI_DEFAULT_STT_MODEL)).trim() || OPENAI_DEFAULT_STT_MODEL;
+  const modelName = String(args.modelName || (provider === "elevenlabs" ? ELEVENLABS_DEFAULT_STT_MODEL : "")).trim();
   if (provider === "elevenlabs") {
     await assertSpeechProviderCapabilityOrThrow({ provider, modelName, role: "speech_stt", capability: "stt_file" });
+    await assertElevenLabsTransferAllowed(args);
     if (validatedFile.durationSource !== "server" || !validatedFile.actualDurationMs) {
       throw createSpeechError("ElevenLabs STT 과금에 필요한 서버 측 오디오 길이를 확인할 수 없습니다.", "AUDIO_DURATION_UNAVAILABLE", 400);
     }
@@ -238,6 +295,7 @@ export async function preflightTranscribeSpeech(args: ISpeechTranscribeRequest) 
       throw createSpeechError("GPT-Transcribe 과금 사전 확인에 서버 측 오디오 길이가 필요합니다.", "AUDIO_DURATION_UNAVAILABLE", 400);
     }
     assertSpeechCandidatePreApprovalGateOrThrow({ provider, modelName });
+    await assertSpeechProviderCapabilityOrThrow({ provider, modelName, role: "speech_stt", capability: "stt_file" });
   }
   const fixedUsage = provider === "elevenlabs"
     ? { seconds: (validatedFile.actualDurationMs || 0) / 1000 }
@@ -273,20 +331,21 @@ function toAudioSeconds(fixed?: { minutes?: number; seconds?: number } | null): 
 }
 
 export async function transcribeSpeech(args: ISpeechTranscribeRequest): Promise<ISpeechTranscribeResponse> {
-  const provider = args.provider || "openai";
+  const provider = args.provider || "elevenlabs";
   if (provider === "qwen") {
     return transcribeQwenSpeech(args);
   }
   if (provider !== "openai" && provider !== "elevenlabs") {
-    throw createSpeechError("현재 O1 단계에서는 OpenAI 음성만 지원합니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
+    throw createSpeechError("지원하지 않는 speech provider입니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
       provider,
     });
   }
 
   const validatedFile = assertSpeechAudioInputOrThrow(args.file, { maxDurationMs: args.maxDurationMs });
-  const modelName = String(args.modelName || (provider === "elevenlabs" ? ELEVENLABS_DEFAULT_STT_MODEL : OPENAI_DEFAULT_STT_MODEL)).trim() || OPENAI_DEFAULT_STT_MODEL;
+  const modelName = String(args.modelName || (provider === "elevenlabs" ? ELEVENLABS_DEFAULT_STT_MODEL : "")).trim();
   if (provider === "elevenlabs") {
     await assertSpeechProviderCapabilityOrThrow({ provider, modelName, role: "speech_stt", capability: "stt_file" });
+    await assertElevenLabsTransferAllowed(args);
     if (validatedFile.durationSource !== "server" || !validatedFile.actualDurationMs) {
       throw createSpeechError("ElevenLabs STT 과금에 필요한 서버 측 오디오 길이를 확인할 수 없습니다.", "AUDIO_DURATION_UNAVAILABLE", 400);
     }
@@ -298,6 +357,7 @@ export async function transcribeSpeech(args: ISpeechTranscribeRequest): Promise<
       throw createSpeechError("GPT-Transcribe 과금 사전 확인에 서버 측 오디오 길이가 필요합니다.", "AUDIO_DURATION_UNAVAILABLE", 400);
     }
     assertSpeechCandidatePreApprovalGateOrThrow({ provider, modelName });
+    await assertSpeechProviderCapabilityOrThrow({ provider, modelName, role: "speech_stt", capability: "stt_file" });
   }
   const estimatedFixed = provider === "elevenlabs"
     ? { seconds: (validatedFile.actualDurationMs || 0) / 1000 }
@@ -328,56 +388,85 @@ export async function transcribeSpeech(args: ISpeechTranscribeRequest): Promise<
     },
   });
 
-  // EL-204-S3. STT는 오디오 시간 축으로 판정한다(문자 축과 섞지 않는다).
-  const budgetDecision = await assertSpeechBudgetOrThrow({
+  // EL-204-S3. STT는 오디오 시간 축으로 예약한다(문자 축과 섞지 않는다).
+  const sessionId = String(args.billing?.meta?.sessionId || "").trim();
+  const clientId = String(args.billing?.meta?.clientId || "").trim();
+  const reservation = await reserveSpeechBudgetOrThrow({
+    role: "speech_stt",
     provider,
     modelName,
     unit: "audio_second",
     quantity: toAudioSeconds(estimatedFixed),
     billing: args.billing,
     user: args.user,
+    reservationKey: sessionId && clientId
+      ? `${buildSpeechOperationId({ operation: "speech_transcribe", sessionId, clientId })}:${randomUUID()}`
+      : undefined,
   });
 
-  const providerResult = provider === "elevenlabs"
-    ? await elevenLabsTranscribeSpeech({
-        apiKey: await resolveElevenLabsApiKey(),
+  const isGPTTranscribeCandidate = provider === "openai" && modelName === OPENAI_GPT_TRANSCRIBE_CANDIDATE_MODEL;
+  let providerDispatchStarted = false;
+  let providerResult:
+    | Awaited<ReturnType<typeof elevenLabsTranscribeSpeech>>
+    | Awaited<ReturnType<typeof openaiTranscribeSpeech>>;
+  try {
+    if (provider === "elevenlabs") {
+      const apiKey = await resolveElevenLabsApiKey();
+      await assertSystemModelEnabledOrThrow({ provider, modelName, modality: "audio" });
+      providerResult = await elevenLabsTranscribeSpeech({
+        apiKey,
         file: validatedFile,
         modelName,
         language: args.language,
-      })
-    : await openaiTranscribeSpeech({
+      }).catch((error: unknown) => {
+        providerDispatchStarted = true;
+        throw error;
+      });
+      providerDispatchStarted = true;
+    } else {
+      await assertSystemModelEnabledOrThrow({ provider, modelName, modality: "audio" });
+      providerResult = await openaiTranscribeSpeech({
         file: validatedFile,
         modelName,
         language: args.language,
         prompt: args.prompt,
+      }).catch((error: unknown) => {
+        providerDispatchStarted = true;
+        throw error;
       });
+      providerDispatchStarted = true;
+    }
 
-  const isGPTTranscribeCandidate = provider === "openai" && modelName === OPENAI_GPT_TRANSCRIBE_CANDIDATE_MODEL;
-  if (
-    isGPTTranscribeCandidate &&
-    (providerResult.meta?.providerUsage === undefined ||
-      providerResult.meta?.providerUsage === null ||
-      (providerResult.meta?.providerUsage as Record<string, unknown>).type !== "duration" ||
-      !providerResult.fixedUsage?.minutes)
-  ) {
-    throw createSpeechError(
-      "GPT-Transcribe usage 단위가 오디오 분 과금 계약과 일치하지 않아 정산할 수 없습니다.",
-      "OPENAI_USAGE_UNIT_UNSUPPORTED",
-      502,
-      { providerCallState: "completed", usageType: (providerResult.meta?.providerUsage as Record<string, unknown> | undefined)?.type || null },
-    );
+    if (
+      isGPTTranscribeCandidate &&
+      (providerResult.meta?.providerUsage === undefined ||
+        providerResult.meta?.providerUsage === null ||
+        (providerResult.meta?.providerUsage as Record<string, unknown>).type !== "duration" ||
+        !providerResult.fixedUsage?.minutes)
+    ) {
+      throw createSpeechError(
+        "GPT-Transcribe usage 단위가 오디오 분 과금 계약과 일치하지 않아 정산할 수 없습니다.",
+        "OPENAI_USAGE_UNIT_UNSUPPORTED",
+        502,
+        { providerCallState: "completed", usageType: (providerResult.meta?.providerUsage as Record<string, unknown> | undefined)?.type || null },
+      );
+    }
+  } catch (error) {
+    if (providerDispatchStarted) {
+      await markSpeechBudgetUnknownOutcome({ reservation, reason: "provider_outcome_unknown" });
+    } else {
+      await releaseSpeechBudget({ reservation, reason: "provider_not_dispatched" });
+    }
+    throw error;
   }
 
   const usage = isGPTTranscribeCandidate
     ? providerResult.usage
     : providerResult.usage || estimateSpeechTranscriptionUsageFromText(providerResult.transcript);
   const fixedUsage = providerResult.fixedUsage;
-  await recordSpeechSpend({
-    decision: budgetDecision,
-    provider,
-    modelName,
-    unit: "audio_second",
-    quantity: toAudioSeconds(fixedUsage) || toAudioSeconds(estimatedFixed),
+  await settleSpeechBudget({
+    reservation,
+    actualQuantity: toAudioSeconds(fixedUsage) || toAudioSeconds(estimatedFixed),
   });
   const billWithProviderUsage = Boolean(providerResult.usage || fixedUsage);
   const billing = await applySpeechBilling({

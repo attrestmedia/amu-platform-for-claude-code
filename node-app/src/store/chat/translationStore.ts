@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { TEXT_MODEL_MAP, TEXT_PROVIDER_TYPES } from "consts/ai";
+import { TEXT_PROVIDER_TYPES } from "consts/ai";
+import { AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
+import { AI_MODEL_ROLE_POLICY } from "consts/ai/generated/modelPolicy.generated";
+import { roleRefToProviderModel } from "consts/ai/modelPolicy";
 import type { TextProviderType } from "types/ai";
 
 /**
@@ -37,23 +40,25 @@ export const CHAT_TRANSLATION_LANGUAGE_OPTIONS = [
 ] as const;
 
 export const CHAT_HELPER_MODEL_GUIDE_BY_KEY = {
-  "openai:gpt-5.6-luna": {
+  "openai:gpt-6-luna": {
     label: { ko: "저렴한 모델", en: "Low-cost model" },
     note: { ko: "번역/힌트 초기 추천 모델", en: "Initial recommendation for translation and hints" },
   },
-  "google:gemini-3.5-flash-lite": {
+  "google:gemini-3.8-flash": {
     label: { ko: "빠른 모델", en: "Fast model" },
     note: { ko: "짧은 보조 생성에 적합", en: "Good for short helper generations" },
   },
-  "openai:gpt-5.6-terra": {
+  "openai:gpt-6-sol": {
     label: { ko: "균형 모델", en: "Balanced model" },
     note: { ko: "속도와 품질 균형형", en: "Balances speed and quality" },
   },
 } as const satisfies Record<string, { label: { ko: string; en: string }; note: { ko: string; en: string } }>;
 
+const chatHelperModel = roleRefToProviderModel(AI_MODEL_ROLE_POLICY.chat.translation.helperModel);
+
 export const DEFAULT_CHAT_HELPER_MODEL = {
-  provider: "openai",
-  modelName: "gpt-5.6-luna",
+  provider: chatHelperModel.provider as TextProviderType,
+  modelName: chatHelperModel.modelName,
 } as const satisfies { provider: TextProviderType; modelName: string };
 
 export function normalizeChatTranslationLanguage(value: unknown) {
@@ -84,7 +89,7 @@ export function normalizeChatHelperModel(model: { provider?: unknown; modelName?
     .trim()
     .toLowerCase() as TextProviderType;
   const modelName = String(model.modelName || "").trim();
-  const providerModels = (TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
+  const providerModels = (AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
   if ((TEXT_PROVIDER_TYPES as readonly string[]).includes(provider) && providerModels.includes(modelName)) {
     return { provider, modelName };
   }

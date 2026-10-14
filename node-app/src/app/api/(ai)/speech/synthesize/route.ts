@@ -25,7 +25,13 @@ import {
   saveVoiceBufferToR2,
 } from "libs/server-utils/audio/voiceAssetStorage";
 import type { SpeechSynthesisFormat } from "libs/server-utils/audio/types";
+import {
+  PLAY_SPEECH_BUDGET_OWNER,
+  resolvePlayCharacterChatSpeechCutover,
+  resolvePlayCharacterChatTtsRoleOrThrow,
+} from "libs/server-utils/audio/playCharacterChatSpeechRole";
 import { createTextHash, toUnknownRecord } from "utils/common";
+import { RETIRED_TUTORS_ROUTE_HINT } from "consts/app";
 
 /**
  * @docHint
@@ -40,6 +46,18 @@ export const runtime = "nodejs";
 export const POST = withAuth(
   async (data, user) => {
     return withApiTimeout(async () => {
+      if (String(data?.routeHint || "").trim() === RETIRED_TUTORS_ROUTE_HINT) {
+        return NextResponse.json(
+          {
+            error: "Tutors 음성은 종료되었습니다. 텍스트로 계속해 주세요.",
+            errorCode: "TUTORS_SPEECH_GATE_CLOSED",
+            fallback: "text_only",
+            routeHint: RETIRED_TUTORS_ROUTE_HINT,
+          },
+          { status: 403 },
+        );
+      }
+
       const routeContext = await resolveSpeechRouteContext({
         user,
         routeHintRaw: data?.routeHint,
@@ -48,28 +66,30 @@ export const POST = withAuth(
         sessionIdRaw: data?.sessionId,
         clientIdRaw: data?.assistantClientId || data?.clientId,
         clientIdFieldLabel: "assistantClientId",
-        rejectTutorsPersona: true,
       });
 
-      // EL-602: Tutors 응답 TTS는 비동기 job 경로가 소유한다. 기존 동기 /speech/synthesize로
-      // 신규 OpenAI TTS를 포함한 provider 호출이 발생하지 않도록 서버에서 차단한다.
-      if (routeContext.routeHint === "tutors") {
-        return NextResponse.json(
-          {
-            error: "Tutors 음성 응답은 비동기 job 경로를 사용합니다.",
-            errorCode: "TUTORS_TTS_JOB_REQUIRED",
-            fallback: "text_only",
-          },
-          { status: 409 },
-        );
-      }
-
-      const provider = normalizeOptionalSpeechProvider(
-        data?.provider || routeContext.universeMetadata?.voiceConfig?.defaultTtsProvider,
-      ) || "openai";
+      const speechCutover = await resolvePlayCharacterChatSpeechCutover({
+        routeHint: routeContext.routeHint,
+        user,
+      });
+      const requestedLocale =
+        normalizeOptionalSpeechString(data?.locale || routeContext.universeMetadata?.voiceConfig?.defaultLocale, 16) ||
+        undefined;
+      const playTtsRole = speechCutover.cutover
+        ? resolvePlayCharacterChatTtsRoleOrThrow({
+            requestedProvider: data?.provider,
+            requestedVoiceProfile: data?.voiceProfile,
+            personaVoiceProfile: routeContext.persona?.voiceProfile,
+            locale: requestedLocale,
+          })
+        : null;
+      const requestedProvider = normalizeOptionalSpeechProvider(data?.provider);
+      const configuredProvider = normalizeOptionalSpeechProvider(routeContext.universeMetadata?.voiceConfig?.defaultTtsProvider);
+      const provider = playTtsRole?.provider ?? requestedProvider ??
+        (configuredProvider === "openai" ? "elevenlabs" : configuredProvider) ?? "elevenlabs";
       if (provider === "qwen") {
         return NextResponse.json(
-          { error: "현재 O1 단계에서는 OpenAI 음성만 지원합니다.", errorCode: "UNSUPPORTED_SPEECH_PROVIDER" },
+          { error: "현재 지원하지 않는 speech provider입니다.", errorCode: "UNSUPPORTED_SPEECH_PROVIDER" },
           { status: 400 },
         );
       }
@@ -79,25 +99,30 @@ export const POST = withAuth(
       }
       const format = (normalizeOptionalSpeechString(data?.format || data?.responseFormat, 16) || "mp3") as SpeechSynthesisFormat;
       const modelName =
-        normalizeOptionalSpeechString(
-          data?.modelName || data?.model || routeContext.universeMetadata?.voiceConfig?.defaultTtsModel,
-          120,
-        ) || undefined;
+        playTtsRole?.modelName || (
+          normalizeOptionalSpeechString(
+            data?.modelName || data?.model || (configuredProvider === "openai" ? undefined : routeContext.universeMetadata?.voiceConfig?.defaultTtsModel),
+            120,
+          ) || undefined
+        );
       const speed = normalizeOptionalSpeechNumber(data?.speed ?? routeContext.universeMetadata?.voiceConfig?.defaultTtsSpeed);
-      const locale =
-        normalizeOptionalSpeechString(data?.locale || routeContext.universeMetadata?.voiceConfig?.defaultLocale, 16) ||
-        undefined;
-      const voiceProfile = normalizeOptionalSpeechObject(data?.voiceProfile);
+      const locale = playTtsRole?.locale || requestedLocale;
+      const voiceProfile = playTtsRole
+        ? {
+            provider: playTtsRole.provider,
+            voiceId: playTtsRole.voiceId,
+            modelName: playTtsRole.modelName,
+            locale: playTtsRole.locale,
+          }
+        : normalizeOptionalSpeechObject(data?.voiceProfile);
       const userRec = toUnknownRecord(user);
-      if (provider === "elevenlabs") {
-        // cache hit도 provider 활성화 게이트를 우회하지 않도록 cache 조회 전에 판정한다.
-        await assertSpeechProviderCapabilityOrThrow({
-          provider,
-          modelName,
-          role: "speech_tts",
-          capability: "tts_http",
-        });
-      }
+      // Cache hit도 provider 활성화·catalog 게이트를 우회하지 않도록 조회 전에 판정한다.
+      await assertSpeechProviderCapabilityOrThrow({
+        provider,
+        modelName,
+        role: "speech_tts",
+        capability: "tts_http",
+      });
       const resolvedVoice = resolveVoiceProfile({
         provider,
         modelName,
@@ -204,6 +229,15 @@ export const POST = withAuth(
         );
       }
 
+      const speechBilling = buildSpeechBillingContext({
+        user,
+        routeHint: routeContext.routeHint,
+        universeId: routeContext.universeId,
+        sessionId: routeContext.sessionId,
+        npcId: routeContext.npcId,
+        clientId: routeContext.clientId,
+        operation: "speech_synthesize",
+      });
       const serviceResult = await synthesizeSpeech({
         provider,
         modelName,
@@ -218,25 +252,21 @@ export const POST = withAuth(
         settings: resolvedVoice.settings,
         speechIntent: resolvedVoice.speechIntent,
         user,
-        billing: buildSpeechBillingContext({
-          user,
-          routeHint: routeContext.routeHint,
-          universeId: routeContext.universeId,
-          sessionId: routeContext.sessionId,
-          npcId: routeContext.npcId,
-          clientId: routeContext.clientId,
-          operation: "speech_synthesize",
-        }),
+        billing: playTtsRole
+          ? { ...speechBilling, meta: { ...speechBilling.meta, budgetOwner: PLAY_SPEECH_BUDGET_OWNER } }
+          : speechBilling,
       });
-      const voiceProfilePersisted = await persistResolvedPersonaVoiceProfile({
-        user,
-        routeHint: routeContext.routeHint,
-        universeId: routeContext.universeId,
-        personaId: routeContext.npcId,
-        persona: routeContext.persona,
-        currentVoiceProfile: routeContext.persona?.voiceProfile,
-        resolvedVoice: serviceResult.resolvedVoice,
-      }).catch(() => false);
+      const voiceProfilePersisted = playTtsRole
+        ? false
+        : await persistResolvedPersonaVoiceProfile({
+            user,
+            routeHint: routeContext.routeHint,
+            universeId: routeContext.universeId,
+            personaId: routeContext.npcId,
+            persona: routeContext.persona,
+            currentVoiceProfile: routeContext.persona?.voiceProfile,
+            resolvedVoice: serviceResult.resolvedVoice,
+          }).catch(() => false);
       const audioMeta = buildMessageAudioMeta({
         assistantClientId: routeContext.clientId,
         voiceProfile: serviceResult.resolvedVoice,

@@ -1,12 +1,9 @@
 "use client";
 
 import React, { useRef, useEffect, useMemo, useState, useCallback } from "react";
-import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 import type { IExtendedNpcData } from "types/game";
 import type {
-  ChatImageInputType,
-  ChatImagePreviewType,
   IChatMessage,
   IMessageAudioMeta,
   IPersonaItem,
@@ -18,16 +15,8 @@ import type {
 } from "types/ai";
 import type { ICommerceProduct } from "types/commerce";
 import { PROMPT_LIMITS } from "consts/auth";
-import { TUTORS_NAMESPACE_KEY } from "consts/app";
-import {
-  DEFAULT_TUTOR_TARGET_LANGUAGE,
-  normalizeTutorConversationLevel,
-  normalizeTutorTargetLanguage,
-  type TutorConversationLevel,
-} from "consts/tutors";
 import fetchClient from "libs/api/fetchClient";
-import { getTutorsSttStatus, saveAssistantAudioMeta, type TutorsSttStatus } from "libs/api/ai";
-import { updateTutorsPersonaConversationLevel } from "libs/api/tutors/personas";
+import { saveAssistantAudioMeta } from "libs/api/ai";
 import { lang } from "components/module/i18n";
 
 import { useGameCharacterStore, useUserDataStore, useUiControlStore } from "store/game";
@@ -51,8 +40,6 @@ import {
   useVoiceInput,
   useVoicePlayback,
   useChatModelSelection,
-  useConversationHints,
-  useTutorsChatImageInput,
 } from "hooks/chat";
 
 import { convertHtmlToString, isMobileEnvironment, toUnknownRecord } from "utils/common";
@@ -65,7 +52,6 @@ import { ensureGuestId } from "utils/normalize";
 import { CharacterChatView } from "./chat-modules/CharacterChatView";
 import NpcConversationResultDialog from "./chat-modules/overlays/NpcConversationResultDialog";
 import NpcConversationReportDialog from "./chat-modules/overlays/NpcConversationReportDialog";
-import { normalizeChatTranslationLanguage, normalizeTutorLanguageForComparison } from "store/chat/translationStore";
 import type { NpcConversationResult } from "types/game/npc-conversation-result";
 
 type ResetReason = "close" | "pid-change";
@@ -80,25 +66,6 @@ interface CharacterChatProps {
   personaArtifacts?: PersonaImageLibraryAssetType[];
   startSessionOnOpen?: boolean;
   autoAiResponseOverride?: boolean;
-  tutorsConversationHint?: {
-    enabled?: boolean;
-    targetLanguage?: string;
-    topic?: string;
-  };
-  tutorsConversationLevel?: string;
-  tutorsImageInputEnabled?: boolean;
-}
-
-function normalizeLanguageBase(value: unknown) {
-  return normalizeTutorLanguageForComparison(value).split(/[-_]/, 1)[0];
-}
-
-function isTutorSttLanguageSupported(languages: unknown, targetLanguageCode: string) {
-  if (!targetLanguageCode) return true;
-  if (!Array.isArray(languages) || languages.length === 0) return false;
-
-  const target = normalizeLanguageBase(targetLanguageCode);
-  return languages.some((language) => normalizeLanguageBase(language) === target);
 }
 
 const CharacterChat = ({
@@ -111,12 +78,8 @@ const CharacterChat = ({
   personaArtifacts = [],
   startSessionOnOpen = false,
   autoAiResponseOverride,
-  tutorsConversationHint,
-  tutorsConversationLevel,
-  tutorsImageInputEnabled = false,
 }: CharacterChatProps) => {
   const MESSAGE_SEND_DELAY = 300;
-  const pathname = usePathname();
 
   const { universeId, universeInfo, isCommerceUniverse } = useUniverseData();
 
@@ -147,37 +110,16 @@ const CharacterChat = ({
   const userPersonaId = userData?.selectedPersonas ? userData?.selectedPersonas[universeId] : "";
   const limitMsgLength = PROMPT_LIMITS.maxInputMessageLength;
   const sessionId = useMessageStore((state) => state.sessionId);
-  const isTutorsRoute = pathname.startsWith("/tutors");
-  const conversationUserPersonaId = isTutorsRoute ? TUTORS_NAMESPACE_KEY : userPersonaId;
-  const effectiveChatUniverseId = isTutorsRoute
-    ? String(character?.universeId || universeId || "").trim()
-    : String(universeId || "").trim();
+  const effectiveChatUniverseId = String(universeId || "").trim();
   const modelSelection = useChatModelSelection({
     enabled: open && isLoggedIn && !isCommerceUniverse && Boolean(character?.pid),
-    service: isTutorsRoute ? "tutors" : "game",
+    service: "game",
     universeId: effectiveChatUniverseId,
     personaId: character?.pid,
   });
-  const selectedModelOption = modelSelection.policy?.options.find(
-    (option) => option.key === modelSelection.policy?.selected.key,
-  );
-  const chatImageInputEnabled =
-    isTutorsRoute && tutorsImageInputEnabled && selectedModelOption?.supportsImageInput === true;
-  const {
-    pending: pendingChatImage,
-    preparing: isPreparingChatImage,
-    prepare: prepareChatImage,
-    discard: discardChatImage,
-    take: takeChatImage,
-  } = useTutorsChatImageInput(chatImageInputEnabled);
-  const [imagePickerOpen, setImagePickerOpen] = useState(false);
   const handleSelectChatModel = useCallback(
-    async (provider: TextProviderType, modelName: string) => {
-      setImagePickerOpen(false);
-      discardChatImage();
-      await modelSelection.selectModel(provider, modelName);
-    },
-    [discardChatImage, modelSelection],
+    async (provider: TextProviderType, modelName: string) => modelSelection.selectModel(provider, modelName),
+    [modelSelection],
   );
   const reloadModelSelection = modelSelection.reload;
 
@@ -188,16 +130,10 @@ const CharacterChat = ({
   const assistantVoiceAutoplay = useUiControlStore((state) => state.assistantVoiceAutoplay);
   const assistantVoiceSpeed = useUiControlStore((state) => state.assistantVoiceSpeed);
   const voiceAnalysisEnabled = useUiControlStore((state) => state.voiceAnalysisEnabled);
-  const conversationHintsEnabled = useUiControlStore((state) => state.conversationHintsEnabled);
-  const setConversationHintsEnabled = useUiControlStore((state) => state.setConversationHintsEnabled);
 
   // 지식 프롬프트 저장/읽기
   const knowledgeContext = usePromptStore((state) => state.knowledgeContext);
   const setKnowledgeContext = usePromptStore((state) => state.setKnowledgeContext);
-  const tutorTargetLanguage = usePromptStore((state) => state.tutorTargetLanguage);
-  const setTutorTargetLanguage = usePromptStore((state) => state.setTutorTargetLanguage);
-  const tutorConversationLevel = usePromptStore((state) => state.tutorConversationLevel);
-  const setTutorConversationLevel = usePromptStore((state) => state.setTutorConversationLevel);
   const hasKnowledgeContext = useMemo(() => Boolean(knowledgeContext?.trim()), [knowledgeContext]);
 
   // view mode / ui flags
@@ -310,101 +246,6 @@ const CharacterChat = ({
     debounceMs: 1500,
   });
 
-  const tutorTargetLanguageCode = useMemo(() => {
-    if (!isTutorsRoute) return "";
-    return normalizeTutorLanguageForComparison(
-      tutorTargetLanguage || tutorsConversationHint?.targetLanguage || character?.language || "",
-    );
-  }, [character?.language, isTutorsRoute, tutorTargetLanguage, tutorsConversationHint?.targetLanguage]);
-  const setTranslationEnabled = translationSettings.setEnabled;
-
-  const defaultTutorTargetLanguage = useMemo(() => {
-    if (!isTutorsRoute) return "";
-    return normalizeTutorTargetLanguage(
-      tutorsConversationHint?.targetLanguage || character?.language || DEFAULT_TUTOR_TARGET_LANGUAGE,
-      DEFAULT_TUTOR_TARGET_LANGUAGE,
-    );
-  }, [character?.language, isTutorsRoute, tutorsConversationHint?.targetLanguage]);
-
-  useEffect(() => {
-    if (!isTutorsRoute) {
-      setTutorTargetLanguage("");
-      return;
-    }
-    if (open) setTutorTargetLanguage(defaultTutorTargetLanguage);
-  }, [defaultTutorTargetLanguage, isTutorsRoute, open, setTutorTargetLanguage]);
-
-  const defaultTutorConversationLevel = useMemo(() => {
-    if (!isTutorsRoute) return "";
-    const policy = toUnknownRecord(character?.tutorsPolicy);
-    return normalizeTutorConversationLevel(tutorsConversationLevel || policy.conversationLevel);
-  }, [character?.tutorsPolicy, isTutorsRoute, tutorsConversationLevel]);
-
-  useEffect(() => {
-    if (!isTutorsRoute) {
-      setTutorConversationLevel("");
-      return;
-    }
-    if (open) setTutorConversationLevel(defaultTutorConversationLevel);
-  }, [defaultTutorConversationLevel, isTutorsRoute, open, setTutorConversationLevel]);
-
-  const tutorPersonaId = character?.pid || "";
-  const canPersistTutorConversationLevel =
-    isTutorsRoute && Boolean(tutorPersonaId) && toUnknownRecord(character?.tutorsAccess).canEdit !== false;
-
-  const handleTutorConversationLevelChange = useCallback(
-    (conversationLevel: TutorConversationLevel) => {
-      setTutorConversationLevel(conversationLevel);
-      if (!tutorPersonaId || !canPersistTutorConversationLevel) return;
-
-      void updateTutorsPersonaConversationLevel(tutorPersonaId, conversationLevel).catch((error) => {
-        logger.warn("[CharacterChat] 튜터 대화 수준 저장 실패:", error);
-        toast.error(
-          lang({
-            ko: "대화 수준을 저장하지 못했습니다. 이번 대화에는 임시로 적용됩니다.",
-            en: "Could not save the conversation level. It is applied temporarily for this chat.",
-          }),
-        );
-      });
-    },
-    [canPersistTutorConversationLevel, setTutorConversationLevel, tutorPersonaId],
-  );
-
-  const translationConflictKeyRef = useRef("");
-  useEffect(() => {
-    if (!open || !isTutorsRoute || !tutorTargetLanguageCode) return;
-    if (!translationSettings.enabled) {
-      translationConflictKeyRef.current = "";
-      return;
-    }
-
-    const translationLanguage = normalizeChatTranslationLanguage(translationSettings.targetLanguage);
-    if (translationLanguage !== tutorTargetLanguageCode) {
-      translationConflictKeyRef.current = "";
-      return;
-    }
-
-    const conflictKey = `${character?.pid || "tutor"}:${translationLanguage}`;
-    setTranslationEnabled(false);
-    if (translationConflictKeyRef.current === conflictKey) return;
-
-    translationConflictKeyRef.current = conflictKey;
-    toast.info(
-      lang({
-        ko: "학습 언어와 번역 언어가 같아 이 튜터 채팅에서는 번역을 껐습니다.",
-        en: "Translation was turned off because it matches this tutor's learning language.",
-      }),
-    );
-  }, [
-    character?.pid,
-    isTutorsRoute,
-    open,
-    setTranslationEnabled,
-    translationSettings.enabled,
-    translationSettings.targetLanguage,
-    tutorTargetLanguageCode,
-  ]);
-
   // Commerce 상태를 훅/콜백/pipeline 어디서든 최신값으로 참조할 수 있게 ref로 브릿지
   // - pipeline은 commerce hook보다 먼저 생성되어야 하기 때문에(=sendWithMessage 의존), ref가 필수
   const lastProductCodesRef = useRef<string[] | null>(null);
@@ -465,8 +306,6 @@ const CharacterChat = ({
         translation?: string;
         timestamp?: Date;
         voiceInput?: Record<string, unknown>;
-        imageInput?: ChatImageInputType;
-        imagePreview?: ChatImagePreviewType;
       },
     ) => {
       const exec = () =>
@@ -536,62 +375,15 @@ const CharacterChat = ({
     handleInputChangeTranslation,
   } = pipeline;
 
-  const handleSendWithPendingImage = useCallback(
-    async (overrideText?: string, opts?: { preserveInput?: boolean; voiceInput?: Record<string, unknown> }) => {
-      const pendingImage = takeChatImage();
-      await handleSendWithMessage(overrideText, {
-        ...opts,
-        imageInput: pendingImage?.input,
-        imagePreview: pendingImage?.preview,
-      });
-    },
-    [handleSendWithMessage, takeChatImage],
-  );
-
-  const handlePrepareChatImage = useCallback(
-    async (file: File, source: ChatImageInputType["source"]) => {
-      try {
-        await prepareChatImage(file, source);
-      } catch (error) {
-        const code = error instanceof Error ? error.message : "";
-        toast.error(
-          code === "unsupported_image_type"
-            ? lang({ ko: "PNG, JPG, WebP 사진만 선택할 수 있어요.", en: "Choose a PNG, JPG, or WebP image." })
-            : code === "image_too_large" || code === "prepared_image_too_large"
-              ? lang({ ko: "사진이 너무 커요. 더 작은 사진을 선택해 주세요.", en: "The image is too large." })
-              : lang({ ko: "사진을 읽지 못했어요. 다른 사진을 선택해 주세요.", en: "Couldn't read the image." }),
-          { id: "tutors-chat-image" },
-        );
-        throw error;
-      }
-    },
-    [prepareChatImage],
-  );
-
-  useEffect(() => {
-    if (open) return;
-    discardChatImage();
-    // 채팅 닫힘은 외부 open 상태와 이미지 선택 시트의 로컬 상태를 동기화해야 한다.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setImagePickerOpen(false);
-  }, [discardChatImage, open]);
-
-  const effectiveVoiceRouteHint = useMemo(() => {
-    if (isTutorsRoute) return "tutors" as const;
-    return isCommerceUniverse ? ("commerce" as const) : ("ai" as const);
-  }, [isCommerceUniverse, isTutorsRoute]);
-
-  const effectiveVoiceUniverseId = useMemo(() => {
-    if (isTutorsRoute) return String(character?.universeId || universeId || "").trim();
-    return String(universeId || "").trim();
-  }, [character?.universeId, isTutorsRoute, universeId]);
+  const effectiveVoiceRouteHint = isCommerceUniverse ? ("commerce" as const) : ("ai" as const);
+  const effectiveVoiceUniverseId = String(universeId || "").trim();
 
   const universeMetadata = useMemo(
     () => toUnknownRecord(toUnknownRecord(universeInfo?.data).metadata),
     [universeInfo?.data],
   );
   const voiceConfig = useMemo(() => toUnknownRecord(universeMetadata.voiceConfig), [universeMetadata]);
-  const voiceInputProvider: SpeechProviderType = voiceConfig.defaultSttProvider === "qwen" ? "qwen" : "openai";
+  const voiceInputProvider: SpeechProviderType = voiceConfig.defaultSttProvider === "qwen" ? "qwen" : "elevenlabs";
 
   const isVoiceUiEnabled = useMemo(() => {
     const voiceEnabled = universeMetadata.voiceEnabled;
@@ -599,43 +391,12 @@ const CharacterChat = ({
     return Boolean(character?.pid) && authEnabled && voiceEnabled !== false;
   }, [character?.pid, isCommerceUniverse, isLoggedIn, universeMetadata]);
 
-  // EL-601/TUTORS-192: Tutors STT는 서버가 활성 상태를 광고할 때만 노출한다.
-  // 활성 상태가 없으면 기존처럼 text-only를 유지하고, Assistant TTS 재생은 별도 capability로 유지한다.
-  const [tutorsSttStatus, setTutorsSttStatus] = useState<TutorsSttStatus | null>(null);
-  const [tutorsSttAcknowledged, setTutorsSttAcknowledged] = useState(false);
-  useEffect(() => {
-    if (!isTutorsRoute || !isLoggedIn) return;
-    let active = true;
-    void getTutorsSttStatus()
-      .then((status) => {
-        if (active) setTutorsSttStatus(status);
-      })
-      .catch(() => {
-        if (active) setTutorsSttStatus(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [isLoggedIn, isTutorsRoute]);
-
-  const tutorsSttEnabled = isTutorsRoute && Boolean(tutorsSttStatus?.enabled);
-  const tutorsSttLanguageSupported = isTutorSttLanguageSupported(
-    tutorsSttStatus?.languages,
-    tutorTargetLanguageCode,
-  );
-  const tutorsSttLanguageNotice =
-    isTutorsRoute && tutorsSttStatus && tutorTargetLanguageCode && !tutorsSttLanguageSupported
-      ? { supportedLanguages: tutorsSttStatus.languages }
-      : undefined;
-  const isVoiceInputUiEnabled =
-    isVoiceUiEnabled &&
-    (!isTutorsRoute || tutorsSttEnabled) &&
-    (!isTutorsRoute || tutorsSttLanguageSupported);
+  const isVoiceInputUiEnabled = isVoiceUiEnabled;
 
   const isAssistantVoiceEnabled = isVoiceUiEnabled && assistantVoiceEnabled;
 
   // 입력 모드(음성 대화 / 키보드 입력) — 상단 토글과 하단 입력바가 공유하는 단일 소스
-  const [voiceInputMode, setVoiceInputMode] = useState<"voice" | "text">(() => (isTutorsRoute ? "text" : "voice"));
+  const [voiceInputMode, setVoiceInputMode] = useState<"voice" | "text">("voice");
   // 음성 대화 모드에서만 무음 자동 종료(핸즈프리) 가동
   const voiceAutoSubmit = isVoiceInputUiEnabled && voiceInputMode === "voice";
 
@@ -664,11 +425,6 @@ const CharacterChat = ({
     sessionId,
     assessmentContext: voiceAssessmentContext,
     provider: voiceInputProvider,
-    // TUTORS-192: 서버 STT 게이트가 language를 요구한다. Tutors 경로는 튜터 목표 언어 코드를
-    // 그대로 넘겨 fail-closed 게이트(language_not_allowed)를 통과시킨다.
-    language: isTutorsRoute ? tutorTargetLanguageCode || undefined : undefined,
-    disclosureAcknowledged: tutorsSttAcknowledged,
-    disclosureVersion: tutorsSttStatus?.disclosureVersion,
     onResolvedInput: async (nextInput, _transcript, voiceInput) => {
       setCurrentInput(nextInput);
       await handleSendWithMessage(nextInput, { voiceInput });
@@ -713,10 +469,10 @@ const CharacterChat = ({
       );
 
       try {
-        if (isLoggedIn && conversationUserPersonaId) {
+        if (isLoggedIn && userPersonaId) {
           await saveAssistantAudioMeta({
             personaId,
-            userPersonaId: conversationUserPersonaId,
+            userPersonaId,
             sessionId,
             clientId,
             content,
@@ -745,7 +501,7 @@ const CharacterChat = ({
     },
     [
       character?.pid,
-      conversationUserPersonaId,
+      userPersonaId,
       effectiveVoiceUniverseId,
       isCommerceUniverse,
       isLoggedIn,
@@ -831,15 +587,6 @@ const CharacterChat = ({
 
   // messages filter (talk vs visual)
   const hasUserMessages = useMemo(() => messages.some((m) => m.isUser), [messages]);
-  const conversationHints = useConversationHints({
-    enabled: Boolean(isTutorsRoute && tutorsConversationHint?.enabled && conversationHintsEnabled),
-    open,
-    targetLanguage: tutorTargetLanguage || tutorsConversationHint?.targetLanguage || character?.language || "English",
-    topic: tutorsConversationHint?.topic,
-    provider: translationSettings.helperModelProvider,
-    modelName: translationSettings.helperModelName,
-    messages,
-  });
 
   const filteredMessages = useMemo(() => {
     if (chatViewMode === "talk") return normalizeForTalk(messages);
@@ -1255,12 +1002,11 @@ const CharacterChat = ({
       voiceInput.isRecording ||
       voiceInput.isSubmitting;
     if (hardDisabled) return true;
-    if ((!currentInput.trim() && !pendingChatImage) || isOverLimit) return true;
+    if (!currentInput.trim() || isOverLimit) return true;
     if (translationSettings.enabled && isTranslating) return true;
     return false;
   }, [
     currentInput,
-    pendingChatImage,
     isPreparingConversation,
     isLoading,
     isOverLimit,
@@ -1282,12 +1028,12 @@ const CharacterChat = ({
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         const currentText = (e.target as HTMLTextAreaElement).value.trim();
-        if ((currentText || pendingChatImage) && !isTranslating) {
-          void handleSendWithPendingImage();
+        if (currentText && !isTranslating) {
+          void handleSendWithMessage();
         }
       }
     },
-    [handleSendWithPendingImage, isTranslating, isSendDisabled, pendingChatImage],
+    [handleSendWithMessage, isTranslating, isSendDisabled],
   );
 
   // 자동 포커스
@@ -1388,29 +1134,9 @@ const CharacterChat = ({
             isOverLimit,
             isSendDisabled,
             isRestricted,
-            imageAttachment: {
-              enabled: chatImageInputEnabled,
-              disabled:
-                isPreparingConversation ||
-                isLoading ||
-                showAIEndRequest ||
-                isRestricted ||
-                isUserMessageAnimating ||
-                Boolean(pendingApiRequest) ||
-                voiceInput.isRecording ||
-                voiceInput.isSubmitting ||
-                isTranslating,
-              preview: pendingChatImage?.preview ?? null,
-              preparing: isPreparingChatImage,
-              pickerOpen: imagePickerOpen,
-              onPickerOpenChange: setImagePickerOpen,
-              onPrepare: handlePrepareChatImage,
-              onClear: discardChatImage,
-            },
           },
           voice: {
             provider: voiceInputProvider,
-            tutorsExperience: isTutorsRoute,
             enabled: isVoiceInputUiEnabled,
             isSupported: voiceInput.isSupported,
             microphoneAvailability: voiceInput.microphoneAvailability,
@@ -1422,21 +1148,6 @@ const CharacterChat = ({
             inputMode: voiceInputMode,
             onChangeInputMode: setVoiceInputMode,
             onToggleInputMode: toggleVoiceInputMode,
-            disclosure:
-              isTutorsRoute && tutorsSttStatus
-                ? {
-                    required: true,
-                    version: tutorsSttStatus.disclosureVersion,
-                    notice: tutorsSttStatus.notice,
-                    acknowledged: tutorsSttAcknowledged,
-                    onAcknowledge: () => setTutorsSttAcknowledged(true),
-                    onDecline: () => {
-                      setTutorsSttAcknowledged(false);
-                      setVoiceInputMode("text");
-                    },
-                  }
-                : undefined,
-            unavailableNotice: tutorsSttLanguageNotice,
           },
           voicePlayback: {
             available: isVoiceUiEnabled,
@@ -1453,14 +1164,6 @@ const CharacterChat = ({
                   onSelect: handleSelectChatModel,
                 }
               : undefined,
-          tutorTargetLanguage,
-          onTutorTargetLanguageChange: isTutorsRoute ? setTutorTargetLanguage : undefined,
-          tutorConversationLevel,
-          onTutorConversationLevelChange:
-            isTutorsRoute && canPersistTutorConversationLevel ? handleTutorConversationLevelChange : undefined,
-          conversationHintsAvailable: Boolean(isTutorsRoute && tutorsConversationHint?.enabled),
-          conversationHintsEnabled,
-          onConversationHintsEnabledChange: setConversationHintsEnabled,
         }}
         commerce={{
           enabled: isCommerceUniverse,
@@ -1474,34 +1177,6 @@ const CharacterChat = ({
           isTranslating,
           settings: translationSettings,
         }}
-        conversationHints={
-          isTutorsRoute && tutorsConversationHint?.enabled && conversationHintsEnabled
-            ? {
-                hints: conversationHints.hints,
-                isLoading: conversationHints.isLoading,
-                onPick: (hint) => {
-                  setCurrentInput(hint);
-                  window.setTimeout(() => chatInputRef.current?.focus(), 0);
-                },
-                onRegenerate: async () => {
-                  const outcome = await conversationHints.regenerateHints();
-                  if (outcome === "empty") {
-                    toast(lang({ ko: "새로운 힌트를 생성하지 못했어요.", en: "Couldn't generate new hints." }), {
-                      id: "hint-regenerate",
-                    });
-                  } else if (outcome === "error") {
-                    toast.error(
-                      lang({
-                        ko: "힌트를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
-                        en: "Couldn't load hints. Please try again.",
-                      }),
-                      { id: "hint-regenerate" },
-                    );
-                  }
-                },
-              }
-            : undefined
-        }
         refs={{
           messagesContainerRef,
           bottomAnchorRef,
@@ -1542,7 +1217,7 @@ const CharacterChat = ({
               ? () => setShowNpcReport(true)
               : undefined,
 
-          handleSendWithMessage: handleSendWithPendingImage,
+          handleSendWithMessage,
           handleInputChangeTranslation,
           handleKeyPress,
           handleVoicePressStart: voiceInput.startRecording,

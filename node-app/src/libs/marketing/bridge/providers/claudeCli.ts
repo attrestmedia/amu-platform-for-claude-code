@@ -1,7 +1,7 @@
 import { callTextByProvider } from "libs/server-utils/api/apiHelper";
 
 const CLAUDE_PROVIDER = "claude" as const;
-const CLAUDE_MODEL = "claude-opus-5";
+const CLAUDE_MODEL = "claude-opus-5-5";
 const CLAUDE_COMMAND_PREVIEW = `claude --model ${CLAUDE_MODEL} --output json`;
 
 export async function runClaudeCliBridge(prompt: string, actorUser?: unknown) {

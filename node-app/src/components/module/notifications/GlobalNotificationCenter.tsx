@@ -7,6 +7,7 @@ import { Button, Popover, PopoverContent, PopoverTrigger } from "@amu-labs/ui";
 import { ImageBox } from "components/module/image";
 import { Lang, lang } from "components/module/i18n";
 import { cn } from "utils/common";
+import { resolveGenStudioTemplateLabel } from "consts/app";
 import { useGlobalNotifications, type GlobalNotificationItemType } from "./GlobalNotificationProvider";
 
 function getStatusIcon(item: GlobalNotificationItemType) {
@@ -124,7 +125,7 @@ export function GlobalNotificationCenter({ autoOpen = false }: { autoOpen?: bool
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold uppercase text-secondary-text">{item.categoryLabel}</p>
                       <p className="truncate text-sm font-semibold text-primary-text whitespace-pre-line">
-                        {item.title === "__gen_studio_custom_prompt__" ? "Custom Template" : item.title}
+                        {resolveGenStudioTemplateLabel(item.title)}
                       </p>
                       <p className={getDescriptionClass(item)}>{item.description}</p>
                     </div>

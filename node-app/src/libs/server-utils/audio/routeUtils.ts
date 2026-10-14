@@ -1,7 +1,6 @@
 import "server-only";
-import { getTutorPersonaForPrompt } from "libs/database/tutors/tutorPersonaPromptRepo";
 import { getPersonaForPrompt, getUniverseById, getUniverseDetail } from "libs/database/universe";
-import { normalizeTutorsState } from "libs/services/tutors/tutorsState";
+import { RETIRED_TUTORS_ROUTE_HINT } from "consts/app";
 import type { SpeechProviderType } from "types/ai";
 import { normalizeRouteHint } from "utils/normalize";
 import { createSpeechError } from "./guards";
@@ -69,12 +68,17 @@ type ResolveSpeechRouteContextArgs = {
   sessionIdRaw: unknown;
   clientIdRaw: unknown;
   clientIdFieldLabel: string;
-  /** 비-tutors route로 위조된 Tutors persona를 provider 이전에 차단한다. */
-  rejectTutorsPersona?: boolean;
 };
 
 export async function resolveSpeechRouteContext(args: ResolveSpeechRouteContextArgs) {
+  if (String(args.routeHintRaw || "").trim() === RETIRED_TUTORS_ROUTE_HINT) {
+    throw createSpeechError("Tutors 음성은 종료되었습니다.", "TUTORS_SPEECH_GATE_CLOSED", 403, {
+      routeHint: RETIRED_TUTORS_ROUTE_HINT,
+    });
+  }
+
   const routeHint = normalizeRouteHint(args.routeHintRaw);
+
   const universeId = normalizeSafeId(args.universeIdRaw, "universeId");
   const npcId = normalizeSafeId(args.npcIdRaw, "npcId");
   const sessionId = normalizeSafeId(args.sessionIdRaw, "sessionId");
@@ -84,19 +88,6 @@ export async function resolveSpeechRouteContext(args: ResolveSpeechRouteContextA
   const isGuest = String(userRec.ID || "").startsWith("guest:");
   if (routeHint !== "commerce" && isGuest) {
     throw createSpeechError("로그인이 필요합니다.", "AUTH_REQUIRED", 401);
-  }
-
-  if (args.rejectTutorsPersona && routeHint === "ai") {
-    const tutorsState = normalizeTutorsState(toUnknownRecord(userRec.selectedPersonas).tutors);
-    const forgedTutorsPersona = tutorsState.selected.find((item) => item.personaId === npcId);
-    if (forgedTutorsPersona) {
-      throw createSpeechError(
-        "Tutors 음성 입력은 현재 텍스트 전용입니다.",
-        "TUTORS_SPEECH_GATE_CLOSED",
-        403,
-        { universeId, npcId, routeHint },
-      );
-    }
   }
 
   const universe = await getUniverseById(universeId).catch(() => null);
@@ -117,25 +108,9 @@ export async function resolveSpeechRouteContext(args: ResolveSpeechRouteContextA
     });
   }
 
-  const persona =
-    routeHint === "tutors"
-      ? await getTutorPersonaForPrompt(args.user, npcId).catch(() => null)
-      : await getPersonaForPrompt(universeId, npcId).catch(() => null);
+  const persona = await getPersonaForPrompt(universeId, npcId).catch(() => null);
   if (!persona) {
     throw createSpeechError("NPC를 찾을 수 없습니다.", "NPC_NOT_FOUND", 404, { universeId, npcId });
-  }
-
-  if (routeHint === "tutors") {
-    const tutorsState = normalizeTutorsState(toUnknownRecord(userRec.selectedPersonas).tutors);
-    const selected = tutorsState.selected.find((item) => item.personaId === npcId && item.universeId === universeId);
-    if (!selected) {
-      throw createSpeechError(
-        "선택되지 않은 선생님입니다. 먼저 선택해주세요.",
-        "TUTORS_PERSONA_NOT_SELECTED",
-        400,
-        { universeId, npcId },
-      );
-    }
   }
 
   const universeDetail = await getUniverseDetail(universeId).catch(() => null);
@@ -160,7 +135,7 @@ export async function resolveSpeechRouteContext(args: ResolveSpeechRouteContextA
 
 export function buildSpeechBillingContext(args: {
   user: unknown;
-  routeHint: "ai" | "tutors" | "commerce";
+  routeHint: "ai" | "commerce";
   universeId: string;
   sessionId: string;
   npcId: string;

@@ -4,6 +4,7 @@ import type { LanguageType } from "types/language";
 import { logger } from "utils/log";
 import * as cookie from "cookie";
 import { setSessionHintCookie } from "libs/server-utils/auth/authCookie";
+import { MARKETING_OPERATION_TABS } from "consts/marketing/public";
 
 /**
  * @docHint
@@ -30,7 +31,6 @@ const WORDPRESS_HMAC_BRIDGE_ROUTES = new Set([
   "/api/internal/mail/send",
   "/api/thirdparty/wp/gen-studio-assets",
   "/api/thirdparty/wp/promo-slots",
-  "/api/thirdparty/wp/article-experience",
   "/api/thirdparty/wp/sso/ticket",
   "/api/thirdparty/wp/sso/consume",
   "/api/thirdparty/wp/account/deletion",
@@ -43,26 +43,6 @@ function isWordPressHmacBridgeRoute(pathname: string) {
   return WORDPRESS_HMAC_BRIDGE_ROUTES.has(normalizedPathname);
 }
 
-function magazineEmbedParentOrigins() {
-  return String(process.env.MAGAZINE_EMBED_ALLOWED_PARENT_ORIGINS || "")
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => /^https:\/\/[^/]+(?::\d+)?$/.test(value) || (process.env.NODE_ENV !== "production" && /^http:\/\/[^/]+(?::\d+)?$/.test(value)));
-}
-
-function isMagazineEmbedPage(pathname: string) {
-  return pathname.startsWith("/embed/magazine/v1/");
-}
-
-function applyMagazineEmbedHeaders(response: NextResponse) {
-  const origins = magazineEmbedParentOrigins();
-  response.headers.set("Content-Security-Policy", `frame-ancestors ${origins.length ? origins.join(" ") : "'none'"}; object-src 'none'; base-uri 'none'`);
-  response.headers.delete("X-Frame-Options");
-  response.headers.set("Referrer-Policy", "strict-origin");
-  response.headers.set("X-Content-Type-Options", "nosniff");
-  return response;
-}
-
 const PUBLIC_MARKETING_PROVIDER_CALLBACKS = new Set([
   "/api/marketing/oauth/threads/deauthorize",
   "/api/marketing/oauth/threads/data-deletion",
@@ -72,15 +52,34 @@ function isPublicMarketingProviderCallback(req: NextRequest) {
   return req.method === "POST" && PUBLIC_MARKETING_PROVIDER_CALLBACKS.has(req.nextUrl.pathname);
 }
 
-// Tutors 공개 갤러리는 공개 템플릿의 pid·name·imageUrl만 반환하는 읽기 전용 경로다.
-// /api/tutors 전체 세션 인증에 걸려 비로그인 독자에게 401이 나가면 Magazine 인라인
-// composer가 페르소나 표기를 못 하므로, GET 단일 경로만 예외로 연다.
-// trailing slash를 정규화하지 않는 것은 의도다. 인증 예외는 매칭 형태를 넓히지 않고
-// 정확 일치만 통과시켜, 변형 경로가 전부 인증 분기로 떨어지게 둔다.
-const PUBLIC_TUTORS_READ_PATHS = new Set(["/api/tutors/public-gallery"]);
+const MARKETING_WORKSPACE_PATH = "/marketing-oops/workspace";
+const MARKETING_WORKSPACE_SECTIONS = new Set<string>(MARKETING_OPERATION_TABS);
 
-function isPublicTutorsRead(req: NextRequest) {
-  return req.method === "GET" && PUBLIC_TUTORS_READ_PATHS.has(req.nextUrl.pathname);
+function marketingWorkspaceRouteResponse(req: NextRequest) {
+  if (req.method !== "GET" && req.method !== "HEAD") return null;
+
+  const pathname = req.nextUrl.pathname.replace(/\/$/, "");
+  if (pathname === MARKETING_WORKSPACE_PATH) {
+    const tabValues = req.nextUrl.searchParams.getAll("tab");
+    const requestedTab = tabValues.length === 1 ? tabValues[0] : "";
+    const section = MARKETING_WORKSPACE_SECTIONS.has(requestedTab) ? requestedTab : "queue";
+    const url = req.nextUrl.clone();
+    url.pathname = `${MARKETING_WORKSPACE_PATH}/${section}`;
+    url.searchParams.delete("tab");
+    return NextResponse.redirect(url, 307);
+  }
+
+  if (pathname.startsWith(`${MARKETING_WORKSPACE_PATH}/`)) {
+    const section = pathname.slice(MARKETING_WORKSPACE_PATH.length + 1);
+    if (!MARKETING_WORKSPACE_SECTIONS.has(section)) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/_not-found";
+      url.search = "";
+      return NextResponse.rewrite(url, { status: 404 });
+    }
+  }
+
+  return null;
 }
 
 function historyPageRedirect(req: NextRequest) {
@@ -106,7 +105,12 @@ export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const cookiesHeader = req.headers.get("cookie") || "";
   const parsed = cookie.parse(cookiesHeader);
+  const marketingWorkspaceResponse = marketingWorkspaceRouteResponse(req);
   const aliasRewrite = rewriteUniverseAlias(req);
+
+  if (marketingWorkspaceResponse) {
+    return marketingWorkspaceResponse;
+  }
 
   if (aliasRewrite) {
     return aliasRewrite;
@@ -116,11 +120,6 @@ export function proxy(req: NextRequest) {
   // 이메일 로그인·SSO consume 라우트는 각자 힌트를 설정하고, 콜백만 미들웨어가 대신한다.
   if (req.method === "GET" && pathname.startsWith("/api/auth/callback/")) {
     return setSessionHintCookie(NextResponse.next());
-  }
-
-  // 전용 iframe surface만 명시된 부모 origin을 허용한다. token/API route는 별도 검증을 유지한다.
-  if (isMagazineEmbedPage(pathname)) {
-    return applyMagazineEmbedHeaders(NextResponse.next());
   }
 
   // Accept-Language 헤더에서 선호 언어 감지
@@ -256,13 +255,6 @@ export function proxy(req: NextRequest) {
     return NextResponse.next({ request: { headers: requestHeaders } });
   }
 
-  // Tutors 공개 갤러리 읽기는 세션 없이 통과시킨다. 응답은 공개 템플릿의 표시용 필드로 한정된다.
-  if (isPublicTutorsRead(req)) {
-    const requestHeaders = new Headers(req.headers);
-    requestHeaders.set("x-request-id", crypto.randomUUID());
-    return NextResponse.next({ request: { headers: requestHeaders } });
-  }
-
   // WordPress publish hook은 라우트 내부 HMAC 검증으로 보호하므로 세션 인증을 강제하지 않는다.
   if (pathname.startsWith("/api/marketing/content-queue/from-wp-hook")) {
     const requestHeaders = new Headers(req.headers);
@@ -342,11 +334,16 @@ export function proxy(req: NextRequest) {
     pathname.startsWith("/api/user") ||
     pathname === "/api/friends" ||
     pathname.startsWith("/api/friends/") ||
+    pathname.startsWith("/api/newsletter/campaigns") ||
+    pathname === "/api/newsletter/performance" ||
+    pathname === "/api/newsletter/subscription" ||
     pathname.startsWith("/api/admin") ||
     pathname.startsWith("/api/tutors") ||
     pathname.startsWith("/api/persona") ||
     pathname.startsWith("/api/thirdparty") ||
     pathname.startsWith("/api/game") ||
+    pathname.startsWith("/api/story/") ||
+    pathname.startsWith("/api/play/") ||
     pathname.startsWith("/api/speech") ||
     pathname.startsWith("/api/payments") ||
     pathname.startsWith("/api/private") ||
@@ -379,6 +376,8 @@ export const config = {
     "/api/commerce/:path*",
     "/api/conversations/:path*",
     "/api/game/:path*",
+    "/api/story/:path*",
+    "/api/play/:path*",
     "/api/lab/:path*",
     "/api/tutors/:path*",
     "/api/persona/:path*",
@@ -392,12 +391,17 @@ export const config = {
     "/api/catalog/:path*",
     "/api/upload/:path*",
     "/api/marketing/:path*",
+    "/api/newsletter/campaigns/:path*",
+    "/api/newsletter/performance",
+    "/api/newsletter/subscription",
     "/api/internal/mail/send",
     "/api/mini-apps/:path*",
     "/api/private/:path*",
     "/api/get-documents-data",
     "/store/:path*",
     "/shop/:path*",
+    "/marketing-oops/workspace",
+    "/marketing-oops/workspace/:path*",
 
     // 인증이 필요한 보호된 페이지들
     "/admin/:path*",

@@ -1,4 +1,7 @@
-import { SPEECH_MODEL_CATALOG, type SpeechBillingUnitType } from "./speechModel";
+import type { SpeechBillingUnitType } from "./speechModel";
+import { AI_SPEECH_LIST_PRICE_USD, AI_SPEECH_MODEL_CATALOG } from "./generated/modelCatalog.generated";
+import type { AssertAssignable } from "./catalogShapeAssertion";
+
 
 /**
  * @docHint
@@ -31,19 +34,13 @@ export type SpeechListPrice = {
 };
 
 /** provider·modelName → 정가. 카탈로그에 있어도 여기 없으면 판정 불가다. */
-export const SPEECH_LIST_PRICE_USD: Record<string, SpeechListPrice | null> = {
-  // ElevenLabs — 벤더 가격 페이지 기준(미실측)
-  "elevenlabs/eleven-flash-v2-5": { unit: "character", perQuantity: 1_000, usd: 0.05, source: "elevenlabs pricing/api 2026-09-06" },
-  "elevenlabs/eleven-multilingual-v2": { unit: "character", perQuantity: 1_000, usd: 0.1, source: "elevenlabs pricing/api 2026-09-06" },
-  "elevenlabs/eleven-v3": { unit: "character", perQuantity: 1_000, usd: 0.1, source: "elevenlabs pricing/api 2026-09-06" },
-  "elevenlabs/scribe-v2": { unit: "audio_second", perQuantity: 3_600, usd: 0.22, source: "elevenlabs pricing/api 2026-09-06" },
-  // Text-to-Dialogue는 공식 가격표에서 단가를 확인하지 못했다. null을 0으로 바꾸지 않는다.
-  "elevenlabs/eleven-v3-conversational": null,
-};
+export type SpeechListPriceCanonicalShape = [
+  AssertAssignable<typeof AI_SPEECH_LIST_PRICE_USD, Record<string, SpeechListPrice | null>>,
+];
 
 export function getSpeechListPrice(provider: string, modelName: string): SpeechListPrice | null {
   const key = `${String(provider || "").trim().toLowerCase()}/${String(modelName || "").trim()}`;
-  return SPEECH_LIST_PRICE_USD[key] ?? null;
+  return (AI_SPEECH_LIST_PRICE_USD as Record<string, SpeechListPrice | null>)[key] ?? null;
 }
 
 /**
@@ -68,14 +65,14 @@ export function estimateSpeechListPriceUsd(args: {
 
 /** 정가를 아는 모델 목록. 카탈로그와의 누락 대조에 쓴다. */
 export function listPricedSpeechModelKeys() {
-  return Object.entries(SPEECH_LIST_PRICE_USD)
+  return Object.entries(AI_SPEECH_LIST_PRICE_USD)
     .filter(([, price]) => price !== null)
     .map(([key]) => key);
 }
 
 /** 카탈로그에 있으나 정가가 없는 항목. 강제 대상 provider에서 이 목록은 곧 호출 불가를 뜻한다. */
 export function listUnpricedSpeechModelKeys() {
-  return SPEECH_MODEL_CATALOG.filter((policy) => !getSpeechListPrice(policy.provider, policy.modelName)).map(
+  return AI_SPEECH_MODEL_CATALOG.filter((policy) => !getSpeechListPrice(policy.provider, policy.modelName)).map(
     (policy) => `${policy.provider}/${policy.modelName}`,
   );
 }

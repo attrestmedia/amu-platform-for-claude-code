@@ -1,4 +1,4 @@
-import { DEFAULT_TEXT_MODEL_BY_PROVIDER } from "consts/ai";
+import { AI_DEFAULT_TEXT_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 import {
   MARKETING_DEFAULT_CONTENT_CHANNELS,
   MARKETING_JOB_STATUS,
@@ -58,7 +58,7 @@ export const INITIAL_QUEUE_COMPOSER: QueueComposerState = {
   batchSize: "5",
   generationMode: "server_worker",
   modelProvider: "google",
-  modelName: DEFAULT_TEXT_MODEL_BY_PROVIDER.google,
+  modelName: AI_DEFAULT_TEXT_MODEL_BY_PROVIDER.google,
   siteUrl: "",
   instructionText: "",
   reviewMode: "review_required",

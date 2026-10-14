@@ -9,7 +9,12 @@ import { resolveUniverseWalletPolicyState } from "utils/payment";
 import { logger } from "utils/log";
 import { toUnknownRecord, type UnknownRecord } from "utils/common";
 import { getAccountPolicyConsentStatus } from "../auth/policyConsentService";
-import { ACCOUNT_POLICY_EFFECTIVE_DATE } from "consts/legal/accountPolicy";
+import { PolicyReleaseUnavailableError } from "../legal/policyReleaseRuntime";
+import {
+  FEATURE_ACCESS_DENIED_ERROR_CODE,
+  FEATURE_ACCESS_DENIED_MESSAGE,
+  resolveFeatureAccess,
+} from "../auth/featureAccessPolicy";
 import type { ApiHandler, RequestValidator, NextRouteContext, AuthenticatedUserType } from "./_helpers";
 import {
   resolveNextContext,
@@ -58,6 +63,8 @@ export function withAuth<T = any, R = any>(
   endpoint: string = "default",
   options?: {
     requireAdmin?: boolean;
+    /** Admin-First route gate; provider dispatch must enforce the same feature key separately. */
+    featureAccess?: string;
     checkUniversePermission?: {
       universeIdParam: string;
       requireEdit?: boolean;
@@ -90,24 +97,32 @@ export function withAuth<T = any, R = any>(
         );
       }
 
-      if (!options?.allowStalePolicyConsent && Date.now() >= new Date(ACCOUNT_POLICY_EFFECTIVE_DATE).getTime()) {
+      if (!options?.allowStalePolicyConsent) {
         const mergedRecord = toUnknownRecord(mergedUserData);
-        const consentStatus = await getAccountPolicyConsentStatus({
-          uid: String(mergedRecord.uid || mergedRecord.ID || userId),
-          email: String(mergedRecord.userEmail || mergedRecord.user_email || ""),
-          knownConsents: Array.isArray(mergedRecord.policyConsents)
-            ? (mergedRecord.policyConsents as never[])
-            : undefined,
-        });
-        if (consentStatus.required && consentStatus.enforcementActive) {
-          return NextResponse.json(
-            {
-              error: "개정 약관과 개인정보처리방침에 동의한 뒤 회원 기능을 이용할 수 있습니다.",
-              errorCode: "POLICY_RECONSENT_REQUIRED",
-              policy: consentStatus,
-            },
-            { status: 428 },
-          );
+        try {
+          const consentStatus = await getAccountPolicyConsentStatus({
+            uid: String(mergedRecord.uid || mergedRecord.ID || userId),
+            email: String(mergedRecord.userEmail || mergedRecord.user_email || ""),
+            knownConsents: Array.isArray(mergedRecord.policyConsents)
+              ? (mergedRecord.policyConsents as never[])
+              : undefined,
+          });
+          if (consentStatus.required && consentStatus.enforcementActive) {
+            return NextResponse.json(
+              {
+                error: "개정 약관과 개인정보처리방침에 동의한 뒤 회원 기능을 이용할 수 있습니다.",
+                errorCode: "POLICY_RECONSENT_REQUIRED",
+                policy: consentStatus,
+              },
+              { status: 428 },
+            );
+          }
+        } catch (error) {
+          if (!(error instanceof PolicyReleaseUnavailableError)) throw error;
+          console.error("[apiMiddleware] policy release unavailable", {
+            errorCode: "POLICY_RELEASE_UNAVAILABLE",
+            endpoint,
+          });
         }
       }
 
@@ -135,6 +150,17 @@ export function withAuth<T = any, R = any>(
           });
 
           return respond({ error: "관리자 권한이 필요합니다" }, { status: 403 });
+        }
+      }
+
+      // 4-1) 기능 접근 정책 (옵션) — compliance-guardrails §3-2 Admin-First
+      if (options?.featureAccess !== undefined) {
+        const access = await resolveFeatureAccess({ featureKey: options.featureAccess, user: mergedUserData });
+        if (!access.allowed) {
+          return respond(
+            { error: FEATURE_ACCESS_DENIED_MESSAGE, errorCode: FEATURE_ACCESS_DENIED_ERROR_CODE },
+            { status: 403 },
+          );
         }
       }
 

@@ -4,12 +4,11 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Check, Wand2, X } from "lucide-react";
+import { Check, Wand2 } from "lucide-react";
 import { Button, Input, Label, Preloader } from "@amu-labs/ui";
 import { Lang, lang } from "components/module/i18n";
 import { useUserData } from "hooks/auth";
 import fetchClient from "libs/api/fetchClient";
-import { listStudioImageMetas } from "libs/api/lab/imagePrompts";
 import { listTutorsPersonas } from "libs/api/tutors/personas";
 import { readPersonaReferenceSlots } from "libs/server-utils/character/personaReferenceSetAdapter";
 import {
@@ -19,9 +18,8 @@ import {
   listMyFailedGameCharacterAnchorIds,
   runMyGameCharacterPipelineAction,
 } from "libs/api/game";
-import { listStudioImageTemplatePreviewMetas } from "libs/api/lab";
 import { toErrorMessage } from "utils/common";
-import type { ImagePromptMetaType, ImageStudioDoneMetaType } from "types/app";
+import type { ImagePromptMetaType } from "types/app";
 import type { PersonaFormValuesType } from "types/ai";
 import type { ICharacterReferenceKit } from "types/character";
 import type { UserGameCharacterSourceType } from "types/game";
@@ -29,19 +27,10 @@ import type { CharacterSpeciesId } from "consts/game/characterGenesisPolicy";
 import { CHARACTER_GENESIS_STAGES } from "types/ui/characterGenesis";
 import { CharacterGenesisOptionsPanel } from "./CharacterGenesisOptionsPanel";
 import { trackPlayEvent } from "utils/analytics/play";
-import {
-  CHARACTER_STARTER_PRESETS,
-  CHARACTER_STARTER_PRESET_TEMPLATE_KEY,
-  type CharacterStarterPresetType,
-} from "consts/game/characterStarterPresets";
-import { CostConfirmDialog } from "components/module/game/forge/shared/CostConfirmDialog";
-import { MethodStarterPresets } from "components/module/game/forge/steps/character/MethodStarterPresets";
 import { MethodTemplateGrid } from "components/module/game/forge/steps/character/MethodTemplateGrid";
-import { ImageStudioEditor } from "components/template/gen-studio/ImageStudioEditor";
-import {
-  isAnchorCandidate,
-  isCharacterCandidate,
-} from "components/module/game/forge/steps/character/characterSourceModel";
+import { CharacterImagePicker } from "./source/CharacterImagePicker";
+import { CharacterTemplateGeneration } from "./source/CharacterTemplateGeneration";
+import { CharacterUploadSource } from "./source/CharacterUploadSource";
 import type { CharacterRegisterSource } from "components/module/game/forge/steps/character/MethodTemplateGrid";
 
 type SourceTabType = "gen-studio" | "new" | "upload";
@@ -193,19 +182,9 @@ export function UserCharacterStudio({
   const [speciesId, setSpeciesId] = useState<CharacterSpeciesId>("human");
   const [primaryAttributeId, setPrimaryAttributeId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [pendingStarterPreset, setPendingStarterPreset] = useState<CharacterStarterPresetType | null>(null);
-  const [starterEditorPreset, setStarterEditorPreset] = useState<CharacterStarterPresetType | null>(null);
-  const [starterResultPreset, setStarterResultPreset] = useState<CharacterStarterPresetType | null>(null);
-  const [starterResultSources, setStarterResultSources] = useState<SelectedSourceType[]>([]);
-  const [activeStarterKey, setActiveStarterKey] = useState("");
+  const [templateGenerationBusy, setTemplateGenerationBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const imagesQuery = useQuery({
-    queryKey: ["character-studio-images"],
-    queryFn: () => listStudioImageMetas({ scope: "user", limit: 36 }),
-    staleTime: 30_000,
-    retry: 1,
-  });
   const tutorsQuery = useQuery({
     queryKey: ["character-studio-tutors"],
     queryFn: listTutorsPersonas,
@@ -238,24 +217,15 @@ export function UserCharacterStudio({
     staleTime: 60_000,
     retry: false,
   });
-  const starterPreviewQuery = useQuery({
-    queryKey: ["character-starter-previews"],
-    queryFn: () => listStudioImageTemplatePreviewMetas({
-      templateKeys: [CHARACTER_STARTER_PRESET_TEMPLATE_KEY],
-      perTemplate: 3,
-    }),
-    staleTime: 60_000,
-    retry: 1,
-  });
-
-  const imageSources = useMemo(
-    () => (imagesQuery.data || [])
-      .filter(isAnchorCandidate)
-      .filter(isCharacterCandidate)
-      .slice(0, 12)
-      .map(studioSource),
-    [imagesQuery.data],
+  const allowedSpecies = useMemo(
+    () => genesisOptionsQuery.data?.species || [],
+    [genesisOptionsQuery.data?.species],
   );
+  const effectiveSpeciesId: CharacterSpeciesId = allowedSpecies.some((option) => option.id === speciesId)
+    ? speciesId
+    : allowedSpecies[0]?.id || speciesId;
+  const effectiveSpecies = allowedSpecies.find((option) => option.id === effectiveSpeciesId);
+
   const tutorSources = useMemo(
     () => (tutorsQuery.data || [])
       .map(tutorSource)
@@ -273,19 +243,7 @@ export function UserCharacterStudio({
     () => new Set(failedAnchorsQuery.data || []),
     [failedAnchorsQuery.data],
   );
-  const sourceLoadError = imagesQuery.error || tutorsQuery.error || failedAnchorsQuery.error || referenceKitsQuery.error;
-  const templateSources = useMemo(
-    () => [...imageSources, ...tutorSources].slice(0, 12),
-    [imageSources, tutorSources],
-  );
-  const starterPreviewUrls = useMemo(() => {
-    const items = starterPreviewQuery.data?.[CHARACTER_STARTER_PRESET_TEMPLATE_KEY] || [];
-    return items.reduce<Record<string, string>>((acc, item, index) => {
-      if (item.url) acc[CHARACTER_STARTER_PRESETS[index]?.key || ""] = item.url;
-      return acc;
-    }, {});
-  }, [starterPreviewQuery.data]);
-
+  const sourceLoadError = tutorsQuery.error || failedAnchorsQuery.error || referenceKitsQuery.error;
   const chooseSource = (source: SelectedSourceType) => {
     setSelectedSource(source);
     if (source.speciesId) setSpeciesId(source.speciesId);
@@ -294,7 +252,7 @@ export function UserCharacterStudio({
   };
 
   const confirmAnchor = async () => {
-    if (!selectedSource || !name.trim()) return;
+    if (!selectedSource || !name.trim() || !genesisOptionsQuery.data?.species.length) return;
     setBusy(true);
     setError("");
     trackPlayEvent("character_create_start", {
@@ -310,7 +268,7 @@ export function UserCharacterStudio({
         sourcePersonaId: selectedSource.personaId,
         sourceReferenceKitId: selectedSource.referenceKitId,
         sourceImageUrl: selectedSource.sourceType === "tutors-profile" ? selectedSource.url : undefined,
-        speciesId,
+        speciesId: effectiveSpeciesId,
         primaryAttributeId: primaryAttributeId || undefined,
       });
       await runMyGameCharacterPipelineAction(character.characterId, "prepare");
@@ -327,61 +285,7 @@ export function UserCharacterStudio({
     }
   };
 
-  const requestStarterGeneration = (preset: CharacterStarterPresetType) => {
-    setPendingStarterPreset(preset);
-    trackPlayEvent("forge_cost_confirm", { universeId, outcome: "open", presetKey: preset.key });
-  };
-
-  const openStarterEditor = () => {
-    const preset = pendingStarterPreset;
-    if (!preset) return;
-    setStarterResultPreset(null);
-    setStarterResultSources([]);
-    setStarterEditorPreset(preset);
-    setActiveStarterKey("");
-    setError("");
-    trackPlayEvent("forge_cost_confirm", { universeId, outcome: "confirm", presetKey: preset.key });
-    setSourceTab("new");
-    setPendingStarterPreset(null);
-  };
-
-  const handleStarterGenerationDone = (
-    preset: CharacterStarterPresetType,
-    _images: string[],
-    _coins?: number,
-    meta?: ImageStudioDoneMetaType,
-  ) => {
-    const sources = (meta?.assets || [])
-      .filter((asset): asset is ImagePromptMetaType & { assetId: string; url: string } => Boolean(asset.assetId && asset.url))
-      .map((asset) => ({
-        key: `new:${asset.assetId}`,
-        sourceType: "new" as const,
-        assetId: asset.assetId,
-        url: asset.url,
-        label: preset.label.ko,
-        speciesId: preset.key === "companion" ? "monster" as const : "human" as const,
-      }));
-
-    setActiveStarterKey("");
-    setStarterEditorPreset(null);
-    if (sources.length === 0) {
-      setStarterResultPreset(null);
-      setStarterResultSources([]);
-      setError("생성 결과를 선택할 수 있는 자산 정보를 받지 못했습니다.");
-      return;
-    }
-    setStarterResultPreset(preset);
-    setStarterResultSources(sources);
-    setError("");
-  };
-
-  const handleStarterGenerationFailed = (errorCode: string) => {
-    setActiveStarterKey("");
-    setError(toErrorMessage(errorCode, "새 캐릭터 이미지를 만들지 못했습니다."));
-  };
-
   if (
-    imagesQuery.isLoading ||
     tutorsQuery.isLoading ||
     failedAnchorsQuery.isLoading ||
     (Boolean(isAdministrator) && referenceKitsQuery.isLoading)
@@ -455,28 +359,36 @@ export function UserCharacterStudio({
           <div className="grid gap-3 sm:grid-cols-3">
             {[
               { key: "template", enabled: true, label: { ko: "내 이미지에서 고르기", en: "Choose from my images" }, description: { ko: "내가 만든 이미지와 프로필에서 선택", en: "Choose from your images and profiles" } },
-              { key: "new", enabled: true, label: { ko: "새 캐릭터 만들기", en: "Create a new character" }, description: { ko: "준비된 세 가지 스타일에서 선택", en: "Choose from three ready styles" } },
-              { key: "upload", enabled: false, label: { ko: "이미지 업로드", en: "Upload an image" }, description: { ko: "운영 검토 기준 확정 후 제공", en: "Available after moderation policy review" } },
+              { key: "new", enabled: true, label: { ko: "새 캐릭터 만들기", en: "Create a new character" }, description: { ko: "Gen Studio 템플릿으로 기준 컷을 만들어요", en: "Create an anchor cut with a Gen Studio template" } },
+              {
+                key: "upload",
+                enabled: genesisOptionsQuery.data?.sourceAccess?.upload === true,
+                label: { ko: "이미지 업로드", en: "Upload an image" },
+                description: genesisOptionsQuery.data?.sourceAccess?.upload === true
+                  ? { ko: "업로드한 원본은 비공개로 저장되고, 캐릭터는 소유자만 사용할 수 있어요.", en: "The uploaded source stays private, and only you can use the character." }
+                  : { ko: "운영 검토 기준 확정 후 제공", en: "Available after moderation policy review" },
+              },
             ].map((method) => {
+              const methodDisabled = !method.enabled || templateGenerationBusy;
               const selected = method.enabled && ((method.key === "template" && sourceTab === "gen-studio") || (method.key === sourceTab));
               return (
                 <button
                   key={method.key}
                   type="button"
                   aria-pressed={selected}
-                  aria-disabled={!method.enabled}
-                  disabled={!method.enabled}
+                  aria-disabled={methodDisabled}
+                  disabled={methodDisabled}
                   onClick={() => {
-                    if (!method.enabled) return;
+                    if (methodDisabled) return;
                     setSourceTab(method.key === "template" ? "gen-studio" : method.key as SourceTabType);
                     setSelectedSource(null);
                     trackPlayEvent("forge_method_select", { universeId, method: method.key });
                   }}
-                  className={`min-h-20 rounded-xl border p-4 text-left transition-colors motion-reduce:transition-none ${selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : method.enabled ? "border-border bg-background hover:border-primary/60" : "border-border bg-muted/60 opacity-70"}`}
+                  className={`min-h-20 rounded-xl border p-4 text-left transition-colors motion-reduce:transition-none ${selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : methodDisabled ? "border-border bg-muted/60 opacity-70" : "border-border bg-background hover:border-primary/60"}`}
                 >
                   <span className="block text-sm font-semibold"><Lang text={method.label} /></span>
                   <span className="mt-1 block text-xs leading-5 text-secondary-text"><Lang text={method.description} /></span>
-                  {!method.enabled ? <span className="mt-2 inline-flex min-h-7 items-center rounded-full bg-background px-2 text-xxs font-semibold text-secondary-text"><Lang text={{ ko: "준비 중", en: "Coming soon" }} /></span> : null}
+                  {templateGenerationBusy ? <span className="mt-2 inline-flex min-h-7 items-center rounded-full bg-background px-2 text-xxs font-semibold text-secondary-text"><Lang text={{ ko: "생성 중에는 방법을 바꿀 수 없어요", en: "Methods are locked while generating" }} /></span> : !method.enabled ? <span className="mt-2 inline-flex min-h-7 items-center rounded-full bg-background px-2 text-xxs font-semibold text-secondary-text"><Lang text={{ ko: "준비 중", en: "Coming soon" }} /></span> : null}
                 </button>
               );
             })}
@@ -491,116 +403,54 @@ export function UserCharacterStudio({
                   failedKeys={failedAnchorIdSet}
                   onSelect={chooseSource}
                 />
-                <p className="text-sm font-semibold"><Lang text={{ ko: "캐릭터로 쓰기 좋은 이미지", en: "Images ready for a character" }} /></p>
-                <MethodTemplateGrid
-                  sources={templateSources as unknown as CharacterRegisterSource[]}
-                  selectedKey={selectedSource?.key || ""}
-                  failedKeys={failedAnchorIdSet}
-                  onSelect={chooseSource}
+                <CharacterImagePicker
+                  selectedAssetId={selectedSource?.sourceType === "gen-studio" ? selectedSource.assetId : undefined}
+                  onSelect={(image) => chooseSource(studioSource(image))}
                 />
+                {tutorSources.length > 0 ? (
+                  <section className="space-y-3 rounded-xl border border-border bg-background p-4" aria-labelledby="character-profile-images-title">
+                    <p id="character-profile-images-title" className="text-sm font-semibold">
+                      <Lang text={{ ko: "프로필 이미지", en: "Profile images" }} />
+                    </p>
+                    <MethodTemplateGrid
+                      sources={tutorSources as unknown as CharacterRegisterSource[]}
+                      selectedKey={selectedSource?.key || ""}
+                      failedKeys={failedAnchorIdSet}
+                      onSelect={chooseSource}
+                    />
+                  </section>
+                ) : null}
               </div>
             ) : null}
 
             {sourceTab === "new" ? (
-              <div className="space-y-3">
-                {starterEditorPreset ? (
-                  <section className="space-y-4 rounded-xl border border-primary/30 bg-primary/5 p-4" aria-labelledby="starter-editor-title">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold" id="starter-editor-title">
-                          <Lang text={{ ko: `${starterEditorPreset.label.ko} 스타터 생성`, en: `${starterEditorPreset.label.en} starter generation` }} />
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-secondary-text">
-                          <Lang text={{ ko: "생성이 끝나면 결과 목록에서 기준 컷을 직접 선택하세요.", en: "After generation, choose the anchor cut from the result list." }} />
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="min-h-11 min-w-11"
-                        aria-label={lang({ ko: "스타터 생성 닫기", en: "Close starter generation" })}
-                        onClick={() => {
-                          setStarterEditorPreset(null);
-                          setActiveStarterKey("");
-                        }}
-                        disabled={activeStarterKey === starterEditorPreset.key}
-                      >
-                        <X className="size-4" aria-hidden />
-                      </Button>
-                    </div>
-                    <ImageStudioEditor
-                      mode="user"
-                      surface="embedded"
-                      detailPresentation="embedded"
-                      initialTemplateKey={CHARACTER_STARTER_PRESET_TEMPLATE_KEY}
-                      allowedTemplateKeys={[CHARACTER_STARTER_PRESET_TEMPLATE_KEY]}
-                      initialTemplateVariables={starterEditorPreset.variables}
-                      requiredTemplateVariableKeys={Object.keys(starterEditorPreset.variables)}
-                      lockedTemplateVariableKeys={Object.keys(starterEditorPreset.variables)}
-                      allowCustomPrompt={false}
-                      onGenerationStarted={() => setActiveStarterKey(starterEditorPreset.key)}
-                      onGenerationFailed={({ errorCode }) => handleStarterGenerationFailed(errorCode)}
-                      onDone={(images, coins, meta) => handleStarterGenerationDone(starterEditorPreset, images, coins, meta)}
-                    />
-                  </section>
-                ) : null}
-
-                {starterResultPreset && starterResultSources.length > 0 ? (
-                  <section className="space-y-3 rounded-xl border border-border bg-background p-4" aria-labelledby="starter-result-title">
-                    <div>
-                      <p className="text-sm font-semibold" id="starter-result-title">
-                        <Lang text={{ ko: `${starterResultPreset.label.ko} 생성 결과에서 기준 컷 선택`, en: `Choose an anchor cut from ${starterResultPreset.label.en} results` }} />
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-secondary-text">
-                        <Lang text={{ ko: "결과를 확인한 뒤 선택한 이미지가 기준 컷으로 적용됩니다.", en: "Review the results; only the image you choose will be applied as the anchor cut." }} />
-                      </p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {starterResultSources.map((source) => {
-                        const selected = selectedSource?.key === source.key;
-                        return (
-                          <button
-                            key={source.key}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => chooseSource(source)}
-                            className={`min-h-11 overflow-hidden rounded-xl border text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${selected ? "border-primary bg-primary/5 ring-2 ring-primary/20" : "border-border bg-surface hover:border-primary/60"}`}
-                          >
-                            <span
-                              role="img"
-                              aria-label={lang({ ko: `${starterResultPreset.label.ko} 생성 결과`, en: `${starterResultPreset.label.en} generated result` })}
-                              className="block aspect-[4/3] w-full bg-cover bg-center"
-                              style={{ backgroundImage: `url("${source.url.replace(/"/g, "%22")}")` }}
-                            />
-                            <span className="block px-3 py-2 text-sm font-semibold">
-                              <Lang text={{ ko: selected ? "기준 컷으로 선택됨" : "이 이미지를 기준 컷으로 선택", en: selected ? "Selected as anchor cut" : "Choose this image as anchor cut" }} />
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ) : null}
-
-                <div>
-                  <p className="text-sm font-semibold"><Lang text={{ ko: "스타터 스타일", en: "Starter styles" }} /></p>
-                  <p className="mt-1 text-xs text-secondary-text"><Lang text={{ ko: "스타일을 고르면 서버가 실행 직전 가격과 잔액을 확인합니다.", en: "The server checks price and balance immediately before running." }} /></p>
-                </div>
-                <MethodStarterPresets
-                  presets={CHARACTER_STARTER_PRESETS}
-                  previews={starterPreviewUrls}
-                  activeKey={activeStarterKey}
-                  onGenerate={requestStarterGeneration}
-                />
-              </div>
+              <CharacterTemplateGeneration
+                universeId={universeId}
+                speciesLabel={effectiveSpecies?.label || { ko: "종족 정보를 불러오는 중", en: "Loading species" }}
+                selectedKey={selectedSource?.sourceType === "new" ? selectedSource.key : undefined}
+                onGeneratingChange={setTemplateGenerationBusy}
+                onSelect={(source) => chooseSource({
+                  key: source.key,
+                  sourceType: "new",
+                  assetId: source.assetId,
+                  url: source.url,
+                  label: source.label,
+                })}
+              />
             ) : null}
 
             {sourceTab === "upload" ? (
-              <div className="space-y-3 rounded-xl border border-dashed border-border bg-muted/60 p-5 text-center">
-                <p className="text-sm font-semibold"><Lang text={{ ko: "이미지 업로드는 준비 중입니다", en: "Image upload is coming soon" }} /></p>
-                <p className="text-xs leading-5 text-secondary-text"><Lang text={{ ko: "실제 인물·미성년 이미지의 운영 검토 기준과 처리 기한을 확정한 뒤 제공할 예정입니다.", en: "This will be available after the moderation rules and review timeline for real-person and minor images are finalized." }} /></p>
-              </div>
+              genesisOptionsQuery.data?.sourceAccess?.upload === true ? (
+                <CharacterUploadSource
+                  onSelect={chooseSource}
+                  onClear={() => setSelectedSource(null)}
+                />
+              ) : (
+                <div className="space-y-3 rounded-xl border border-dashed border-border bg-muted/60 p-5 text-center">
+                  <p className="text-sm font-semibold"><Lang text={{ ko: "이미지 업로드는 준비 중입니다", en: "Image upload is coming soon" }} /></p>
+                  <p className="text-xs leading-5 text-secondary-text"><Lang text={{ ko: "실제 인물·미성년 이미지의 운영 검토 기준과 처리 기한을 확정한 뒤 제공할 예정입니다.", en: "This will be available after the moderation rules and review timeline for real-person and minor images are finalized." }} /></p>
+                </div>
+              )
             ) : null}
           </div>
         </section>
@@ -630,34 +480,25 @@ export function UserCharacterStudio({
             </div>
             <CharacterGenesisOptionsPanel
               universeId={universeId}
-              speciesId={speciesId}
+              speciesId={effectiveSpeciesId}
               primaryAttributeId={primaryAttributeId}
               options={genesisOptionsQuery.data}
+              optionsLoading={genesisOptionsQuery.isLoading}
+              optionsError={genesisOptionsQuery.isError && !genesisOptionsQuery.data}
               disabled={busy}
-              onSpeciesChange={setSpeciesId}
+              onSpeciesChange={(nextSpeciesId) => {
+                if (allowedSpecies.some((option) => option.id === nextSpeciesId)) setSpeciesId(nextSpeciesId);
+              }}
               onAttributeChange={setPrimaryAttributeId}
+              onOptionsRetry={() => void genesisOptionsQuery.refetch()}
             />
-            <Button onClick={confirmAnchor} loading={busy} disabled={!selectedSource || !name.trim()} className="min-h-11 w-full sm:w-fit">
+            <Button onClick={confirmAnchor} loading={busy} disabled={!selectedSource || !name.trim() || !allowedSpecies.length} className="min-h-11 w-full sm:w-fit">
               <Check className="mr-2 size-4" aria-hidden />
               <Lang text={{ ko: "캐릭터 등록하고 다음 단계로", en: "Register and continue" }} />
             </Button>
           </div>
         </section>
 
-        <CostConfirmDialog
-          open={Boolean(pendingStarterPreset)}
-          onOpenChange={(open) => {
-            if (!open) {
-              trackPlayEvent("forge_cost_confirm", { universeId, outcome: "cancel", presetKey: pendingStarterPreset?.key });
-              setPendingStarterPreset(null);
-            }
-          }}
-          title={{ ko: "새 캐릭터 이미지를 만들까요?", en: "Create a new character image?" }}
-          description={{ ko: "생성 화면에서 결과를 확인한 뒤 기준 컷을 직접 선택합니다.", en: "Open the generation screen, review the result, and choose the anchor cut yourself." }}
-          actionLabel={{ ko: "생성 화면 열기", en: "Open generation" }}
-          onConfirm={openStarterEditor}
-          loading={Boolean(activeStarterKey)}
-        />
       </div>
     </main>
   );

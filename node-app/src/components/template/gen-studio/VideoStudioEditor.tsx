@@ -18,8 +18,8 @@ import {
 import { Lang, lang } from "components/module/i18n";
 import { enqueueStudioVideoJob, getStudioVideoJob, fetchGenStudioModelCatalog } from "libs/api/lab";
 import type { GenStudioModelCatalogClientResult } from "libs/api/lab/modelCatalog";
+import { AI_VIDEO_CAPABILITIES } from "consts/ai/generated/modelCatalog.generated";
 import {
-  VIDEO_CAPABILITY_MATRIX,
   estimateVideoGenerationCoins,
   getDefaultVideoModel,
   validateVideoGenerationRequest,
@@ -27,6 +27,7 @@ import {
   type VideoGenJob,
   type VideoGenerationModeType,
 } from "types/ai";
+import type { VideoCapability } from "types/ai/videoGeneration";
 import { cn } from "utils/common";
 import { getCatalogVideoModelOptions, type CatalogVideoModelOption } from "utils/app/genStudioCatalogClient";
 import { VideoPreviewCard } from "./modules/video-studio/VideoPreviewCard";
@@ -66,7 +67,7 @@ function getErrorText(code: string) {
 }
 
 function findCapability(provider: string, modelName: string) {
-  return VIDEO_CAPABILITY_MATRIX.find((item) => item.provider === provider && item.modelName === modelName) || null;
+  return (AI_VIDEO_CAPABILITIES as readonly VideoCapability[]).find((item) => item.provider === provider && item.modelName === modelName) || null;
 }
 
 function localizedOptionLabel(options: readonly { value: string; label: LocalizedText }[], value: string) {
@@ -227,7 +228,7 @@ export function VideoStudioEditor({ initialPrompt = "" }: VideoStudioEditorProps
 
   const handleProviderChange = useCallback((nextProvider: string) => {
     const typedProvider = nextProvider as "google" | "xai" | "zai";
-    const nextCapability = VIDEO_CAPABILITY_MATRIX.find((item) => item.provider === typedProvider);
+    const nextCapability = (AI_VIDEO_CAPABILITIES as readonly VideoCapability[]).find((item) => item.provider === typedProvider);
     setProvider(typedProvider);
     setModelName((nextCapability?.modelName || getDefaultVideoModel(typedProvider)) as typeof modelName);
     setDuration(String(nextCapability?.durations[0] || 5));
@@ -237,7 +238,7 @@ export function VideoStudioEditor({ initialPrompt = "" }: VideoStudioEditorProps
   }, []);
 
   const handleModelChange = useCallback((nextModelName: string) => {
-    const nextCapability = VIDEO_CAPABILITY_MATRIX.find((item) => item.modelName === nextModelName);
+    const nextCapability = (AI_VIDEO_CAPABILITIES as readonly VideoCapability[]).find((item) => item.modelName === nextModelName);
     setModelName(nextModelName as typeof modelName);
     setDuration(String(nextCapability?.durations[0] || 5));
     setResolution(nextCapability?.resolutions[0] || "720p");
@@ -448,7 +449,7 @@ export function VideoStudioEditor({ initialPrompt = "" }: VideoStudioEditorProps
                   onChange={handleModelChange}
                   options={(videoModelOptions.length
                     ? videoModelOptions.filter((item) => item.provider === provider)
-                    : VIDEO_CAPABILITY_MATRIX.filter((item) => item.provider === provider).map((item) => ({
+                    : (AI_VIDEO_CAPABILITIES as readonly VideoCapability[]).filter((item) => item.provider === provider).map((item) => ({
                         provider: item.provider,
                         modelName: item.modelName,
                         displayName: item.modelName,

@@ -5,6 +5,8 @@ import { MARKETING_PROMO_SLOTS, type MarketingPromoSlot } from "models/marketing
 import { logger } from "utils/log";
 import { toErrorMessage, toSafeString } from "utils/common/typeUtils";
 
+const RETIRED_ARTICLE_INLINE_SLOT = "article_inline";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -34,7 +36,7 @@ export async function GET(request: NextRequest) {
 
   const searchParams = new URL(request.url).searchParams;
   const slotId = toSafeString(searchParams.get("slot")) as MarketingPromoSlot;
-  if (!(MARKETING_PROMO_SLOTS as readonly string[]).includes(slotId)) {
+  if (slotId === RETIRED_ARTICLE_INLINE_SLOT || !(MARKETING_PROMO_SLOTS as readonly string[]).includes(slotId)) {
     return NextResponse.json({ ok: false, error: "promo_slot_invalid" }, { status: 400 });
   }
 

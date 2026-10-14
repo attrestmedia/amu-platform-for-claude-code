@@ -3,10 +3,10 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogH
 import { Lang, lang } from "components/module/i18n";
 import { TEXT_PROVIDER_TYPES } from "consts/ai";
 import {
-  MARKETING_PROOFREAD_DEFAULT_MODEL,
-  MARKETING_PROOFREAD_DEFAULT_MODEL_BY_PROVIDER,
-  MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-} from "consts/marketing/proofread";
+  AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
+  AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+  AI_MARKETING_PROOFREAD_MODEL_BY_PROVIDER,
+} from "consts/ai/generated/modelCatalog.generated";
 import type { UnknownRecord } from "utils/common/typeUtils";
 import type { MarketingChannelSummary } from "./MarketingOpsTypes";
 import { REVIEW_PANEL_LABEL_CLASS } from "./MarketingOpsConstants";
@@ -28,8 +28,8 @@ export const INITIAL_PROOFREAD_DIALOG: ProofreadDialogState = {
   loading: false,
   findings: [],
   manualInstruction: "",
-  modelProvider: MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-  modelName: MARKETING_PROOFREAD_DEFAULT_MODEL,
+  modelProvider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+  modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
 };
 
 export function MarketingProofreadDialog({
@@ -124,7 +124,7 @@ export function MarketingProofreadDialog({
                       ...prev,
                       modelProvider: provider,
                       modelName:
-                        (MARKETING_PROOFREAD_DEFAULT_MODEL_BY_PROVIDER as Record<string, string>)[provider] || "",
+                        (AI_MARKETING_PROOFREAD_MODEL_BY_PROVIDER as Record<string, string>)[provider] || "",
                     }));
                   }}
                 >

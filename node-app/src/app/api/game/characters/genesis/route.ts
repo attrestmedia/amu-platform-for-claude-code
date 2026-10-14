@@ -3,6 +3,8 @@ import { withAuth } from "libs/server-utils/api/apiMiddleware";
 import type { AuthenticatedUserType, RequestValidator } from "libs/server-utils/api/_helpers";
 import { getAuthenticatedUid } from "libs/server-utils/lab/imageAssetAccess";
 import { CharacterGenesisError, createUserCharacterGenesis } from "libs/server-utils/game/characterGenesisService";
+import { assertCharacterSpeciesAllowed, CharacterUniversePolicyError } from "libs/server-utils/game/characterUniversePolicy";
+import { resolveCharacterUniverseAccess } from "libs/server-utils/game/characterUniverseAccess";
 import { getGenesisBundle } from "libs/database/game";
 import type { UnknownRecord } from "utils/common/typeUtils";
 
@@ -40,10 +42,15 @@ export const POST = withAuth<UnknownRecord>(
   async (body, user) => {
     try {
       const uid = getAuthenticatedUid(user as AuthenticatedUserType);
+      const universeId = String(body.universeId);
+      const speciesId = String(body.speciesId);
+      const { speciesPolicy } = await resolveCharacterUniverseAccess(user as AuthenticatedUserType, universeId);
+      assertCharacterSpeciesAllowed(speciesPolicy, speciesId);
+
       const result = await createUserCharacterGenesis({
         uid,
-        universeId: String(body.universeId),
-        speciesId: String(body.speciesId),
+        universeId,
+        speciesId,
         archetypeId: typeof body.archetypeId === "string" ? body.archetypeId : undefined,
         primaryAttributeId: typeof body.primaryAttributeId === "string" ? body.primaryAttributeId : undefined,
         characterId: typeof body.characterId === "string" ? body.characterId : undefined,
@@ -51,6 +58,12 @@ export const POST = withAuth<UnknownRecord>(
       });
       return NextResponse.json({ ok: true, data: result }, { status: 201 });
     } catch (error) {
+      if (error instanceof CharacterUniversePolicyError) {
+        return NextResponse.json(
+          { ok: false, error: error.code.toLowerCase(), errorCode: error.code },
+          { status: error.status },
+        );
+      }
       if (error instanceof CharacterGenesisError) {
         return NextResponse.json({ ok: false, error: error.code }, { status: error.status });
       }

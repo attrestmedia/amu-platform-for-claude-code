@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { SyntheticEvent } from "react";
 import { Info, Sparkles } from "lucide-react";
+import { Button, Skeleton } from "@amu-labs/ui";
 import { Lang } from "components/module/i18n";
 import {
   CHARACTER_GENESIS_ATTRIBUTE_OPTIONS,
@@ -18,9 +19,12 @@ type Props = {
   speciesId: CharacterSpeciesId;
   primaryAttributeId: string;
   options?: CharacterGenesisOptionsType | null;
+  optionsLoading?: boolean;
+  optionsError?: boolean;
   disabled?: boolean;
   onSpeciesChange: (value: CharacterSpeciesId) => void;
   onAttributeChange: (value: string) => void;
+  onOptionsRetry?: () => void;
 };
 
 function percent(value: number) {
@@ -34,11 +38,15 @@ export function CharacterGenesisOptionsPanel({
   speciesId,
   primaryAttributeId,
   options,
+  optionsLoading = false,
+  optionsError = false,
   disabled = false,
   onSpeciesChange,
   onAttributeChange,
+  onOptionsRetry,
 }: Props) {
   const [probabilityViewed, setProbabilityViewed] = useState(false);
+  const speciesOptions = options?.species || [];
   const attributes = options?.attributes?.length
     ? options.attributes
     : CHARACTER_GENESIS_ATTRIBUTE_OPTIONS.map((entry) => ({
@@ -79,26 +87,53 @@ export function CharacterGenesisOptionsPanel({
       </div>
 
       <fieldset disabled={disabled}>
-        <legend className="sr-only"><Lang text={{ ko: "종족", en: "Species" }} /></legend>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {CHARACTER_SPECIES_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={speciesId === option.id}
-              onClick={() => onSpeciesChange(option.id)}
-              className={[
-                "min-h-11 rounded-lg border px-3 py-2 text-left transition-colors motion-reduce:transition-none",
-                speciesId === option.id
-                  ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                  : "border-border bg-surface hover:border-primary/60",
-              ].join(" ")}
-            >
-              <span className="block text-sm font-medium"><Lang text={option.label} /></span>
-              <span className="mt-0.5 block text-xs text-muted-foreground"><Lang text={option.description} /></span>
-            </button>
-          ))}
-        </div>
+        <legend className="mb-2 text-sm font-medium"><Lang text={{ ko: "종족", en: "Species" }} /></legend>
+        {optionsLoading ? (
+          <div className="space-y-2" role="status" aria-live="polite">
+            <Skeleton className="h-14 w-full motion-reduce:animate-none" />
+            <p className="text-xs text-muted-foreground"><Lang text={{ ko: "유니버스에서 허용하는 종족을 확인하고 있어요.", en: "Checking which species this universe allows..." }} /></p>
+          </div>
+        ) : optionsError ? (
+          <div className="space-y-2 rounded-lg border border-danger/40 bg-danger/5 p-3">
+            <p className="text-sm text-secondary-text" role="alert">
+              <Lang text={{ ko: "허용 종족을 불러오지 못했습니다.", en: "Could not load the allowed species." }} />
+            </p>
+            {onOptionsRetry ? (
+              <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={onOptionsRetry}>
+                <Lang text={{ ko: "다시 시도", en: "Try again" }} />
+              </Button>
+            ) : null}
+          </div>
+        ) : speciesOptions.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border px-3 py-2 text-sm text-secondary-text" role="status" aria-live="polite">
+            <Lang text={{ ko: "등록할 수 있는 종족이 없습니다.", en: "No species are available for registration." }} />
+          </p>
+        ) : speciesOptions.length === 1 ? (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2" role="status" aria-live="polite">
+            <span className="block text-sm font-medium"><Lang text={speciesOptions[0].label} /></span>
+            <span className="mt-0.5 block text-xs text-muted-foreground"><Lang text={speciesOptions[0].description} /></span>
+          </div>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {speciesOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={speciesId === option.id}
+                onClick={() => onSpeciesChange(option.id)}
+                className={[
+                  "min-h-11 rounded-lg border px-3 py-2 text-left transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                  speciesId === option.id
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                    : "border-border bg-surface hover:border-primary/60",
+                ].join(" ")}
+              >
+                <span className="block text-sm font-medium"><Lang text={option.label} /></span>
+                <span className="mt-0.5 block text-xs text-muted-foreground"><Lang text={option.description} /></span>
+              </button>
+            ))}
+          </div>
+        )}
       </fieldset>
 
       <div className="space-y-2">

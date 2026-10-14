@@ -1,9 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { SPEECH_RUNTIME_MANIFEST, type SpeechManifestBudgetOwner } from "consts/ai/speechRuntimeManifest";
 import {
   SPEECH_PROVIDER_ROUTABLE,
   SPEECH_QUALITY_PRESETS,
-  isSpeechBudgetOwner,
   isSpeechCatalogProvider,
 } from "consts/system/speechRuntimeControls";
 import { createSystemControlAudit } from "libs/database/system";
@@ -36,7 +36,13 @@ const CONCURRENCY_CAP_FIELDS = ["perUserConcurrent", "globalConcurrent"] as cons
  * "-1을 넣었더니 미확정이 됐다"가 오류 없이 저장되면 상한을 걸었다고 착각하게 된다.
  * 그래서 입력 경계에서는 거부하고, 정규화는 저장값 방어선으로 남긴다.
  */
-function validateCapObject(value: unknown, label: string, allowedFields: readonly string[]): string | null {
+function validateCapObject(
+  value: unknown,
+  label: string,
+  allowedFields: readonly string[],
+  manifestLimits?: Record<string, number | null>,
+  integerFields: readonly string[] = [],
+): string | null {
   if (value === undefined) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return `${label}은 객체여야 합니다.`;
   for (const [field, raw] of Object.entries(value as UnknownRecord)) {
@@ -46,11 +52,26 @@ function validateCapObject(value: unknown, label: string, allowedFields: readonl
     if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) {
       return `${label}.${field}는 0 이상의 유한한 숫자 또는 null이어야 합니다.`;
     }
+    if (integerFields.includes(field) && !Number.isInteger(raw)) {
+      return `${label}.${field}는 정수여야 합니다.`;
+    }
+    if (manifestLimits) {
+      const manifestCap = manifestLimits[field];
+      if (manifestCap === null && raw !== 0) {
+        return `${label}.${field}는 manifest 상한(미확정) 때문에 null 또는 0(차단)만 허용됩니다.`;
+      }
+      if (manifestCap !== undefined && manifestCap !== null && raw > manifestCap) {
+        return `${label}.${field}는 manifest 상한(${manifestCap})보다 클 수 없습니다.`;
+      }
+    }
   }
   return null;
 }
 
 function validatePatchBody(data: UnknownRecord) {
+  if (Object.hasOwn(data, "tutorsStt") || Object.hasOwn(data, "tutorsAudioTurn")) {
+    return { valid: false, error: "제거된 Tutors 제어입니다: tutorsStt, tutorsAudioTurn" };
+  }
   if (typeof data?.reason !== "string" || !String(data.reason).trim()) {
     return { valid: false, error: "변경 사유가 필요합니다." };
   }
@@ -71,63 +92,42 @@ function validatePatchBody(data: UnknownRecord) {
       if (typeof enabled !== "boolean") {
         return { valid: false, error: "providerEnabled 값은 boolean이어야 합니다." };
       }
+      if (enabled && SPEECH_PROVIDER_ROUTABLE[provider] === false) {
+        return { valid: false, error: `providerEnabled.${provider}는 manifest routable=false이므로 켤 수 없습니다.` };
+      }
     }
   }
   if (data?.voiceAllowlist !== undefined && !Array.isArray(data.voiceAllowlist)) {
     return { valid: false, error: "voiceAllowlist는 배열이어야 합니다." };
   }
-  const budgetError = validateCapObject(data?.budget, "budget", BUDGET_CAP_FIELDS);
+  const budgetError = validateCapObject(data?.budget, "budget", BUDGET_CAP_FIELDS, SPEECH_RUNTIME_MANIFEST.budget);
   if (budgetError) return { valid: false, error: budgetError };
   if (data?.budgetByOwner !== undefined) {
     if (!data.budgetByOwner || typeof data.budgetByOwner !== "object" || Array.isArray(data.budgetByOwner)) {
       return { valid: false, error: "budgetByOwner는 객체여야 합니다." };
     }
+    const manifestOwners = Object.keys(SPEECH_RUNTIME_MANIFEST.budgetByOwner) as SpeechManifestBudgetOwner[];
     for (const [owner, limits] of Object.entries(data.budgetByOwner as UnknownRecord)) {
-      if (!isSpeechBudgetOwner(owner)) {
-        return { valid: false, error: `지원하지 않는 budget owner입니다: ${owner}` };
+      if (!manifestOwners.includes(owner as SpeechManifestBudgetOwner)) {
+        return { valid: false, error: `지원하지 않는 manifest budget owner입니다: ${owner}` };
       }
-      const ownerError = validateCapObject(limits, `budgetByOwner.${owner}`, BUDGET_CAP_FIELDS);
+      const ownerError = validateCapObject(
+        limits,
+        `budgetByOwner.${owner}`,
+        BUDGET_CAP_FIELDS,
+        SPEECH_RUNTIME_MANIFEST.budgetByOwner[owner as SpeechManifestBudgetOwner],
+      );
       if (ownerError) return { valid: false, error: ownerError };
     }
   }
-  const concurrencyError = validateCapObject(data?.concurrency, "concurrency", CONCURRENCY_CAP_FIELDS);
+  const concurrencyError = validateCapObject(
+    data?.concurrency,
+    "concurrency",
+    CONCURRENCY_CAP_FIELDS,
+    SPEECH_RUNTIME_MANIFEST.concurrency,
+    CONCURRENCY_CAP_FIELDS,
+  );
   if (concurrencyError) return { valid: false, error: concurrencyError };
-  if (data?.tutorsStt !== undefined) {
-    const t = data.tutorsStt;
-    if (!t || typeof t !== "object" || Array.isArray(t)) {
-      return { valid: false, error: "tutorsStt는 객체여야 합니다." };
-    }
-    const tutors = t as UnknownRecord;
-    if (tutors.provider !== undefined && String(tutors.provider) !== "openai") {
-      return { valid: false, error: "tutorsStt.provider는 openai만 허용합니다." };
-    }
-    if (tutors.enabled !== undefined && typeof tutors.enabled !== "boolean") {
-      return { valid: false, error: "tutorsStt.enabled는 boolean이어야 합니다." };
-    }
-    if (tutors.modelName !== undefined && typeof tutors.modelName !== "string") {
-      return { valid: false, error: "tutorsStt.modelName은 문자열이어야 합니다." };
-    }
-    if (
-      tutors.allowedLanguages !== undefined &&
-      (!Array.isArray(tutors.allowedLanguages) || tutors.allowedLanguages.some((value) => typeof value !== "string"))
-    ) {
-      return { valid: false, error: "tutorsStt.allowedLanguages는 문자열 배열이어야 합니다." };
-    }
-    for (const field of ["maxDurationMs", "maxAudioBytes", "maxRequestsPerUserPerDay"] as const) {
-      const value = tutors[field];
-      if (value !== undefined && value !== null) {
-        if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-          return { valid: false, error: `tutorsStt.${field}는 0 이상의 유한한 숫자 또는 null이어야 합니다.` };
-        }
-      }
-    }
-    if (tutors.minorProtectionReady !== undefined && typeof tutors.minorProtectionReady !== "boolean") {
-      return { valid: false, error: "tutorsStt.minorProtectionReady는 boolean이어야 합니다." };
-    }
-    if (tutors.allowUnknownAudience !== undefined && typeof tutors.allowUnknownAudience !== "boolean") {
-      return { valid: false, error: "tutorsStt.allowUnknownAudience는 boolean이어야 합니다." };
-    }
-  }
   return { valid: true };
 }
 
@@ -135,6 +135,7 @@ async function getHandler() {
   return NextResponse.json({
     ok: true,
     controls: await getSpeechRuntimeControls(),
+    manifest: SPEECH_RUNTIME_MANIFEST,
     // 코드 정책 상한. DB는 이 값을 끌 수만 있고 켤 수 없다.
     providerRoutable: SPEECH_PROVIDER_ROUTABLE,
   });
@@ -156,7 +157,6 @@ async function patchHandler(data: UnknownRecord, user: AuthenticatedUserType, re
       budget: data.budget as never,
       budgetByOwner: data.budgetByOwner as never,
       concurrency: data.concurrency as never,
-      tutorsStt: data.tutorsStt as never,
     },
     updatedBy: actorId,
   });

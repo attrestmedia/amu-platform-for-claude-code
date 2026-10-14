@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useIsMobile } from "hooks/common/useIsMobile";
 import { cn } from "utils/common";
 
@@ -11,6 +11,7 @@ export type WorkspaceShellTopBarSlotProps = {
   onToggleSidebar: () => void;
   sidebarExpanded: boolean;
   sidebarControlsId?: string;
+  sidebarToggleId: string;
 };
 
 export type WorkspaceShellSidebarSlotProps = {
@@ -19,6 +20,7 @@ export type WorkspaceShellSidebarSlotProps = {
   desktopCollapsed: boolean;
   desktopSidebarId: string;
   sheetId: string;
+  onSheetCloseAutoFocus: (event: Event) => void;
 };
 
 export type WorkspaceShellProps = {
@@ -39,8 +41,10 @@ export function WorkspaceShell({ children, mainId, skipLink, topBar, sidebar }: 
   const isBelowLg = useIsMobile("(max-width: 1023px)");
   const desktopSidebarId = `${mainId}-sidebar`;
   const sheetId = `${mainId}-sidebar-sheet`;
-  const sidebarExpanded = isBelowLg ? sidebarOpen : !desktopCollapsed;
-  const sidebarControlsId = isBelowLg ? (sidebarOpen ? sheetId : undefined) : desktopSidebarId;
+  const sidebarToggleId = `${mainId}-sidebar-toggle`;
+  const mobileSidebarOpen = isBelowLg && sidebarOpen;
+  const sidebarExpanded = isBelowLg ? mobileSidebarOpen : !desktopCollapsed;
+  const sidebarControlsId = isBelowLg ? (mobileSidebarOpen ? sheetId : undefined) : desktopSidebarId;
 
   const onOpenSidebar = () => setSidebarOpen(true);
   const onToggleSidebar = () => {
@@ -51,13 +55,10 @@ export function WorkspaceShell({ children, mainId, skipLink, topBar, sidebar }: 
 
     setDesktopCollapsed((collapsed) => !collapsed);
   };
-
-  useEffect(
-    function closeSheetOnDesktop() {
-      if (!isBelowLg && sidebarOpen) setSidebarOpen(false);
-    },
-    [isBelowLg, sidebarOpen],
-  );
+  const onSheetCloseAutoFocus = (event: Event) => {
+    event.preventDefault();
+    document.getElementById(sidebarToggleId)?.focus();
+  };
 
   return (
     <div className="min-h-[100dvh] bg-background text-primary-text">
@@ -68,7 +69,7 @@ export function WorkspaceShell({ children, mainId, skipLink, topBar, sidebar }: 
         {skipLink}
       </a>
 
-      {topBar({ onOpenSidebar, onToggleSidebar, sidebarExpanded, sidebarControlsId })}
+      {topBar({ onOpenSidebar, onToggleSidebar, sidebarExpanded, sidebarControlsId, sidebarToggleId })}
 
       <div
         className={cn(
@@ -76,7 +77,14 @@ export function WorkspaceShell({ children, mainId, skipLink, topBar, sidebar }: 
           desktopCollapsed ? "lg:grid-cols-[minmax(0,1fr)]" : "lg:grid-cols-[236px_minmax(0,1fr)]",
         )}
       >
-        {sidebar({ open: sidebarOpen, onOpenChange: setSidebarOpen, desktopCollapsed, desktopSidebarId, sheetId })}
+        {sidebar({
+          open: mobileSidebarOpen,
+          onOpenChange: setSidebarOpen,
+          desktopCollapsed,
+          desktopSidebarId,
+          sheetId,
+          onSheetCloseAutoFocus,
+        })}
         <main id={mainId} className="min-w-0 px-4 pb-10 pt-4 sm:px-6 lg:px-6 lg:pt-6">
           {children}
         </main>

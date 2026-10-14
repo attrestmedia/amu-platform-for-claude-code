@@ -258,6 +258,8 @@ export const PERSONAL_SUBSCRIPTION_SALES_ENABLED = optionalBool("PERSONAL_SUBSCR
 
 // Universe wallet lifecycle
 export const UNIVERSE_WALLET_CRON_SECRET = optional("UNIVERSE_WALLET_CRON_SECRET", "");
+export const POLICY_RELEASE_CRON_SECRET = optional("POLICY_RELEASE_CRON_SECRET", "");
+export const POLICY_RELEASE_PUBLIC_WP_ORIGIN = optional("POLICY_RELEASE_PUBLIC_WP_ORIGIN", "");
 
 // Amazon SES (IAM Role credential chain 사용 — 정적 AWS access key/secret key 환경변수는 정의하지 않는다)
 export const AWS_SES_REGION = optional("AWS_SES_REGION", "us-east-1");

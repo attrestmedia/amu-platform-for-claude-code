@@ -1,4 +1,7 @@
-import { DEFAULT_TEXT_MODEL_BY_PROVIDER, TEXT_MODEL_MAP } from "consts/ai";
+import {
+  AI_DEFAULT_TEXT_MODEL_BY_PROVIDER,
+  AI_TEXT_MODEL_MAP,
+} from "consts/ai/generated/modelCatalog.generated";
 
 export type MarketingGenerationMode = "server_worker" | "local_agent";
 
@@ -6,7 +9,7 @@ export type MarketingReviewMode = "review_required" | "auto_after_review" | "ful
 
 export type MarketingGenerationConfig = {
   generationMode: MarketingGenerationMode;
-  modelProvider: keyof typeof TEXT_MODEL_MAP;
+  modelProvider: keyof typeof AI_TEXT_MODEL_MAP;
   modelName: string;
   instructionText: string;
   contentTemplateKey: string;
@@ -16,22 +19,22 @@ export type MarketingGenerationConfig = {
   autoPublishAfterReview: boolean;
 };
 
-const DEFAULT_PROVIDER: keyof typeof TEXT_MODEL_MAP = "google";
+const DEFAULT_PROVIDER: keyof typeof AI_TEXT_MODEL_MAP = "google";
 const DEFAULT_REVIEW_MODE: MarketingReviewMode = "review_required";
 
 function toSafeString(value: unknown, max = 2000) {
   return String(value || "").trim().slice(0, max);
 }
 
-function resolveModelProvider(value: unknown): keyof typeof TEXT_MODEL_MAP {
-  const provider = toSafeString(value, 40) as keyof typeof TEXT_MODEL_MAP;
-  return provider && provider in TEXT_MODEL_MAP ? provider : DEFAULT_PROVIDER;
+function resolveModelProvider(value: unknown): keyof typeof AI_TEXT_MODEL_MAP {
+  const provider = toSafeString(value, 40) as keyof typeof AI_TEXT_MODEL_MAP;
+  return provider && provider in AI_TEXT_MODEL_MAP ? provider : DEFAULT_PROVIDER;
 }
 
-function resolveModelName(provider: keyof typeof TEXT_MODEL_MAP, value: unknown) {
+function resolveModelName(provider: keyof typeof AI_TEXT_MODEL_MAP, value: unknown) {
   const modelName = toSafeString(value, 120);
-  const allowedModels = (TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
-  return modelName && allowedModels.includes(modelName) ? modelName : DEFAULT_TEXT_MODEL_BY_PROVIDER[provider];
+  const allowedModels = (AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
+  return modelName && allowedModels.includes(modelName) ? modelName : AI_DEFAULT_TEXT_MODEL_BY_PROVIDER[provider];
 }
 
 function resolveReviewMode(value: unknown): MarketingReviewMode {

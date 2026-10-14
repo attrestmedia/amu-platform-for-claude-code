@@ -4,7 +4,7 @@ import { estimateTokens, resolveImageBillingModelName } from "utils/ai";
 import { PROMPT_LIMITS } from "consts/auth";
 import { normalizeHistory } from "utils/normalize";
 import type { RouteHintType } from "types/ai";
-import { PROMPT_OPTION_CHAR_CAPS, IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai";
+import { PROMPT_OPTION_CHAR_CAPS } from "consts/ai";
 import {
   isTextProvider,
   isImageProvider,
@@ -12,6 +12,7 @@ import {
   inferTextProviderFromModelNameRaw,
   isXaiLongContextTieredTextModel,
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
   isOpenAIGpt6TextModel,
   normalizeAiProvider,
 } from "utils/ai/providerHelper";
@@ -27,6 +28,7 @@ import {
 } from "libs/server-utils/api/systemModelControl";
 import { resolveMediaBillingStrategy } from "utils/payment";
 import { toUnknownRecord, toErrorLike, isUnknownRecord, type UnknownRecord } from "utils/common";
+import { AI_IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 
 /**
  * @docHint
@@ -40,13 +42,33 @@ const PER_MESSAGE_CHAR_CAP = PROMPT_LIMITS.maxInputMessageLength;
 
 // endpoint가 AI 계열인지 판별
 function isAiLikeEndpoint(endpoint: string) {
-  return endpoint.startsWith("ai/") || endpoint.startsWith("tutors/") || endpoint.startsWith("commerce/");
+  return endpoint.startsWith("ai/") || endpoint.startsWith("commerce/");
+}
+
+function buildModelResolutionFailure(error: unknown) {
+  const meta = toErrorLike(error);
+  const errorCode = typeof meta.errorCode === "string" ? meta.errorCode.trim() : "";
+  const blocked = errorCode === "MODEL_NOT_SELECTABLE";
+
+  return {
+    response: {
+      error: blocked ? "model_not_selectable" : "unsupported_model",
+      errorCode: errorCode || "UNSUPPORTED_MODEL",
+    },
+    status:
+      typeof meta.status === "number"
+        ? meta.status
+        : blocked
+          ? 403
+          : errorCode === "SYSTEM_CONTROL_UNAVAILABLE"
+            ? 503
+            : 400,
+  };
 }
 
 // endpoint prefix로 routeHint를 서버 권위로 강제
 function forceRouteHintFromEndpoint(endpoint: string): RouteHintType | "" {
   if (endpoint.startsWith("commerce/")) return "commerce";
-  if (endpoint.startsWith("tutors/")) return "tutors";
   if (endpoint.startsWith("ai/")) return "ai";
   return "";
 }
@@ -293,15 +315,8 @@ export async function applyAiRequestGuards(params: {
         actor: { user: params.actorUser },
       });
     } catch (error: unknown) {
-      const meta = toErrorLike(error);
-      const blocked = meta.errorCode === "MODEL_NOT_SELECTABLE";
-      return respond(
-        {
-          error: blocked ? "model_not_selectable" : "unsupported_model",
-          errorCode: blocked ? "MODEL_NOT_SELECTABLE" : "UNSUPPORTED_MODEL",
-        },
-        { status: blocked ? 403 : 400 },
-      );
+      const failure = buildModelResolutionFailure(error);
+      return respond(failure.response, { status: failure.status });
     }
 
     try {
@@ -322,7 +337,7 @@ export async function applyAiRequestGuards(params: {
     }
 
     // 참고 이미지 수 제한 — provider별 상한 통합 체크
-    const refLimit = (IMAGE_REF_LIMIT_BY_PROVIDER as Record<string, number | undefined>)[prov];
+    const refLimit = (AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[prov];
     if (refLimit != null && allInputImages.length > refLimit) {
       return respond(
         {
@@ -432,15 +447,8 @@ export async function applyAiRequestGuards(params: {
         actor: { user: params.actorUser },
       });
     } catch (error: unknown) {
-      const meta = toErrorLike(error);
-      const blocked = meta.errorCode === "MODEL_NOT_SELECTABLE";
-      return respond(
-        {
-          error: blocked ? "model_not_selectable" : "unsupported_model",
-          errorCode: blocked ? "MODEL_NOT_SELECTABLE" : "UNSUPPORTED_MODEL",
-        },
-        { status: blocked ? 403 : 400 },
-      );
+      const failure = buildModelResolutionFailure(error);
+      return respond(failure.response, { status: failure.status });
     }
 
     try {
@@ -469,7 +477,8 @@ export async function applyAiRequestGuards(params: {
     const needsShortLongVariants =
       (prov === "google" && isGoogleProTextModel(effectiveModel)) ||
       (prov === "xai" && isXaiLongContextTieredTextModel(effectiveModel)) ||
-      (prov === "openai" && isOpenAIGpt6TextModel(effectiveModel));
+      (prov === "openai" && isOpenAIGpt6TextModel(effectiveModel)) ||
+      (prov === "claude" && isClaudeLongContextTieredTextModel(effectiveModel));
     try {
       await assertPricingPreflightOrThrow({
         provider: prov,
@@ -542,7 +551,8 @@ export async function applyAiRequestGuards(params: {
         const needsShortLongVariants =
           (effectiveProvider === "google" && isGoogleProTextModel(effectiveModel)) ||
           (effectiveProvider === "xai" && isXaiLongContextTieredTextModel(effectiveModel)) ||
-          (effectiveProvider === "openai" && isOpenAIGpt6TextModel(effectiveModel));
+          (effectiveProvider === "openai" && isOpenAIGpt6TextModel(effectiveModel)) ||
+          (effectiveProvider === "claude" && isClaudeLongContextTieredTextModel(effectiveModel));
         await assertPricingPreflightOrThrow({
           provider: effectiveProvider,
           modelName: effectiveModel,

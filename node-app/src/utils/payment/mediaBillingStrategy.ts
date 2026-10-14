@@ -1,7 +1,6 @@
 import type { AiModalityType, BillableProviderType } from "types/ai";
 import type { ITokenUsageBreakdown } from "types/payment";
-import { FIXED_COSTS, TOKENS_PER_COIN } from "consts/payment";
-import { OPENAI_FLEXIBLE_SIZE_IMAGE_MODELS } from "consts/ai";
+import { AI_SELL_FIXED_COSTS, AI_SELL_TOKENS_PER_COIN, AI_OPENAI_FLEXIBLE_SIZE_IMAGE_MODELS } from "consts/ai/generated/modelCatalog.generated";
 
 export type MediaBillingStrategyType = "fixed" | "token" | "hybrid";
 type PricingMapArgs = {
@@ -26,7 +25,7 @@ function buildPricingCandidates(provider: BillableProviderType, modelName: strin
 // 고정 최소요금 + 토큰 초과분 hybrid 과금 대상.
 // gpt-image-2.5 계열은 장당 토큰 소모량이 공개되지 않아 fixed 단독으로는 원가를 담보하지 못한다.
 const TOKEN_BILLED_IMAGE_MODEL_KEYS = new Set<string>(
-  OPENAI_FLEXIBLE_SIZE_IMAGE_MODELS.map((modelName) => `openai:${modelName}`),
+  AI_OPENAI_FLEXIBLE_SIZE_IMAGE_MODELS.map((modelName) => `openai:${modelName}`),
 );
 
 function isTokenBilledImageModel(provider: BillableProviderType, modelName: string) {
@@ -42,7 +41,7 @@ export function hasTokenPricingForMedia(
   variant?: string,
   pricing?: PricingMapArgs,
 ) {
-  const tokenMap = pricing?.tokenMap || TOKENS_PER_COIN;
+  const tokenMap = pricing?.tokenMap || AI_SELL_TOKENS_PER_COIN;
   return buildPricingCandidates(provider, modelName, modality, variant).some((key) => hasOwn(tokenMap, key));
 }
 
@@ -53,7 +52,7 @@ export function hasFixedPricingForMedia(
   variant?: string,
   pricing?: PricingMapArgs,
 ) {
-  const fixedMap = pricing?.fixedMap || FIXED_COSTS;
+  const fixedMap = pricing?.fixedMap || AI_SELL_FIXED_COSTS;
   return buildPricingCandidates(provider, modelName, modality, variant).some((key) => hasOwn(fixedMap, key));
 }
 

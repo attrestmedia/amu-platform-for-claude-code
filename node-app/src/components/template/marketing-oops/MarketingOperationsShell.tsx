@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams, useSelectedLayoutSegment } from "next/navigation";
 import { Button, Preloader, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, TooltipBasic } from "@amu-labs/ui";
-import { Link2, Settings } from "lucide-react";
-import { SubHeader } from "components/module/common";
+import { Settings } from "lucide-react";
 import { Lang, lang } from "components/module/i18n";
 import { MarketingCredentialPanelGroup, MarketingOperationsPanel } from "components/module/admin/third-party";
 import { MARKETING_FEATURE_ENABLED, MARKETING_OPERATION_TABS } from "consts/marketing/public";
@@ -15,7 +14,7 @@ import { useUniverseAdminAccess } from "hooks/admin";
 import type { IUniverse } from "types/game";
 import { logger } from "utils/log";
 import { cn } from "utils/common";
-import { PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
+import { THEME_OVERRIDE_CLASS } from "utils/theme";
 
 /**
  * @docHint
@@ -27,12 +26,13 @@ import { PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
 
 const MARKETING_ALL_SCOPE = "__ALL__";
 const MARKETING_TABS = new Set<string>(MARKETING_OPERATION_TABS);
+const ADMIN_ONLY = new Set(["keyword", "ads", "promo", "newsletter"]);
 
 export function MarketingOperationsShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const section = useSelectedLayoutSegment() ?? "queue";
   const requestedUniverseId = searchParams.get("universeId") || "";
-  const requestedTab = searchParams.get("tab") || "queue";
   const requestedJobId = searchParams.get("jobId") || "";
   const requestedCampaignId = searchParams.get("campaignId") || "";
   const [universes, setUniverses] = useState<IUniverse[]>([]);
@@ -45,6 +45,16 @@ export function MarketingOperationsShell() {
   const { isAdministrator, editableUniverses } = useUniverseAdminAccess(universes);
 
   useAuthCheck();
+
+  useEffect(
+    function redirectRestrictedSection() {
+      if (!loading && userData && !isAdministrator && ADMIN_ONLY.has(section)) {
+        const universeQuery = requestedUniverseId ? `?universeId=${encodeURIComponent(requestedUniverseId)}` : "";
+        router.replace(`/marketing-oops/workspace/queue${universeQuery}`);
+      }
+    },
+    [isAdministrator, loading, requestedUniverseId, router, section, userData],
+  );
 
   useEffect(
     function guardMarketingAccess() {
@@ -79,13 +89,16 @@ export function MarketingOperationsShell() {
         setCredentialSettingsOpen(false);
         return;
       }
+      const requestedUniverse = editableUniverses.find((universe) => universe.id === requestedUniverseId);
       setSelectedUniverse((prev) => {
+        if (requestedUniverse) return requestedUniverse.id;
+        if (!requestedUniverseId) return isAdministrator ? MARKETING_ALL_SCOPE : editableUniverses[0]?.id || "";
         if (prev === MARKETING_ALL_SCOPE) return isAdministrator ? prev : editableUniverses[0]?.id || "";
         if (prev && editableUniverses.some((universe) => universe.id === prev)) return prev;
         return isAdministrator ? MARKETING_ALL_SCOPE : editableUniverses[0]?.id || "";
       });
     },
-    [editableUniverses, isAdministrator, loading],
+    [editableUniverses, isAdministrator, loading, requestedUniverseId],
   );
 
   useEffect(
@@ -104,21 +117,23 @@ export function MarketingOperationsShell() {
     [editableUniverses],
   );
 
-  const activeTab = MARKETING_TABS.has(requestedTab) && (requestedTab !== "newsletter" || isAdministrator) ? requestedTab : "queue";
-  const updateMarketingUrl = (universeId: string, tab = activeTab) => {
+  const activeTab = MARKETING_TABS.has(section) && (!ADMIN_ONLY.has(section) || isAdministrator) ? section : "queue";
+  const updateMarketingUrl = (universeId: string, tab = activeTab, navigation: "push" | "replace" = "push") => {
     const params = new URLSearchParams();
     if (universeId !== MARKETING_ALL_SCOPE) params.set("universeId", universeId);
-    if (tab !== "queue") params.set("tab", tab);
     const query = params.toString();
-    router.replace(`/marketing-oops/workspace${query ? `?${query}` : ""}`);
+    const href = `/marketing-oops/workspace/${tab}${query ? `?${query}` : ""}`;
+    if (navigation === "replace") {
+      router.replace(href);
+    } else {
+      router.push(href);
+    }
   };
 
   if (!MARKETING_FEATURE_ENABLED) {
     return (
-      <div className={PAGE_LAYOUT_CLASS}>
-        <div className="container mx-auto max-w-3xl p-6 text-sm text-secondary-text">
-          <Lang text={{ ko: "마케팅 운영 기능이 비활성화되어 있습니다.", en: "Marketing operations is disabled." }} />
-        </div>
+      <div className="mx-auto w-full max-w-3xl text-sm text-secondary-text">
+        <Lang text={{ ko: "마케팅 운영 기능이 비활성화되어 있습니다.", en: "Marketing operations is disabled." }} />
       </div>
     );
   }
@@ -129,62 +144,38 @@ export function MarketingOperationsShell() {
 
   if (!isAdministrator && editableUniverses.length === 0) {
     return (
-      <div className={PAGE_LAYOUT_CLASS}>
-        <div className="container mx-auto p-6 text-sm text-secondary-text">
-          <Lang
-            text={{
-              ko: "Marketing Oops를 운영할 수 있는 유니버스가 없습니다.",
-              en: "You do not have a universe that can use Marketing Oops.",
-            }}
-          />
-        </div>
+      <div className="mx-auto w-full max-w-3xl text-sm text-secondary-text">
+        <Lang
+          text={{
+            ko: "Marketing Oops를 운영할 수 있는 유니버스가 없습니다.",
+            en: "You do not have a universe that can use Marketing Oops.",
+          }}
+        />
       </div>
     );
   }
 
   return (
-    <div className={PAGE_LAYOUT_CLASS}>
-      <div className="container mx-auto max-w-6xl p-4">
-        <SubHeader
-          className="mb-6"
-          backAction={{
-            link: "/marketing-oops",
-            label: lang({ ko: "Marketing Oops 홈", en: "Marketing Oops home" }),
-          }}
-          title="Marketing Oops"
-          right={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={() =>
-                  router.push(
-                    `/marketing-oops/connections${selectedUniverse === MARKETING_ALL_SCOPE ? "" : `?universeId=${encodeURIComponent(selectedUniverse)}`}`,
-                  )
-                }
-                aria-label={lang({ ko: "외부 서비스 간편 연결", en: "Connected services" })}
-              >
-                <Link2 size={16} />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                onClick={() => setCredentialSettingsOpen(true)}
-                disabled={selectedUniverse === MARKETING_ALL_SCOPE}
-                aria-label={lang({ ko: "자격증명 카드 설정", en: "Credential card settings" })}
-                title={
-                  selectedUniverse === MARKETING_ALL_SCOPE
-                    ? lang({ ko: "특정 유니버스를 선택해 주세요.", en: "Select a universe." })
-                    : undefined
-                }
-              >
-                <Settings size={16} />
-              </Button>
-            </div>
-          }
-        />
+    <div className="mx-auto w-full max-w-6xl">
+      <div className={cn("flex w-full flex-col gap-4", THEME_OVERRIDE_CLASS)}>
+        <section className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-bold text-primary-text">Marketing Oops</h1>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => setCredentialSettingsOpen(true)}
+            disabled={selectedUniverse === MARKETING_ALL_SCOPE}
+            aria-label={lang({ ko: "자격증명 카드 설정", en: "Credential card settings" })}
+            title={
+              selectedUniverse === MARKETING_ALL_SCOPE
+                ? lang({ ko: "특정 유니버스를 선택해 주세요.", en: "Select a universe." })
+                : undefined
+            }
+          >
+            <Settings size={16} />
+          </Button>
+        </section>
 
-        <div className={cn("flex w-full flex-col gap-4", THEME_OVERRIDE_CLASS)}>
           <section className="flex items-center justify-between gap-3">
             <div className="flex items-center">
               <h3 className="text-md font-semibold text-slate-900">
@@ -207,7 +198,7 @@ export function MarketingOperationsShell() {
                 onValueChange={(value) => {
                   const next = Array.isArray(value) ? value[0] || MARKETING_ALL_SCOPE : value;
                   setSelectedUniverse(next);
-                  updateMarketingUrl(next);
+                  updateMarketingUrl(next, activeTab, "replace");
                 }}
               >
                 <SelectTrigger>
@@ -268,12 +259,12 @@ export function MarketingOperationsShell() {
             availableUniverses={availableUniverses}
             isGlobalAdmin={isAdministrator}
             activeTab={activeTab}
+            showTabList={false}
             initialJobId={requestedJobId}
             initialCampaignId={requestedCampaignId}
             onActiveTabChange={(tab) => updateMarketingUrl(selectedUniverse, tab)}
           />
         </div>
-      </div>
     </div>
   );
 }

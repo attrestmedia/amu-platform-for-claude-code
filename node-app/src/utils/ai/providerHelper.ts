@@ -1,11 +1,7 @@
 import type { AiProviderType, TextProviderType, ImageProviderType } from "types/ai";
-import {
-  TEXT_PROVIDER_TYPES,
-  IMAGE_PROVIDER_TYPES,
-  AI_PROVIDER_TYPES,
-  IMAGE_MODEL_MAP,
-  TEXT_MODEL_MAP,
-} from "consts/ai";
+import { TEXT_PROVIDER_TYPES, IMAGE_PROVIDER_TYPES, AI_PROVIDER_TYPES } from "consts/ai";
+import { getModelRequestFlags } from "consts/ai/modelPolicy";
+import { AI_IMAGE_MODEL_MAP, AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 
 /**
  * @docHint
@@ -61,6 +57,19 @@ export function isOpenAIGpt6TextModel(modelName?: string) {
   );
 }
 
+export function isClaudeLongContextTieredTextModel(modelName?: string) {
+  return (
+    String(modelName || "")
+      .trim()
+      .toLowerCase() === "claude-haiku-5-5"
+  );
+}
+
+/** Claude Haiku 5.5 장문 요율은 입력이 100K를 초과할 때 적용된다. */
+export function pickClaudePricingVariantByInputTokens(inputTokens: number) {
+  return Number(inputTokens) > 100_000 ? "long" : "short";
+}
+
 /** GPT-6 장문 요율은 입력이 272K를 초과할 때 적용된다. */
 export function pickOpenAIGpt6PricingVariantByInputTokens(inputTokens: number) {
   return Number(inputTokens) > 272_000 ? "long" : "short";
@@ -77,28 +86,23 @@ export function hasValidXaiInputTokenCount(modelName: string | undefined, inputT
 
 // GPT-5.6·GPT-6 Chat Completions 후보는 custom temperature를 쓰지 않는다.
 export function supportsCustomOpenAITemperature(modelName?: string) {
-  const m = String(modelName || "")
-    .trim()
-    .toLowerCase();
-  return !m.startsWith("gpt-5.6") && !isOpenAIGpt6TextModel(m);
+  return getModelRequestFlags("openai", String(modelName || ""), "text")?.temperature === "supported";
 }
 
 // Claude 5 계열은 adaptive thinking이 기본이며 커스텀 sampling 파라미터를 거부한다.
-const ANTHROPIC_ADAPTIVE_THINKING_PATTERN = /^claude-(?:fable|opus|sonnet)-5(?:$|-)/;
-const ANTHROPIC_ALWAYS_ON_THINKING_MODELS = new Set(["claude-opus-5-5", "claude-fable-5-1"]);
-
 // adaptive thinking이 기본으로 켜진 모델. max_tokens가 작으면 thinking이 예산을 전부 소진해
 // text 블록이 없는 응답이 온다. thinking 토글 판단은 이 함수 하나로만 한다.
 export function isAnthropicAdaptiveThinkingModel(modelName?: string) {
-  return ANTHROPIC_ADAPTIVE_THINKING_PATTERN.test(
-    String(modelName || "")
-      .trim()
-      .toLowerCase(),
-  );
+  const thinkingMode = getModelRequestFlags("claude", String(modelName || ""), "text")?.thinkingMode;
+  return thinkingMode === undefined ? true : thinkingMode === "adaptive" || thinkingMode === "always_on";
 }
 
 export function supportsCustomAnthropicTemperature(modelName?: string) {
-  return !isAnthropicAdaptiveThinkingModel(modelName);
+  return getModelRequestFlags("claude", String(modelName || ""), "text")?.temperature === "supported";
+}
+
+export function resolveAnthropicThinkingOffType(modelName: string): "disabled" | "between_tools" {
+  return getModelRequestFlags("claude", modelName, "text")?.thinkingOff ?? "disabled";
 }
 
 // 긴 콘텐츠 템플릿(조건 블록 다수 + 항목 반복 출력)이 요구하는 출력 예산.
@@ -125,11 +129,7 @@ export function resolveAnthropicMaxTokens(maxOutputTokens?: number) {
 }
 
 function isAnthropicAlwaysOnThinkingModel(modelName?: string) {
-  return ANTHROPIC_ALWAYS_ON_THINKING_MODELS.has(
-    String(modelName || "")
-      .trim()
-      .toLowerCase(),
-  );
+  return getModelRequestFlags("claude", String(modelName || ""), "text")?.thinkingMode === "always_on";
 }
 
 // Grok 4.7/4.6은 기존 tier 판정을 재사용하고, reasoning 접미사가 붙은 xAI 모델도 포함한다.
@@ -172,7 +172,7 @@ export function shouldDisableAnthropicThinking(modelName: string, maxTokens: num
   const normalizedModel = String(modelName || "").trim().toLowerCase();
   return (
     isAnthropicAdaptiveThinkingModel(normalizedModel) &&
-    !ANTHROPIC_ALWAYS_ON_THINKING_MODELS.has(normalizedModel) &&
+    !isAnthropicAlwaysOnThinkingModel(normalizedModel) &&
     maxTokens < ANTHROPIC_THINKING_MIN_MAX_TOKENS
   );
 }
@@ -193,23 +193,17 @@ export function resolveTextUpstreamTimeoutMs(
 
 // Gemini 3.8/3.6 Flash와 3.5 Flash-Lite는 sampling 파라미터를 받지 않는다.
 export function supportsCustomGeminiTemperature(modelName?: string) {
-  const m = String(modelName || "")
-    .trim()
-    .toLowerCase();
-  return m !== "gemini-3.8-flash" && m !== "gemini-3.6-flash" && m !== "gemini-3.5-flash-lite";
+  return getModelRequestFlags("google", String(modelName || ""), "text")?.temperature === "supported";
 }
 
 export function supportsGeminiThinkingBudget(modelName?: string) {
-  const m = String(modelName || "")
-    .trim()
-    .toLowerCase();
-  return m !== "gemini-3.8-flash";
+  return getModelRequestFlags("google", String(modelName || ""), "text")?.thinkingBudget === "supported";
 }
 
 // modelName이 allowlist에 있으면 provider를 반환
 export function inferImageProviderFromModelNameRaw(modelName?: string): ImageProviderType | "" {
   const m = String(modelName || "").trim();
-  const imageModelMap = IMAGE_MODEL_MAP as Partial<Record<ImageProviderType, readonly string[]>>;
+  const imageModelMap = AI_IMAGE_MODEL_MAP as Partial<Record<ImageProviderType, readonly string[]>>;
 
   if (!m) return "";
   if (imageModelMap.openai?.includes(m)) return "openai";
@@ -221,7 +215,7 @@ export function inferImageProviderFromModelNameRaw(modelName?: string): ImagePro
 
 export function inferTextProviderFromModelNameRaw(modelName?: string): TextProviderType | "" {
   const m = String(modelName || "").trim();
-  const textModelMap = TEXT_MODEL_MAP as Partial<Record<TextProviderType, readonly string[]>>;
+  const textModelMap = AI_TEXT_MODEL_MAP as Partial<Record<TextProviderType, readonly string[]>>;
 
   if (!m) return "";
   if (textModelMap.openai?.includes(m)) return "openai";

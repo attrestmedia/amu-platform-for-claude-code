@@ -23,6 +23,7 @@ import {
 import type { IPersonaSprite, IPersonaSpriteResource, PersonaSpriteDirection, UiScopeType } from "types/ai";
 import { MONGODB_AI_URL } from "consts/env/server";
 import { toUnknownRecord, isUnknownRecord, type UnknownRecord } from "utils/common";
+import { isReservedInternalPromptKey } from "utils/app/promptAccess";
 
 /**
  * @docHint
@@ -235,6 +236,7 @@ export async function resolveUserImagePromptDoc(args: {
   if (!templateKey) return null;
 
   const scope = normalizeTemplateScope(args.templateScope);
+  if (isReservedInternalPromptKey(templateKey)) return await resolveSystemImagePromptDoc(templateKey);
   if (scope === "system") return await resolveSystemImagePromptDoc(templateKey);
 
   const userKey = getUserKeyOrThrow(args.user);
@@ -243,6 +245,14 @@ export async function resolveUserImagePromptDoc(args: {
   if (scope === "user") return userDoc;
 
   return userDoc || (await resolveSystemImagePromptDoc(templateKey));
+}
+
+async function resolveSystemContentPromptDoc(key: string) {
+  // 백그라운드 system 서비스가 호출하는 admin 전용 템플릿(allowlist)만 internal(=public+admin) 조회를 허용한다.
+  // 그 외 키는 기존대로 public 전용 조회로 admin 템플릿 노출을 차단한다.
+  return SYSTEM_BACKGROUND_CONTENT_TEMPLATE_KEYS.has(key)
+    ? await getContentPromptByKeyInternal(key)
+    : await getContentPromptByKey(key);
 }
 
 export async function resolveUserContentPromptDoc(args: {
@@ -254,13 +264,8 @@ export async function resolveUserContentPromptDoc(args: {
   if (!templateKey) return null;
 
   const scope = normalizeTemplateScope(args.templateScope);
-  if (scope === "system") {
-    // 백그라운드 system 서비스가 호출하는 admin 전용 템플릿(allowlist)만 internal(=public+admin) 조회를 허용한다.
-    // 그 외 키는 기존대로 public 전용 조회로 admin 템플릿 노출을 차단한다.
-    return SYSTEM_BACKGROUND_CONTENT_TEMPLATE_KEYS.has(templateKey)
-      ? await getContentPromptByKeyInternal(templateKey)
-      : await getContentPromptByKey(templateKey);
-  }
+  if (isReservedInternalPromptKey(templateKey)) return await resolveSystemContentPromptDoc(templateKey);
+  if (scope === "system") return await resolveSystemContentPromptDoc(templateKey);
 
   const userKey = getUserKeyOrThrow(args.user);
   const userModel = await getUserContentModel(userKey);

@@ -15,6 +15,8 @@ import {
   type VoicePurposeConsentPurposeId,
   type VoicePurposeConsentRecord,
 } from "consts/legal/voiceDataConsent";
+import { getPolicyFeatureDecision, getPrivacyDisclosureVersion } from "libs/server-utils/legal/policyFeatureGate";
+import { getPolicyReleaseRuntime, PolicyReleaseUnavailableError } from "libs/server-utils/legal/policyReleaseRuntime";
 import { dbConnect } from "libs/database/mongoose";
 import { getModel } from "libs/database/modelCache";
 import {
@@ -35,7 +37,8 @@ import {
 type PurposeConsentStatus = {
   purposeId: typeof VOICE_DATA_CONSENT_PURPOSE_ID;
   contractVersion: typeof VOICE_DATA_CONSENT_VERSION;
-  linkedPrivacyVersion: typeof VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION;
+  linkedPrivacyVersion: string | null;
+  policyReleaseReady: boolean;
   required: boolean;
   granted: boolean;
   version: string | null;
@@ -102,6 +105,12 @@ function currentConsent(consents: readonly VoicePurposeConsentRecord[]) {
     .sort((left, right) => consentTime(right) - consentTime(left))[0];
 }
 
+function currentManifestConsent(consents: readonly VoicePurposeConsentRecord[]) {
+  return consents
+    .filter((consent) => consent.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID && consent.version === VOICE_DATA_CONSENT_VERSION)
+    .sort((left, right) => consentTime(right) - consentTime(left))[0];
+}
+
 function statusFromConsents(consents: VoicePurposeConsentRecord[]): PurposeConsentStatus {
   const voiceDataConsents = consents.filter((consent) => consent.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID);
   const current = currentConsent(voiceDataConsents);
@@ -110,8 +119,64 @@ function statusFromConsents(consents: VoicePurposeConsentRecord[]): PurposeConse
     purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
     contractVersion: VOICE_DATA_CONSENT_VERSION,
     linkedPrivacyVersion: VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION,
+    policyReleaseReady: isQwenPrivacyPolicyReleaseReady(VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION),
     required: !current || revoked,
     granted: Boolean(current && !revoked),
+    version: current?.version || null,
+    revokedAt: current?.revokedAt || null,
+    consents: voiceDataConsents,
+  };
+}
+
+function statusFromRevocationConsents(
+  consents: VoicePurposeConsentRecord[],
+  current: VoicePurposeConsentRecord | undefined,
+  policyReleaseReady = false,
+  fallbackLinkedPrivacyVersion: string | null = null,
+): PurposeConsentStatus {
+  const voiceDataConsents = consents.filter((consent) => consent.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID);
+  return {
+    purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
+    contractVersion: VOICE_DATA_CONSENT_VERSION,
+    linkedPrivacyVersion: current?.linkedPrivacyVersion ?? fallbackLinkedPrivacyVersion,
+    policyReleaseReady,
+    required: true,
+    granted: false,
+    version: current?.version || null,
+    revokedAt: current?.revokedAt || null,
+    consents: voiceDataConsents,
+  };
+}
+
+async function statusFromManifestConsents(consents: VoicePurposeConsentRecord[]): Promise<PurposeConsentStatus> {
+  const now = new Date();
+  const linkedPrivacyVersion = getPrivacyDisclosureVersion("voice.qwen-asr", now);
+  const voiceDataConsents = consents.filter((consent) => consent.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID);
+  const current = currentManifestConsent(voiceDataConsents);
+  const currentActiveConsents = voiceDataConsents.filter(
+    (consent) => consent.version === VOICE_DATA_CONSENT_VERSION && !hasRevokedAt(consent.revokedAt),
+  );
+  const featureDecision = await getPolicyFeatureDecision({
+    featureKey: "voice.qwen-asr",
+    now,
+    purposeConsents: currentActiveConsents.map((consent) => ({
+      ...consent,
+      linkedPrivacyVersion: consent.linkedPrivacyVersion ?? null,
+    })),
+    purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
+  });
+  const policyReleaseReady =
+    featureDecision.open || featureDecision.errorCode === "POLICY_FEATURE_RECONSENT_REQUIRED";
+  const revoked = hasRevokedAt(current?.revokedAt);
+  const granted = Boolean(policyReleaseReady && featureDecision.open && current && !revoked);
+
+  return {
+    purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
+    contractVersion: VOICE_DATA_CONSENT_VERSION,
+    linkedPrivacyVersion,
+    policyReleaseReady,
+    required: !granted,
+    granted,
     version: current?.version || null,
     revokedAt: current?.revokedAt || null,
     consents: voiceDataConsents,
@@ -123,7 +188,7 @@ function statusFromConsents(consents: VoicePurposeConsentRecord[]): PurposeConse
  * `knownConsents`는 withAuth가 이미 병합한 사용자 문서를 전달할 때 사용하는 읽기 최적화이며,
  * 서버 저장소의 purposeConsents를 요청 body나 클라이언트 주장으로 대체하지 않는다.
  */
-export async function getVoiceDataPurposeConsentStatus(args: {
+async function readVoiceDataPurposeConsents(args: {
   uid: string;
   email?: string;
   knownConsents?: readonly VoicePurposeConsentRecord[];
@@ -146,7 +211,17 @@ export async function getVoiceDataPurposeConsentStatus(args: {
       : UserModel.findOne({ uid: args.uid }, { purposeConsents: 1 }).lean(),
   ]);
   const consents = mergeConsentHistory(args.knownConsents, index?.purposeConsents, user?.purposeConsents);
-  return statusFromConsents(consents);
+  return { UserIndexModel, UserModel, consents };
+}
+
+export async function getVoiceDataPurposeConsentStatus(args: {
+  uid: string;
+  email?: string;
+  knownConsents?: readonly VoicePurposeConsentRecord[];
+}) {
+  const { consents } = await readVoiceDataPurposeConsents(args);
+  const runtime = getPolicyReleaseRuntime();
+  return runtime.mode === "legacy" ? statusFromConsents(consents) : statusFromManifestConsents(consents);
 }
 
 export type QwenPurposeConsentStatus = {
@@ -245,10 +320,34 @@ export async function recordVoiceDataPurposeConsent(args: { uid: string; email?:
   const before = await getVoiceDataPurposeConsentStatus(args);
   if (before.granted && before.version === VOICE_DATA_CONSENT_VERSION) return before;
 
+  const runtime = getPolicyReleaseRuntime();
+  if (runtime.mode === "manifest" && !before.policyReleaseReady) {
+    const decision = await getPolicyFeatureDecision({
+      featureKey: "voice.qwen-asr",
+      purposeConsents: before.consents
+        .filter((consent) => consent.version === VOICE_DATA_CONSENT_VERSION && !hasRevokedAt(consent.revokedAt))
+        .map((consent) => ({
+          ...consent,
+          linkedPrivacyVersion: consent.linkedPrivacyVersion ?? null,
+        })),
+      purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
+    });
+    const code = decision.errorCode ?? "POLICY_RELEASE_UNAVAILABLE";
+    throw Object.assign(new Error("정책 릴리스 상태를 확인할 수 없어 음성 동의를 저장하지 못했습니다."), {
+      errorCode: code,
+      status: decision.status ?? 503,
+    });
+  }
+
+  const linkedPrivacyVersion = runtime.mode === "legacy"
+    ? VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION
+    : getPrivacyDisclosureVersion("voice.qwen-asr");
+  if (!linkedPrivacyVersion) throw new PolicyReleaseUnavailableError();
+
   const newConsent: VoicePurposeConsentRecord = {
     purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
     version: VOICE_DATA_CONSENT_VERSION,
-    linkedPrivacyVersion: VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION,
+    linkedPrivacyVersion,
     agreedAt: new Date(),
     method: before.consents.length > 0 ? "purpose_reconsent" : "purpose_consent",
   };
@@ -266,25 +365,41 @@ export async function recordVoiceDataPurposeConsent(args: { uid: string; email?:
 
 /** 현재 계약 버전의 활성 동의를 철회하고, 이후 provider 호출을 즉시 차단한다. */
 export async function revokeVoiceDataPurposeConsent(args: { uid: string; email?: string }) {
-  if (!args.uid) {
-    throw Object.assign(new Error("계정 식별 정보를 확인할 수 없습니다."), {
-      errorCode: "ACCOUNT_IDENTITY_REQUIRED",
-      status: 422,
-    });
+  const { UserIndexModel, UserModel, consents } = await readVoiceDataPurposeConsents(args);
+  const runtime = getPolicyReleaseRuntime();
+  const legacyPolicyReleaseReady =
+    runtime.mode === "legacy" && isQwenPrivacyPolicyReleaseReady(VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION);
+  const voiceDataConsents = consents.filter((consent) => consent.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID);
+  const current = runtime.mode === "legacy"
+    ? currentConsent(voiceDataConsents)
+    : currentManifestConsent(voiceDataConsents);
+  const fallbackLinkedPrivacyVersion = runtime.mode === "legacy"
+    ? VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION
+    : null;
+  if (!current) {
+    return statusFromRevocationConsents(
+      consents,
+      current,
+      legacyPolicyReleaseReady,
+      fallbackLinkedPrivacyVersion,
+    );
   }
-
-  const before = await getVoiceDataPurposeConsentStatus(args);
-  const current = currentConsent(before.consents);
-  if (!current || hasRevokedAt(current.revokedAt)) return before;
+  if (hasRevokedAt(current.revokedAt)) {
+    return statusFromRevocationConsents(
+      consents,
+      current,
+      legacyPolicyReleaseReady,
+      fallbackLinkedPrivacyVersion,
+    );
+  }
 
   const revokedAt = new Date();
   const filter = {
     "consent.purposeId": VOICE_DATA_CONSENT_PURPOSE_ID,
     "consent.version": VOICE_DATA_CONSENT_VERSION,
-    "consent.linkedPrivacyVersion": VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION,
+    "consent.linkedPrivacyVersion": current.linkedPrivacyVersion,
     "consent.revokedAt": { $exists: false },
   };
-  const { UserIndexModel, UserModel } = await purposeModels(args.uid);
   await Promise.all([
     UserIndexModel.updateOne(
       { $or: [{ uid: args.uid }, ...(args.email ? [{ userEmailLower: args.email.toLowerCase() }] : [])] },
@@ -298,7 +413,21 @@ export async function revokeVoiceDataPurposeConsent(args: { uid: string; email?:
     ),
   ]);
 
-  return getVoiceDataPurposeConsentStatus({ uid: args.uid, email: args.email });
+  const revokedConsents = consents.map((consent) =>
+    consent.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID &&
+    consent.version === current.version &&
+    consent.linkedPrivacyVersion === current.linkedPrivacyVersion &&
+    !hasRevokedAt(consent.revokedAt)
+      ? { ...consent, revokedAt }
+      : consent,
+  );
+  const revokedCurrent = revokedConsents.find((consent) => consentKey(consent) === consentKey(current));
+  return statusFromRevocationConsents(
+    revokedConsents,
+    revokedCurrent,
+    legacyPolicyReleaseReady,
+    fallbackLinkedPrivacyVersion,
+  );
 }
 
 /** Qwen 목적은 계약·TTL·정책 버전이 모두 확인되기 전까지 생성할 수 없다. */

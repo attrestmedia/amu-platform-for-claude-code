@@ -1,9 +1,15 @@
 import "server-only";
 
-import type { BillableProviderType } from "types/ai";
+import type { TextProviderType } from "types/ai";
 import type { ITokenUsageBreakdown } from "types/payment";
+import { AI_MODEL_CATALOG } from "consts/ai/generated/modelCatalog.generated";
+import { getModelRequestFlags } from "consts/ai/modelPolicy";
 import { estimateTokens } from "utils/ai/tokenUtils";
-import { isXaiLongContextTieredTextModel } from "utils/ai/providerHelper";
+import {
+  isClaudeLongContextTieredTextModel,
+  isXaiLongContextTieredTextModel,
+  resolveTextOutputBudget,
+} from "utils/ai/providerHelper";
 
 /**
  * @docHint
@@ -21,6 +27,7 @@ export type NarrativeDirectorCostGateReason =
   | "pricing_preflight_failed"
   | "balance_preflight_failed"
   | "budget_cap_exceeded"
+  | "thinking_budget_uncontrollable"
   | "estimated_cost_unavailable";
 
 export type NarrativeDirectorCostGateResult = {
@@ -40,13 +47,43 @@ export function readNarrativeDirectorBudgetCapCoins(env: Record<string, string |
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 }
 
-export function buildNarrativeDirectorUsage(input: { prompt: string; maxOutputTokens: number }): {
+export function isNarrativeDirectorThinkingBudgetControllable(provider: string, modelName: string) {
+  try {
+    const flags = getModelRequestFlags(provider, modelName, "text");
+    if (!flags) return false;
+    const validThinkingBudget = ["supported", "unsupported", "not_applicable"].includes(flags.thinkingBudget || "");
+    const validThinkingMode = ["none", "adaptive", "always_on", "not_applicable"].includes(flags.thinkingMode || "");
+    if (!validThinkingBudget || !validThinkingMode) return false;
+    if (flags.thinkingBudget === "supported" || flags.thinkingMode === "not_applicable") return true;
+    if (flags.thinkingBudget !== "not_applicable" || flags.thinkingMode !== "none") return false;
+
+    const modelId = `${provider}:${modelName.trim().toLowerCase()}`;
+    const model = AI_MODEL_CATALOG.models.find((candidate) => candidate.id === modelId);
+    const textProfile = model?.modalities.find((candidate) => candidate.modality === "text");
+    return textProfile?.reasoning?.supported === false;
+  } catch {
+    return false;
+  }
+}
+
+export function buildNarrativeDirectorUsage(input: {
+  provider: TextProviderType;
+  modelName: string;
+  prompt: string;
+  maxOutputTokens: number;
+  thinkingBudgetTokens?: number;
+}): {
   promptTokens: number;
   outputTokens: number;
   usage: ITokenUsageBreakdown;
 } {
   const promptTokens = Math.max(1, estimateTokens(input.prompt));
-  const outputTokens = Math.max(1, Math.floor(Number(input.maxOutputTokens)));
+  const maxOutputTokens = Number(input.maxOutputTokens);
+  const thinkingBudgetTokens = Number(input.thinkingBudgetTokens ?? 0);
+  if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1) throw new Error("NARRATIVE_DIRECTOR_OUTPUT_BUDGET_INVALID");
+  if (!Number.isSafeInteger(thinkingBudgetTokens) || thinkingBudgetTokens < 0) throw new Error("NARRATIVE_DIRECTOR_THINKING_BUDGET_INVALID");
+  const adapterOutputBudget = resolveTextOutputBudget(input.provider, input.modelName, maxOutputTokens) ?? maxOutputTokens;
+  const outputTokens = adapterOutputBudget + thinkingBudgetTokens;
   if (!Number.isSafeInteger(outputTokens)) throw new Error("NARRATIVE_DIRECTOR_OUTPUT_BUDGET_INVALID");
   return {
     promptTokens,
@@ -93,10 +130,11 @@ function errorCodeOf(error: unknown) {
  */
 export async function preflightNarrativeDirectorCost(input: {
   uid: string;
-  provider: BillableProviderType;
+  provider: TextProviderType;
   modelName: string;
   prompt: string;
   maxOutputTokens: number;
+  thinkingBudgetTokens?: number;
   circuitOpen?: boolean;
   universeId?: string;
   characterId?: string;
@@ -104,7 +142,13 @@ export async function preflightNarrativeDirectorCost(input: {
   skipWhenNoUid?: boolean;
   env?: Record<string, string | undefined>;
 }) : Promise<NarrativeDirectorCostGateResult> {
-  const usage = buildNarrativeDirectorUsage({ prompt: input.prompt, maxOutputTokens: input.maxOutputTokens });
+  const usage = buildNarrativeDirectorUsage({
+    provider: input.provider,
+    modelName: input.modelName,
+    prompt: input.prompt,
+    maxOutputTokens: input.maxOutputTokens,
+    thinkingBudgetTokens: input.thinkingBudgetTokens,
+  });
   const budgetCapCoins = readNarrativeDirectorBudgetCapCoins(input.env);
   const early = evaluateNarrativeDirectorCostGate({
     circuitOpen: input.circuitOpen,
@@ -114,8 +158,12 @@ export async function preflightNarrativeDirectorCost(input: {
     outputTokens: usage.outputTokens,
   });
   if (early.reason === "circuit_open" || early.reason === "budget_cap_unconfigured") return early;
-  const needsXaiTieredVariants =
-    input.provider === "xai" && isXaiLongContextTieredTextModel(input.modelName);
+  if (!isNarrativeDirectorThinkingBudgetControllable(input.provider, input.modelName)) {
+    return { ...early, allowed: false, reason: "thinking_budget_uncontrollable" };
+  }
+  const needsTieredVariants =
+    (input.provider === "xai" && isXaiLongContextTieredTextModel(input.modelName)) ||
+    (input.provider === "claude" && isClaudeLongContextTieredTextModel(input.modelName));
 
   try {
     const { assertPricingPreflightOrThrow } = await import("libs/services/aiUsageBilling");
@@ -124,7 +172,7 @@ export async function preflightNarrativeDirectorCost(input: {
       modelName: input.modelName,
       modality: "text",
       kind: "token",
-      ...(needsXaiTieredVariants ? { variants: ["short", "long"] } : {}),
+      ...(needsTieredVariants ? { variants: ["short", "long"] } : {}),
     });
   } catch (error) {
     return {
@@ -142,7 +190,7 @@ export async function preflightNarrativeDirectorCost(input: {
       app: "narrative_director",
       provider: input.provider,
       modelName: input.modelName,
-      ...(needsXaiTieredVariants ? { variant: "long" } : {}),
+      ...(needsTieredVariants ? { variant: "long" } : {}),
       modality: "text",
       usage: usage.usage,
       meta: {

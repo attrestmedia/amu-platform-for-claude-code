@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { DEFAULT_TEXT_MODEL, TEXT_MODEL_GUIDE_BY_MODEL, TEXT_MODELS } from "consts/ai";
+import { TEXT_MODEL_GUIDE_BY_MODEL } from "consts/ai";
+import { AI_DEFAULT_TEXT_MODEL, AI_TEXT_MODELS } from "consts/ai/generated/modelCatalog.generated";
 import { resolveCharacterGenesisShellPresentation } from "consts/app";
 import { Button, Input, Textarea, Preloader, Dialog, DialogContent, DialogHeader, DialogTitle, RadioGroup, RadioGroupItem, dialog } from "@amu-labs/ui";
 import { ModelSelectField } from "components/module/model-select";
@@ -64,34 +65,22 @@ const TEXT_PROVIDER_LABEL: Record<string, string> = {
   zai: "Z.ai",
 };
 
-const TEXT_MODEL_TITLE_MAP: Record<string, string> = {
-  "gemini-3.6-flash": "Gemini 3.6 Flash",
-  "gemini-3.1-pro-preview": "Gemini 3.1 Pro Preview",
-  "gemini-3.5-flash-lite": "Gemini 3.5 Flash-Lite",
-  "gpt-5.6-sol": "GPT-5.6 Sol",
-  "gpt-5.6-terra": "GPT-5.6 Terra",
-  "gpt-5.6-luna": "GPT-5.6 Luna",
-  "claude-haiku-4-5": "Claude Haiku 4.5",
-  "claude-fable-5": "Claude Fable 5",
-  "claude-opus-5": "Claude Opus 5",
-  "claude-sonnet-5": "Claude Sonnet 5",
+const TEXT_MODEL_TITLE_MAP: Partial<Record<(typeof AI_TEXT_MODELS)[number], string>> = {
+  "claude-haiku-5-5": "Claude Haiku 5.5",
+  "claude-sonnet-5-5": "Claude Sonnet 5.5",
   "deepseek-v4-flash": "DeepSeek V4 Flash",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
-  "grok-4.5": "Grok 4.5",
-  "grok-4.3": "Grok 4.3",
-  "grok-build-0.1": "Grok Build 0.1",
-  "grok-4.20-0309-reasoning": "Grok 4.20 Reasoning",
   "glm-5.3": "GLM 5.3",
   "glm-5.3-flash": "GLM 5.3 Flash",
 };
 
-const AUTO_TEXT_MODEL_OPTIONS = (TEXT_MODELS as readonly string[]).map((modelName) => {
+const AUTO_TEXT_MODEL_OPTIONS = (AI_TEXT_MODELS as readonly string[]).map((modelName) => {
   const provider = inferTextProviderFromModelNameRaw(modelName);
   const providerLabel = TEXT_PROVIDER_LABEL[provider || ""] || "AI";
   const guide = TEXT_MODEL_GUIDE_BY_MODEL[modelName as keyof typeof TEXT_MODEL_GUIDE_BY_MODEL];
   return {
     value: modelName,
-    title: `${providerLabel} ${TEXT_MODEL_TITLE_MAP[modelName] || modelName}`,
+    title: `${providerLabel} ${TEXT_MODEL_TITLE_MAP[modelName as keyof typeof TEXT_MODEL_TITLE_MAP] || modelName}`,
     providerLabel,
     description: modelName,
     note: guide ? lang(guide.note) : undefined,
@@ -220,7 +209,7 @@ export function UserPersonaManager({
   const [removing, setRemoving] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState(false);
   const [autoBrief, setAutoBrief] = useState("");
-  const [autoModelName, setAutoModelName] = useState<string>(DEFAULT_TEXT_MODEL);
+  const [autoModelName, setAutoModelName] = useState<string>(AI_DEFAULT_TEXT_MODEL);
   const [autoResultMessage, setAutoResultMessage] = useState("");
   const [autoDraftOpen, setAutoDraftOpen] = useState(false);
   const [selectedSystemPersonaOption, setSelectedSystemPersonaOption] = useState<SystemPersonaPresetOption | null>(

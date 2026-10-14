@@ -5,7 +5,6 @@ import {
   VOICE_DATA_CONSENT_VERSION,
 } from "consts/legal/voiceDataConsent";
 import { createSpeechError } from "./guards";
-import type { TutorsTrustedAudienceEligibility } from "./tutorsSttSafety";
 
 /**
  * @docHint
@@ -37,6 +36,7 @@ export const VOICE_DATA_CONSENT_CONTRACT_VERSION: string | null = VOICE_DATA_CON
 
 export type VoiceProcessingIntent = "chat_transcript" | "pronunciation_assessment";
 export type VoiceAudioRetention = "transient" | "short_ttl";
+export type VoiceDataAudienceEligibility = "verified_adult" | "verified_minor" | "unknown";
 
 export type AdultEligibility =
   | "verified_adult"
@@ -64,7 +64,7 @@ export type VoiceDataConsentDecision = {
   /** 자기 신고·프로필에서 얻은 연령 신호. 서버가 신뢰한 audience와 구분한다. */
   declaredAgeSignal: AdultEligibility;
   /** 서버 런타임 정책에서 주입된 신뢰 audience. 요청 필드에서 읽지 않는다. */
-  audience: TutorsTrustedAudienceEligibility;
+  audience: VoiceDataAudienceEligibility;
   /** 클라이언트가 주장한 값. 감사 목적으로만 남기며 판정에 사용하지 않는다. */
   clientAsserted: boolean;
   /** 허용에 필요한 조건. 거부 사유를 사람이 읽을 수 있게 남긴다. */
@@ -135,7 +135,7 @@ export function resolveVoiceDataConsent(args: {
   requestedRetention: VoiceAudioRetention;
   clientAsserted: boolean;
   /** 서버에서 계산한 신뢰 audience. 생략하면 unknown으로 fail-closed한다. */
-  audience?: TutorsTrustedAudienceEligibility;
+  audience?: VoiceDataAudienceEligibility;
   /** 서버 런타임의 미성년 보호 준비 상태. 요청 필드가 아니다. */
   minorProtectionReady?: boolean;
   /** 서버 런타임의 연령 미확인 허용 여부. 기본 false다. */

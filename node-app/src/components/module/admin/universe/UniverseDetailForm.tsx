@@ -16,6 +16,7 @@ import { GAME_CONSTANTS as GC } from "consts/game";
 import { OPENAI_DEFAULT_TTS_SPEED } from "consts/ai";
 import { CredentialPanel, MarketingCredentialPanelGroup, MarketingOperationsPanel } from "../third-party";
 import { Lang } from "components/module/i18n";
+import { CharacterSpeciesModeField } from "./CharacterSpeciesModeField";
 
 type DetailValue = {
   settings: { commerce?: ICommerceSettings; game?: IGameSettings };
@@ -522,6 +523,14 @@ export function UniverseDetailForm({
         <TabsContent value="game" className="space-y-6">
           <section className="rounded-xl border border-border bg-surface p-4 text-primary-text">
             <h3 className="font-semibold mb-3">게임 설정</h3>
+            {currentUniverse?.type === "game" ? (
+              <div className="mb-5">
+                <CharacterSpeciesModeField
+                  value={value.settings?.game?.characterSpeciesMode}
+                  onChange={(characterSpeciesMode) => updateGame({ characterSpeciesMode })}
+                />
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm mb-1">mapSize.width</label>

@@ -3,18 +3,15 @@ import type { ChatCompletionMessageParam } from "openai/resources/index.mjs";
 import type { TranscriptionCreateParamsNonStreaming } from "openai/resources/audio/transcriptions.mjs";
 import { toFile } from "openai/uploads";
 import {
-  OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL,
   OPENAI_GPT_AUDIO_CANDIDATE_MODEL,
   OPENAI_GPT_TRANSCRIBE_CANDIDATE_MODEL,
-  OPENAI_DEFAULT_STT_MODEL,
-  OPENAI_DEFAULT_TTS_MODEL,
 } from "consts/ai/voiceCatalog";
 import { resolveUpstreamModelName } from "consts/ai/modelRole";
 import { getPlatformOpenAIClient } from "libs/server-utils/secure/platformAiClients";
 import type { ITokenUsageBreakdown } from "types/payment";
 import { parseJsonSafe } from "utils/data";
 import { toUnknownRecord } from "utils/common/typeUtils";
-import { resolveSpeechSynthesisContentType } from "../guards";
+import { createSpeechError, resolveSpeechSynthesisContentType } from "../guards";
 import type {
   IResolvedVoiceProfile,
   ISpeechPronunciationAssessment,
@@ -23,6 +20,7 @@ import type {
   IValidatedSpeechAudioInput,
   SpeechSynthesisFormat,
 } from "../types";
+import { AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL } from "consts/ai/generated/modelCatalog.generated";
 
 type TranscriptionLogprob = { token?: string; logprob?: number };
 
@@ -219,7 +217,7 @@ export async function openaiAnalyzeSpeechAudio(args: {
   providerUsage?: Record<string, unknown>;
 }> {
   const openai = await getPlatformOpenAIClient();
-  const modelName = String(args.modelName || OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).trim() || OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL;
+  const modelName = String(args.modelName || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL).trim() || AI_OPENAI_DEFAULT_AUDIO_ANALYSIS_MODEL;
   const upstreamModel = resolveUpstreamModelName("openai", modelName);
   const targetLanguage = String(args.targetLanguage || "").trim().slice(0, 32);
   const conversationContext = String(args.conversationContext || "").trim().slice(0, 1200);
@@ -302,8 +300,14 @@ export async function openaiTranscribeSpeech(args: {
   language?: string;
   prompt?: string;
 }): Promise<ISpeechTranscribeProviderResult> {
+  const modelName = String(args.modelName || "").trim();
+  if (!modelName) {
+    throw createSpeechError("승인된 OpenAI STT 모델이 없습니다.", "UNSUPPORTED_SPEECH_MODEL", 400, {
+      provider: "openai",
+      role: "speech_stt",
+    });
+  }
   const openai = await getPlatformOpenAIClient();
-  const modelName = String(args.modelName || OPENAI_DEFAULT_STT_MODEL).trim() || OPENAI_DEFAULT_STT_MODEL;
   const upstreamModel = resolveUpstreamModelName("openai", modelName);
   const upload = await toFile(args.file.buffer, args.file.filename, { type: args.file.mimeType });
 
@@ -359,8 +363,14 @@ export async function openaiSynthesizeSpeech(args: {
   speed?: number;
   voiceProfile: IResolvedVoiceProfile;
 }): Promise<ISpeechSynthesizeProviderResult> {
+  const modelName = String(args.modelName || args.voiceProfile.modelName || "").trim();
+  if (!modelName) {
+    throw createSpeechError("승인된 OpenAI TTS 모델이 없습니다.", "UNSUPPORTED_SPEECH_MODEL", 400, {
+      provider: "openai",
+      role: "speech_tts",
+    });
+  }
   const openai = await getPlatformOpenAIClient();
-  const modelName = String(args.modelName || args.voiceProfile.modelName || OPENAI_DEFAULT_TTS_MODEL).trim() || OPENAI_DEFAULT_TTS_MODEL;
   const upstreamModel = resolveUpstreamModelName("openai", modelName);
   const format = args.format || "mp3";
 

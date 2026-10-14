@@ -65,7 +65,7 @@ async function handlePOST(data: unknown, user: AuthenticatedUserType, request: N
     ...body,
     scope: body.scope === "universe" || universeId ? "universe" : "user",
     sourceService: "gen-studio",
-    sourceSurface: (await resolveStudioGenerationSource(request, body.embedSessionId)).surface,
+    sourceSurface: (await resolveStudioGenerationSource(request)).surface,
   };
   const result = await enqueueStudioAudioJob({ request: trustedRequest, user });
   if (!result.ok) {

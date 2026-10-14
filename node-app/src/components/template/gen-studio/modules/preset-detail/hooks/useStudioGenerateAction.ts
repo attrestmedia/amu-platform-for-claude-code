@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai";
+import { AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 import { enqueueStudioImageJob } from "libs/api/lab";
 import { useGlobalNotifications } from "components/module/notifications/GlobalNotificationProvider";
 import type { UiScopeType, UserScopeType } from "types/ai";
@@ -125,7 +125,7 @@ export function useStudioGenerateAction({ mode, universeId, fallbackModelName, i
         try {
           const selectedModels = normalizeSelectedModelNames(
             args.modelNames || [],
-            String(fallbackModelName || DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
+            String(fallbackModelName || AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
           ).map((m) => String(m));
 
           const jobIds: string[] = [];

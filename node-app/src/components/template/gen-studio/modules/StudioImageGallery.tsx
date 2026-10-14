@@ -6,8 +6,8 @@ import { ImageBox } from "components/module/image";
 import { Lang } from "components/module/i18n";
 import type { ImagePromptMetaType } from "types/app";
 import { cn } from "utils/common";
-import { Eye } from "lucide-react";
-import { STUDIO_GENERATION_SOURCE_SERVICE_LABELS } from "consts/app";
+import { Check, Eye } from "lucide-react";
+import { resolveGenStudioTemplateLabel, STUDIO_GENERATION_SOURCE_SERVICE_LABELS } from "consts/app";
 
 type LocalizedText = {
   ko: string;
@@ -26,6 +26,7 @@ type StudioImageGalleryProps = {
   renderActions?: (item: ImagePromptMetaType) => ReactNode;
   className?: string;
   showSource?: boolean;
+  selectedAssetId?: string;
 };
 
 function formatCreatedAt(value: ImagePromptMetaType["createdAt"]) {
@@ -47,6 +48,7 @@ export function StudioImageGallery({
   renderActions,
   className,
   showSource = false,
+  selectedAssetId,
 }: StudioImageGalleryProps) {
   const safePageSize = Math.max(1, Math.floor(pageSize));
   const totalPages = Math.max(1, Math.ceil(Math.max(0, totalItems) / safePageSize));
@@ -83,8 +85,9 @@ export function StudioImageGallery({
     <section className={cn("space-y-5", className)}>
       <div className="grid gap-3 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
         {items.map((item, index) => {
-          const title = item.templateTitle || item.templateKey || item.assetId;
+          const title = resolveGenStudioTemplateLabel(item.templateKey, item.templateTitle) || item.assetId;
           const createdAt = formatCreatedAt(item.createdAt);
+          const selected = selectedAssetId !== undefined && item.assetId === selectedAssetId;
 
           return (
             <article
@@ -94,12 +97,16 @@ export function StudioImageGallery({
               <button
                 type="button"
                 onClick={() => onSelect?.(item, index)}
-                className="relative aspect-[4/3] w-full overflow-hidden bg-muted text-left"
+                aria-pressed={selectedAssetId !== undefined ? selected : undefined}
+                className={cn(
+                  "relative aspect-[4/3] w-full overflow-hidden bg-muted text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  selected && "ring-2 ring-primary",
+                )}
               >
                 <ImageBox
                   src={item.url}
                   alt={title}
-                  className="h-full w-full transition-transform duration-300 group-hover:scale-105"
+                  className="h-full w-full motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:scale-105"
                   objectFit="object-cover"
                   objectPosition="object-center"
                   width="100%"
@@ -107,7 +114,7 @@ export function StudioImageGallery({
                   sizes="(min-width: 1280px) 25vw, (min-width: 640px) 50vw, 100vw"
                 />
                 <span className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-background/80 text-primary-text shadow-sm">
-                  <Eye className="icon-xs" aria-hidden />
+                  {selected ? <Check className="icon-xs" aria-hidden /> : <Eye className="icon-xs" aria-hidden />}
                 </span>
               </button>
 

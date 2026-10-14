@@ -7,6 +7,12 @@
  */
 
 import { listSpeechModelPolicies, SPEECH_CATALOG_PROVIDER_TYPES, type SpeechCatalogProviderType } from "consts/ai";
+import {
+  SPEECH_RUNTIME_MANIFEST,
+  type SpeechBudgetRole,
+  type SpeechManifestBudgetOwner,
+  type SpeechRuntimeManifest,
+} from "consts/ai/speechRuntimeManifest";
 
 export const SPEECH_RUNTIME_CONTROLS_SETTING_KEY = "speech.runtime-controls.v1";
 
@@ -32,51 +38,6 @@ export type SpeechConcurrencyLimits = {
  * 기본은 전부 닫힘이다. 운영 개방은 사용자 게이트(정책 게시·미성년 보호·양의 예산·유료 smoke)에서
  * 이 값을 채운 뒤에만 일어난다. provider는 openai로 고정하며 DB가 바꿀 수 없다.
  */
-export type SpeechTutorsSttControls = {
-  enabled: boolean;
-  /** openai 고정. 저장값으로도 바꿀 수 없다. */
-  provider: "openai";
-  /** 승인 모델명. 비어 있으면 닫힘(코드 상수 gpt-4o-transcribe만 허용). */
-  modelName: string;
-  allowedLanguages: string[];
-  maxDurationMs: number | null;
-  maxAudioBytes: number | null;
-  /** 사용자별 KST 일일 요청 상한. null/0은 승인 전 닫힘. */
-  maxRequestsPerUserPerDay: number | null;
-  /** 미성년 보호·보호자 동의 증거 확정 여부. 자기신고로 승격하지 않는다. */
-  minorProtectionReady: boolean;
-  /**
-   * 2026-09-13 사용자 결정: 연령 미확인(unknown)을 성인으로 간주해 허용할지.
-   * 기본 false(fail-closed). true면 unknown audience도 OpenAI STT를 허용하며, 미성년 보호 리스크를
-   * 사용자가 명시 수용한 것으로 기록한다.
-   */
-  allowUnknownAudience: boolean;
-};
-
-export const DEFAULT_SPEECH_TUTORS_STT_CONTROLS: SpeechTutorsSttControls = {
-  enabled: false,
-  provider: "openai",
-  modelName: "",
-  allowedLanguages: [],
-  maxDurationMs: null,
-  maxAudioBytes: null,
-  maxRequestsPerUserPerDay: null,
-  minorProtectionReady: false,
-  allowUnknownAudience: false,
-};
-
-/**
- * TUTORS-193 — 선택한 Tutor 모델에 원음을 전달하는 audio 턴 개방 여부.
- * TUTORS-GATE-VOICE-MODEL 통과 전까지 false다. tutorsStt(STT-only)와 달리 provider AND 결합이
- * 없다 — 실제 개방은 evaluateTutorsAudioTurn의 4단계(카탈로그에 audio-capable 모델 존재)를
- * 통과해야 하므로, 저장값이 true여도 적격 모델이 0개인 지금은 여전히 닫힌다(이중 잠금).
- */
-export type SpeechTutorsAudioTurnControls = {
-  enabled: boolean;
-};
-
-export const DEFAULT_SPEECH_TUTORS_AUDIO_TURN_CONTROLS: SpeechTutorsAudioTurnControls = { enabled: false };
-
 /**
  * EL-204 budget owner 축. EL-004가 채택한 "서비스별 budget owner 분리"를 코드 상수로 고정한다.
  *
@@ -87,17 +48,42 @@ export const DEFAULT_SPEECH_TUTORS_AUDIO_TURN_CONTROLS: SpeechTutorsAudioTurnCon
 export const SPEECH_BUDGET_OWNERS = ["magazine", "tutors", "play", "internal"] as const;
 export type SpeechBudgetOwnerType = (typeof SPEECH_BUDGET_OWNERS)[number];
 
-/**
- * **상한이 확정되기 전에는 호출 자체를 막는** provider 목록.
- *
- * 기존 openai speech 경로는 여기 넣지 않는다. 지금 넣으면 상한이 전부 null인 상태에서
- * 운영 중인 TTS/STT가 즉시 끊긴다. openai로의 확대는 상한 수치가 들어오고 사용량 집계가
- * 붙은 뒤(EL-204 후속 단계) 별도로 판단한다 — 이 목록은 그 판단의 단일 지점이다.
- */
-export const SPEECH_BUDGET_REQUIRED_PROVIDERS: readonly SpeechCatalogProviderType[] = ["elevenlabs"];
+/** manifest가 예산을 강제하도록 지정한 provider 목록. */
+export const SPEECH_BUDGET_REQUIRED_PROVIDERS: readonly SpeechCatalogProviderType[] = Object.freeze(
+  Object.keys(SPEECH_RUNTIME_MANIFEST.budgetEnforcement).sort() as SpeechCatalogProviderType[],
+);
 
 export function isSpeechBudgetOwner(value: unknown): value is SpeechBudgetOwnerType {
   return (SPEECH_BUDGET_OWNERS as readonly string[]).includes(String(value || "").trim().toLowerCase());
+}
+
+export function isRetiredSpeechBudgetOwner(
+  owner: string | undefined,
+  manifest: SpeechRuntimeManifest = SPEECH_RUNTIME_MANIFEST,
+): boolean {
+  if (!owner || !isSpeechBudgetOwner(owner)) return false;
+  return !Object.hasOwn(manifest.budgetByOwner, String(owner).trim().toLowerCase());
+}
+
+export function isSpeechBudgetEnforced(
+  provider: string,
+  owner: string | undefined,
+  manifest: SpeechRuntimeManifest,
+  role: SpeechBudgetRole,
+): boolean {
+  if (isRetiredSpeechBudgetOwner(owner, manifest)) return true;
+
+  const normalizedProvider = String(provider || "").trim().toLowerCase();
+  const enforcedOwners = manifest.budgetEnforcement[normalizedProvider];
+  if (!enforcedOwners) return false;
+  const roleScope = manifest.budgetRoleScope[normalizedProvider];
+  if (roleScope) {
+    if (!roleScope.roles.includes(role)) return false;
+    if (!owner || !isSpeechBudgetOwner(owner)) return false;
+    return enforcedOwners.includes(String(owner).trim().toLowerCase() as SpeechManifestBudgetOwner);
+  }
+  if (!owner || !isSpeechBudgetOwner(owner)) return true;
+  return enforcedOwners.includes(String(owner).trim().toLowerCase() as SpeechManifestBudgetOwner);
 }
 
 export type SpeechRuntimeControls = {
@@ -118,10 +104,6 @@ export type SpeechRuntimeControls = {
    */
   budgetByOwner: Record<SpeechBudgetOwnerType, SpeechBudgetLimits>;
   concurrency: SpeechConcurrencyLimits;
-  /** TUTORS-192 Tutors OpenAI STT 활성화 정책. 기본 닫힘. */
-  tutorsStt: SpeechTutorsSttControls;
-  /** TUTORS-193 선택 Tutor 모델 audio 턴 개방 정책. 기본 닫힘. */
-  tutorsAudioTurn: SpeechTutorsAudioTurnControls;
 };
 
 /**
@@ -146,8 +128,6 @@ export const DEFAULT_SPEECH_RUNTIME_CONTROLS: SpeechRuntimeControls = {
     SPEECH_BUDGET_OWNERS.map((owner) => [owner, { perRequestUsdCap: null, dailyUsdCap: null, monthlyUsdCap: null }]),
   ) as Record<SpeechBudgetOwnerType, SpeechBudgetLimits>,
   concurrency: { perUserConcurrent: null, globalConcurrent: null },
-  tutorsStt: { ...DEFAULT_SPEECH_TUTORS_STT_CONTROLS },
-  tutorsAudioTurn: { ...DEFAULT_SPEECH_TUTORS_AUDIO_TURN_CONTROLS },
 };
 
 export function isSpeechCatalogProvider(value: unknown): value is SpeechCatalogProviderType {
@@ -182,7 +162,9 @@ function normalizeBudgetLimits(stored: Partial<SpeechBudgetLimits> | undefined |
  * - providerEnabled는 코드 정책(SPEECH_PROVIDER_ROUTABLE)을 상한으로 AND 결합한다.
  *   미검증 provider는 저장값이 true여도 활성화되지 않는다.
  */
-export function normalizeSpeechRuntimeControls(stored?: Partial<SpeechRuntimeControls> | null): SpeechRuntimeControls {
+export function normalizeStoredSpeechRuntimeControls(
+  stored?: Partial<SpeechRuntimeControls> | null,
+): SpeechRuntimeControls {
   const providerEnabled = { ...DEFAULT_SPEECH_RUNTIME_CONTROLS.providerEnabled };
   for (const provider of SPEECH_CATALOG_PROVIDER_TYPES) {
     const requested = stored?.providerEnabled?.[provider];
@@ -218,46 +200,59 @@ export function normalizeSpeechRuntimeControls(stored?: Partial<SpeechRuntimeCon
       perUserConcurrent: normalizeIntCap(stored?.concurrency?.perUserConcurrent),
       globalConcurrent: normalizeIntCap(stored?.concurrency?.globalConcurrent),
     },
-    tutorsStt: normalizeTutorsSttControls(stored?.tutorsStt),
-    tutorsAudioTurn: normalizeTutorsAudioTurnControls(stored?.tutorsAudioTurn),
   };
 }
 
-/**
- * audio 턴 설정 정규화. tutorsStt와 달리 provider AND 결합이 없다 — 저장값 true는 그대로 둔다.
- * 실제 개방은 evaluateTutorsAudioTurn의 카탈로그 판정이 별도로 막는다(이중 잠금, 위 타입 주석 참조).
- */
-export function normalizeTutorsAudioTurnControls(
-  stored?: Partial<SpeechTutorsAudioTurnControls> | null,
-): SpeechTutorsAudioTurnControls {
-  return { enabled: stored?.enabled === true };
+function applyManifestCap(dbValue: number | null, manifestValue: number | null): number | null {
+  if (manifestValue === null) return dbValue === 0 ? 0 : null;
+  if (dbValue === null) return manifestValue;
+  return Math.min(dbValue, manifestValue);
 }
 
-/**
- * Tutors STT 설정 정규화. provider는 항상 openai로 고정한다(저장값이 바꿔도 무시).
- * enabled는 저장값을 그대로 신뢰하지 않고, provider 라우팅 가능 여부와 AND 결합한다.
- */
-export function normalizeTutorsSttControls(
-  stored?: Partial<SpeechTutorsSttControls> | null,
-): SpeechTutorsSttControls {
-  const languageSource = Array.isArray(stored?.allowedLanguages) ? stored.allowedLanguages : [];
-  const allowedLanguages = Array.from(
-    new Set(languageSource.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)),
-  );
-  const maxRequestsPerUserPerDay = normalizeIntCap(stored?.maxRequestsPerUserPerDay);
+export function applySpeechRuntimeManifest(
+  stored: SpeechRuntimeControls,
+  manifest: SpeechRuntimeManifest = SPEECH_RUNTIME_MANIFEST,
+): SpeechRuntimeControls {
+  const budgetByOwner = Object.fromEntries(
+    SPEECH_BUDGET_OWNERS.map((owner) => {
+      if (!Object.hasOwn(manifest.budgetByOwner, owner)) {
+        return [owner, { perRequestUsdCap: 0, dailyUsdCap: 0, monthlyUsdCap: 0 }];
+      }
+      const limits = manifest.budgetByOwner[owner as SpeechManifestBudgetOwner];
+      return [
+        owner,
+        {
+          perRequestUsdCap: applyManifestCap(stored.budgetByOwner[owner].perRequestUsdCap, limits.perRequestUsdCap),
+          dailyUsdCap: applyManifestCap(stored.budgetByOwner[owner].dailyUsdCap, limits.dailyUsdCap),
+          monthlyUsdCap: applyManifestCap(stored.budgetByOwner[owner].monthlyUsdCap, limits.monthlyUsdCap),
+        },
+      ];
+    }),
+  ) as Record<SpeechBudgetOwnerType, SpeechBudgetLimits>;
+
   return {
-    // openai는 2026-09 기준 라우팅 가능 provider다. 그래도 저장값을 그대로 믿지 않고 코드 상한과 AND 한다.
-    enabled: stored?.enabled === true && SPEECH_PROVIDER_ROUTABLE.openai,
-    provider: "openai",
-    modelName: String(stored?.modelName || "").trim().slice(0, 120),
-    allowedLanguages,
-    maxDurationMs: normalizeIntCap(stored?.maxDurationMs),
-    maxAudioBytes: normalizeIntCap(stored?.maxAudioBytes),
-    maxRequestsPerUserPerDay:
-      maxRequestsPerUserPerDay !== null && maxRequestsPerUserPerDay > 0 ? maxRequestsPerUserPerDay : null,
-    minorProtectionReady: stored?.minorProtectionReady === true,
-    allowUnknownAudience: stored?.allowUnknownAudience === true,
+    ...stored,
+    budget: {
+      perRequestUsdCap: applyManifestCap(stored.budget.perRequestUsdCap, manifest.budget.perRequestUsdCap),
+      dailyUsdCap: applyManifestCap(stored.budget.dailyUsdCap, manifest.budget.dailyUsdCap),
+      monthlyUsdCap: applyManifestCap(stored.budget.monthlyUsdCap, manifest.budget.monthlyUsdCap),
+    },
+    budgetByOwner,
+    concurrency: {
+      perUserConcurrent: applyManifestCap(
+        stored.concurrency.perUserConcurrent,
+        manifest.concurrency.perUserConcurrent,
+      ),
+      globalConcurrent: applyManifestCap(stored.concurrency.globalConcurrent, manifest.concurrency.globalConcurrent),
+    },
   };
+}
+
+export function normalizeSpeechRuntimeControls(
+  stored?: Partial<SpeechRuntimeControls> | null,
+  manifest: SpeechRuntimeManifest = SPEECH_RUNTIME_MANIFEST,
+): SpeechRuntimeControls {
+  return applySpeechRuntimeManifest(normalizeStoredSpeechRuntimeControls(stored), manifest);
 }
 
 export const SPEECH_PROVIDER_BLOCK_REASON_CODES = [
@@ -317,11 +312,6 @@ export type SpeechBudgetUsageSnapshot = {
   spentThisMonthUsd: number | null;
 };
 
-function isEnforcedProvider(provider: string) {
-  const normalized = String(provider || "").trim().toLowerCase();
-  return (SPEECH_BUDGET_REQUIRED_PROVIDERS as readonly string[]).includes(normalized);
-}
-
 /** 상한이 하나라도 미확정이면 true. 강제 대상 provider에서는 이것만으로 차단 사유가 된다. */
 function hasUndeterminedCap(limits: SpeechBudgetLimits) {
   return limits.perRequestUsdCap === null || limits.dailyUsdCap === null || limits.monthlyUsdCap === null;
@@ -350,9 +340,11 @@ export function resolveSpeechBudgetBlock(args: {
   controls: SpeechRuntimeControls;
   provider: string;
   owner: string;
+  role: SpeechBudgetRole;
   estimatedUsd: number;
   ownerUsage?: SpeechBudgetUsageSnapshot;
   globalUsage?: SpeechBudgetUsageSnapshot;
+  manifest?: SpeechRuntimeManifest;
 }): SpeechBudgetBlockReasonCodeType | undefined {
   if (!isSpeechBudgetOwner(args.owner)) return "budget_owner_unknown";
   const owner = String(args.owner).trim().toLowerCase() as SpeechBudgetOwnerType;
@@ -360,9 +352,26 @@ export function resolveSpeechBudgetBlock(args: {
   const estimated = Number(args.estimatedUsd);
   if (!Number.isFinite(estimated) || estimated < 0) return "budget_estimate_invalid";
 
-  const ownerLimits = args.controls.budgetByOwner[owner];
-  const globalLimits = args.controls.budget;
-  const enforced = isEnforcedProvider(args.provider);
+  const manifest = args.manifest || SPEECH_RUNTIME_MANIFEST;
+  const normalizedProvider = String(args.provider || "").trim().toLowerCase();
+  const roleScope = manifest.budgetRoleScope[normalizedProvider];
+  const useRoleScope = Boolean(roleScope?.roles.includes(args.role));
+  const roleOwnerLimits = roleScope?.byOwner[owner as SpeechManifestBudgetOwner];
+  const ownerLimits = useRoleScope
+    ? {
+        perRequestUsdCap: applyManifestCap(args.controls.budgetByOwner[owner].perRequestUsdCap, roleOwnerLimits?.perRequestUsdCap ?? null),
+        dailyUsdCap: applyManifestCap(args.controls.budgetByOwner[owner].dailyUsdCap, roleOwnerLimits?.dailyUsdCap ?? null),
+        monthlyUsdCap: applyManifestCap(args.controls.budgetByOwner[owner].monthlyUsdCap, roleOwnerLimits?.monthlyUsdCap ?? null),
+      }
+    : args.controls.budgetByOwner[owner];
+  const globalLimits = useRoleScope
+    ? {
+        perRequestUsdCap: applyManifestCap(args.controls.budget.perRequestUsdCap, roleScope!.global.perRequestUsdCap),
+        dailyUsdCap: applyManifestCap(args.controls.budget.dailyUsdCap, roleScope!.global.dailyUsdCap),
+        monthlyUsdCap: applyManifestCap(args.controls.budget.monthlyUsdCap, roleScope!.global.monthlyUsdCap),
+      }
+    : args.controls.budget;
+  const enforced = isSpeechBudgetEnforced(args.provider, owner, manifest, args.role);
 
   // 0은 "이 owner는 이 provider를 쓰지 않는다"는 선언이다. 견적 0(캐시 hit 등)도 통과시키지 않는다.
   if (ownerLimits.monthlyUsdCap === 0 || ownerLimits.dailyUsdCap === 0 || ownerLimits.perRequestUsdCap === 0) {

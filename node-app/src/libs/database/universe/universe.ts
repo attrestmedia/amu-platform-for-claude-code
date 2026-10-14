@@ -93,6 +93,7 @@ function documentToUniverse(doc: IUniverseDocument | (Omit<IUniverse, "fixed"> &
     npcs: doc.npcs,
     stages: doc.stages,
     typeSpecific: doc.typeSpecific,
+    ownerUids: doc.ownerUids,
 
     // 커머스 관리자 (조건부 포함)
     ...(doc.type === "commerce" && {
@@ -162,6 +163,9 @@ export async function upsertUniverse(universeData: UniverseWriteData): Promise<I
 
     // 스테이지 데이터 유효성 검증 및 보정
     const processedData = { ...universeData };
+    // Owner assignment is managed only by the dedicated administrator API.
+    // Omitting this field from $set preserves any existing assignment.
+    delete processedData.ownerUids;
 
     // stages가 없거나 빈 배열인 경우 기본 스테이지 추가
     if (!processedData.stages || processedData.stages.length === 0) {
@@ -305,6 +309,29 @@ export async function upsertUniverse(universeData: UniverseWriteData): Promise<I
     return documentToUniverse(universe);
   } catch (error) {
     logger.error("유니버스 데이터 생성/업데이트 중 오류:", error);
+    throw error;
+  }
+}
+
+export async function setUniverseOwnerUids(universeId: string, ownerUids: string[]): Promise<IUniverse> {
+  try {
+    const UniverseModel = await getUniverseModel();
+    const existing = await UniverseModel.findOne({ id: universeId }).select({ type: 1 }).lean();
+
+    if (!existing) throw new Error("UNIVERSE_NOT_FOUND");
+    if (existing.type !== "game") throw new Error("UNIVERSE_OWNER_TYPE_INVALID");
+
+    const normalizedOwnerUids = [...new Set(ownerUids.map((uid) => uid.trim()))];
+    const updated = await UniverseModel.findOneAndUpdate(
+      { id: universeId, type: "game" },
+      { $set: { ownerUids: normalizedOwnerUids } },
+      { new: true, lean: true, runValidators: true, context: "query" },
+    );
+
+    if (!updated) throw new Error("UNIVERSE_NOT_FOUND");
+    return documentToUniverse(updated);
+  } catch (error) {
+    logger.error(`게임 유니버스 소유자 저장 중 오류 (ID: ${universeId}):`, error);
     throw error;
   }
 }

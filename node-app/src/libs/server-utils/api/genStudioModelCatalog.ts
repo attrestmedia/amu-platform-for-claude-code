@@ -1,13 +1,16 @@
 import {
-  IMAGE_REF_LIMIT_BY_PROVIDER,
   OPENAI_COMPAT_IMAGE_SIZES,
   OPENAI_COMPAT_UI_RATIOS,
   getSupportedGoogleAspectRatios,
   getSupportedGoogleImageSizes,
   getSupportedOpenAIAspectRatios,
 } from "consts/ai";
+import {
+  AI_MODEL_CATALOG_REVISIONS,
+  AI_IMAGE_REF_LIMIT_BY_PROVIDER,
+} from "consts/ai/generated/modelCatalog.generated";
 import { listSystemModelCatalog, type SystemModelCatalogItem } from "libs/server-utils/api/systemModelControl";
-import { createSystemPricingSnapshotRevision, getSystemPricingMaps } from "libs/server-utils/api/systemPricingControl";
+import type { ImageProviderType } from "types/ai";
 
 export type GenStudioModelCatalogType = "all" | "audio" | "image" | "text" | "video";
 
@@ -105,7 +108,7 @@ function buildSection(
         provider,
         defaultModelName,
         modelCount: models.length,
-        referenceLimit: modality === "image" ? IMAGE_REF_LIMIT_BY_PROVIDER[provider as keyof typeof IMAGE_REF_LIMIT_BY_PROVIDER] : undefined,
+        referenceLimit: modality === "image" ? (AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[provider as ImageProviderType] : undefined,
         models,
       };
     });
@@ -122,11 +125,11 @@ export async function listGenStudioModelCatalog(args: {
   type?: GenStudioModelCatalogType;
 } = {}): Promise<GenStudioModelCatalogResult> {
   const type = args.type || "all";
-  const [catalog, pricingMaps] = await Promise.all([listSystemModelCatalog(), getSystemPricingMaps()]);
+  const catalog = await listSystemModelCatalog();
 
   return {
     type,
-    pricingRevision: createSystemPricingSnapshotRevision(pricingMaps),
+    pricingRevision: AI_MODEL_CATALOG_REVISIONS.pricingRevision,
     audio: type === "all" || type === "audio" ? buildSection(groupCatalogItems(catalog, "audio"), "audio") : undefined,
     image: type === "all" || type === "image" ? buildSection(groupCatalogItems(catalog, "image"), "image") : undefined,
     text: type === "all" || type === "text" ? buildSection(groupCatalogItems(catalog, "text"), "text") : undefined,

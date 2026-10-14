@@ -6,8 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import type { IExtendedNpcData } from "types/game";
 import type {
   IPersonaItem,
-  ChatImageInputType,
-  ChatImagePreviewType,
   IChatMessage,
   SystemCodeLikeType,
   AiMessageType,
@@ -19,7 +17,6 @@ import type {
   TextProviderType,
 } from "types/ai";
 import type { ICommerceProduct } from "types/commerce";
-import type { TutorConversationLevel } from "consts/tutors";
 import type { VoicePlaybackViewState } from "hooks/chat";
 
 // modules
@@ -33,7 +30,6 @@ import { CharacterChatControls } from "./controls/CharacterChatControls";
 import { ChatBackground } from "./views/ChatBackground";
 import { ChatMessageList } from "./messages/ChatMessageList";
 import { ChatInputBar } from "./controls/ChatInputBar";
-import { TutorImageAttachSheet } from "./controls/TutorImageAttachSheet";
 import { ChatOverlays } from "./overlays/ChatOverlays";
 
 type KnowledgeSearchPanelHandle = {
@@ -108,20 +104,9 @@ type CharacterChatViewProps = {
       isOverLimit: boolean;
       isSendDisabled: boolean;
       isRestricted: boolean;
-      imageAttachment?: {
-        enabled: boolean;
-        disabled: boolean;
-        preview: ChatImagePreviewType | null;
-        preparing: boolean;
-        pickerOpen: boolean;
-        onPickerOpenChange: (open: boolean) => void;
-        onPrepare: (file: File, source: ChatImageInputType["source"]) => void | Promise<void>;
-        onClear: () => void;
-      };
     };
     voice: {
       provider: SpeechProviderType | "qwen";
-      tutorsExperience: boolean;
       enabled: boolean;
       isSupported: boolean;
       microphoneAvailability: "checking" | "available" | "unavailable" | "unsupported";
@@ -133,14 +118,6 @@ type CharacterChatViewProps = {
       inputMode: "voice" | "text";
       onChangeInputMode: (mode: "voice" | "text") => void;
       onToggleInputMode: () => void;
-      disclosure?: {
-        required: boolean;
-        version: string;
-        notice: string;
-        acknowledged: boolean;
-        onAcknowledge: () => void;
-        onDecline: () => void;
-      };
       unavailableNotice?: {
         supportedLanguages: readonly string[];
       };
@@ -157,13 +134,6 @@ type CharacterChatViewProps = {
       saving: boolean;
       onSelect: (provider: TextProviderType, modelName: string) => void | Promise<void>;
     };
-    tutorTargetLanguage?: string;
-    onTutorTargetLanguageChange?: (language: string) => void;
-    tutorConversationLevel?: string;
-    onTutorConversationLevelChange?: (conversationLevel: TutorConversationLevel) => void;
-    conversationHintsAvailable?: boolean;
-    conversationHintsEnabled?: boolean;
-    onConversationHintsEnabledChange?: (enabled: boolean) => void;
   };
 
   commerce: {
@@ -179,13 +149,6 @@ type CharacterChatViewProps = {
     isTranslating: boolean;
     settings: { enabled: boolean };
   };
-  conversationHints?: {
-    hints: string[];
-    isLoading?: boolean;
-    onPick: (hint: string) => void;
-    onRegenerate?: () => void;
-  };
-
   refs: {
     messagesContainerRef: React.RefObject<HTMLDivElement | null>;
     bottomAnchorRef: React.RefObject<HTMLDivElement | null>;
@@ -248,7 +211,6 @@ export function CharacterChatView(props: CharacterChatViewProps) {
     chat,
     commerce,
     translation,
-    conversationHints,
     refs,
     renderers,
     actions,
@@ -293,13 +255,6 @@ export function CharacterChatView(props: CharacterChatViewProps) {
     voice,
     voicePlayback,
     modelSelection,
-    tutorTargetLanguage,
-    onTutorTargetLanguageChange,
-    tutorConversationLevel,
-    onTutorConversationLevelChange,
-    conversationHintsAvailable,
-    conversationHintsEnabled,
-    onConversationHintsEnabledChange,
     aiEnd: { showAIEndRequest, aiEndRequestMessage, isForceEnd, warningStatus },
     input: {
       currentInput,
@@ -309,7 +264,6 @@ export function CharacterChatView(props: CharacterChatViewProps) {
       isOverLimit,
       isSendDisabled,
       isRestricted,
-      imageAttachment,
     },
   } = chat;
 
@@ -476,14 +430,6 @@ export function CharacterChatView(props: CharacterChatViewProps) {
                         onProductClick: handleProductClick,
                       }}
                       voicePlayback={voicePlayback}
-                      imageAttachment={
-                        imageAttachment?.enabled
-                          ? {
-                              enabled: true,
-                              onRequestImage: () => imageAttachment.onPickerOpenChange(true),
-                            }
-                          : undefined
-                      }
                     />
 
                     <ChatInputBar
@@ -507,24 +453,11 @@ export function CharacterChatView(props: CharacterChatViewProps) {
                         onPressStart: handleVoicePressStart,
                         onPressEnd: handleVoicePressEnd,
                       }}
-                      conversationHints={conversationHints}
                       chatInputRef={chatInputRef}
                       onClearKnowledgeContext={handleClearKnowledgeContext}
                       onChange={handleInputChangeTranslation}
                       onKeyDown={handleKeyPress}
                       onSend={() => handleSendWithMessage()}
-                      imageAttachment={
-                        imageAttachment
-                          ? {
-                              enabled: imageAttachment.enabled,
-                              disabled: imageAttachment.disabled,
-                              preview: imageAttachment.preview,
-                              preparing: imageAttachment.preparing,
-                              onOpenPicker: () => imageAttachment.onPickerOpenChange(true),
-                              onClear: imageAttachment.onClear,
-                            }
-                          : undefined
-                      }
                       userSprite={userSprite}
                       userPortraitSrc={userPortraitSrc}
                       userCharacterName={userCharacterName}
@@ -579,15 +512,6 @@ export function CharacterChatView(props: CharacterChatViewProps) {
           </AnimatePresence>
         </div>
 
-        {imageAttachment?.enabled ? (
-          <TutorImageAttachSheet
-            open={imageAttachment.pickerOpen}
-            disabled={imageAttachment.disabled}
-            onOpenChange={imageAttachment.onPickerOpenChange}
-            onPick={imageAttachment.onPrepare}
-          />
-        ) : null}
-
         <ChatOverlays
           panelType={panelType}
           currentPersonaData={currentPersonaData}
@@ -609,13 +533,6 @@ export function CharacterChatView(props: CharacterChatViewProps) {
           canUseTranslation={!isCommerceUniverse}
           voicePlaybackAvailable={voicePlayback.available}
           voiceInputAvailable={isVoiceAvailable}
-          tutorTargetLanguage={tutorTargetLanguage}
-          onTutorTargetLanguageChange={onTutorTargetLanguageChange}
-          tutorConversationLevel={tutorConversationLevel}
-          onTutorConversationLevelChange={onTutorConversationLevelChange}
-          conversationHintsAvailable={conversationHintsAvailable}
-          conversationHintsEnabled={conversationHintsEnabled}
-          onConversationHintsEnabledChange={onConversationHintsEnabledChange}
           showAIEndRequest={showAIEndRequest}
           aiEndRequestMessage={aiEndRequestMessage}
           canContinue={canContinue}

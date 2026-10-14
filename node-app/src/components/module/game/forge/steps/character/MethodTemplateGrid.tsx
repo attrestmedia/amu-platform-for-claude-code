@@ -29,7 +29,7 @@ export function MethodTemplateGrid({
       <div className="rounded-xl border border-dashed border-border bg-background p-6 text-center">
         <Images className="mx-auto size-8 text-secondary-text" aria-hidden />
         <p className="mt-3 text-sm font-medium"><Lang text={{ ko: "캐릭터로 쓸 이미지를 아직 찾지 못했어요", en: "No character-ready images yet" }} /></p>
-        <p className="mt-1 text-xs text-secondary-text"><Lang text={{ ko: "새로 만들기나 업로드를 이용해 시작해 보세요.", en: "Start with a new character or upload." }} /></p>
+        <p className="mt-1 text-xs text-secondary-text"><Lang text={{ ko: "새 캐릭터 만들기로 시작해 보세요.", en: "Start by creating a new character." }} /></p>
       </div>
     );
   }

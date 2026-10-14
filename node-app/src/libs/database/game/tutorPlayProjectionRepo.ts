@@ -29,6 +29,13 @@ function codeError(code: string) {
   return error;
 }
 
+type TutorPlayProjectionReservation = {
+  ledger: ITutorPlayProjectionLedgerDoc;
+  duplicate: boolean;
+  resumed?: boolean;
+  inProgress?: boolean;
+};
+
 async function model<T>(name: string, schema: Parameters<typeof getModel>[2], collection: string) {
   return getModel<T>(MONGODB_GAME_URL, name, schema, collection);
 }
@@ -49,7 +56,7 @@ export async function getTutorPlayProjectionLedgerByIdempotency(input: { uid: st
 
 /**
  * XP cap 예약과 audit ledger reserve를 한 Mongo transaction으로 묶는다.
- * 동일 idempotencyKey는 기존 행을 반환하고 daily usage를 다시 증가시키지 않는다.
+ * released/stale reservation은 같은 원장에서 daily cap을 다시 확인한 뒤 재개한다.
  */
 export async function reserveTutorPlayProjection(input: {
   uid: string;
@@ -62,7 +69,7 @@ export async function reserveTutorPlayProjection(input: {
   dailyCap: number;
   consentVersion: string;
   signals: TutorPlayDerivedSignals;
-}) {
+}): Promise<TutorPlayProjectionReservation> {
   const uid = key(input.uid, "tutor_play_uid_required");
   const universeId = key(input.universeId, "tutor_play_universe_required");
   const sourceEvaluationId = key(input.sourceEvaluationId, "tutor_play_evaluation_required");
@@ -75,16 +82,74 @@ export async function reserveTutorPlayProjection(input: {
   if (dailyCap <= 0) throw codeError("TUTOR_PLAY_DAILY_CAP_REQUIRED");
 
   const ledgerModel = await getTutorPlayProjectionLedgerModel();
-  const existing = await getTutorPlayProjectionLedgerByIdempotency({ uid, idempotencyKey });
-  if (existing) return { ledger: existing, duplicate: true };
-
+  const staleBefore = new Date(Date.now() - 60_000);
   const session = await ledgerModel.db.startSession();
-  let reserved: ITutorPlayProjectionLedgerDoc | null = null;
+  let reservation: TutorPlayProjectionReservation | null = null;
   try {
     await session.withTransaction(async () => {
       const duplicate = await ledgerModel.findOne({ uid, idempotencyKey }).session(session).lean<ITutorPlayProjectionLedgerDoc | null>();
       if (duplicate) {
-        reserved = duplicate;
+        if (duplicate.status === "applied" || duplicate.status === "capped" || duplicate.status === "failed") {
+          reservation = { ledger: duplicate, duplicate: true };
+          return;
+        }
+
+        const reservedAt = duplicate.reservedAt ? new Date(duplicate.reservedAt) : null;
+        const staleReservation = duplicate.status === "reserved" && reservedAt && reservedAt < staleBefore;
+        if (duplicate.status === "reserved" && !staleReservation) {
+          reservation = { ledger: duplicate, duplicate: true, inProgress: true };
+          return;
+        }
+        if (duplicate.status !== "released" && !staleReservation) {
+          reservation = { ledger: duplicate, duplicate: true };
+          return;
+        }
+        if (duplicate.xp !== xp || duplicate.dailyBucket !== dailyBucket) {
+          throw codeError("TUTOR_PLAY_RESUME_INPUT_MISMATCH");
+        }
+
+        const dailyModel = await getTutorPlayProjectionDailyUsageModel();
+        const usage = await dailyModel.findOne({ uid, dailyBucket: duplicate.dailyBucket }).session(session).lean<ITutorPlayProjectionDailyUsageDocument | null>();
+        if (!usage) throw codeError("TUTOR_PLAY_DAILY_USAGE_FAILED");
+        if (usage.dailyCap !== dailyCap || duplicate.dailyCap !== dailyCap) throw codeError("TUTOR_PLAY_DAILY_CAP_MISMATCH");
+
+        const recheckedUsage = duplicate.status === "released"
+          ? await dailyModel.findOneAndUpdate(
+              {
+                uid,
+                dailyBucket: duplicate.dailyBucket,
+                $expr: { $lte: [{ $add: ["$reservedXp", "$awardedXp", xp] }, "$dailyCap"] },
+              },
+              { $inc: { reservedXp: xp } },
+              { new: true, session, runValidators: true },
+            ).lean<ITutorPlayProjectionDailyUsageDocument | null>()
+          : await dailyModel.findOneAndUpdate(
+              {
+                uid,
+                dailyBucket: duplicate.dailyBucket,
+                reservedXp: { $gte: duplicate.xp },
+                $expr: { $lte: [{ $add: ["$reservedXp", "$awardedXp"] }, "$dailyCap"] },
+              },
+              { $inc: { reservedXp: 0 } },
+              { new: true, session, runValidators: true },
+            ).lean<ITutorPlayProjectionDailyUsageDocument | null>();
+        if (!recheckedUsage) {
+          throw codeError(duplicate.status === "released" ? "TUTOR_PLAY_DAILY_CAP_REACHED" : "TUTOR_PLAY_RESERVATION_MISSING");
+        }
+
+        const resumedAt = new Date();
+        const resumed = await ledgerModel.findOneAndUpdate(
+          staleReservation
+            ? { uid, idempotencyKey, status: "reserved", reservedAt: { $lt: staleBefore } }
+            : { uid, idempotencyKey, status: "released" },
+          {
+            $set: { status: "reserved", reservedAt: resumedAt, releasedAt: null, lastResumedAt: resumedAt },
+            $inc: { resumeCount: 1 },
+          },
+          { new: true, session, runValidators: true },
+        ).lean<ITutorPlayProjectionLedgerDoc | null>();
+        if (!resumed) throw codeError("TUTOR_PLAY_RESUME_CONFLICT");
+        reservation = { ledger: resumed, duplicate: false, resumed: true };
         return;
       }
 
@@ -138,7 +203,7 @@ export async function reserveTutorPlayProjection(input: {
           }],
           { session },
         );
-        reserved = rows[0].toObject() as ITutorPlayProjectionLedgerDoc;
+        reservation = { ledger: rows[0].toObject() as ITutorPlayProjectionLedgerDoc, duplicate: false };
         return;
       }
 
@@ -163,13 +228,13 @@ export async function reserveTutorPlayProjection(input: {
         }],
         { session },
       );
-      reserved = rows[0].toObject() as ITutorPlayProjectionLedgerDoc;
+      reservation = { ledger: rows[0].toObject() as ITutorPlayProjectionLedgerDoc, duplicate: false };
     });
   } finally {
     await session.endSession();
   }
-  if (!reserved) throw codeError("TUTOR_PLAY_RESERVATION_FAILED");
-  return { ledger: reserved, duplicate: false };
+  if (!reservation) throw codeError("TUTOR_PLAY_RESERVATION_FAILED");
+  return reservation as TutorPlayProjectionReservation;
 }
 
 export async function commitTutorPlayProjection(input: { projectionId: string; uid: string; dailyBucket: string; xp: number }) {

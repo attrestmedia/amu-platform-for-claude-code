@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { Button, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Switch, dialog } from "@amu-labs/ui";
 import { Lang, lang } from "components/module/i18n";
@@ -15,6 +15,7 @@ import type {
 import { splitCsv, joinCsv, parseJson, jsonPretty } from "utils/data";
 import { cn, toUnknownRecord } from "utils/common";
 import { logger } from "utils/log";
+import { isReservedInternalPromptKey } from "utils/app/promptAccess";
 import {
   notifyPromptListChanged,
   getPromptFieldText,
@@ -114,6 +115,7 @@ export default function PromptManagerBase({
     createContentPromptStructuredState(),
   );
   const [contentPromptExtraDefaultParamsText, setContentPromptExtraDefaultParamsText] = useState("");
+  const reservedPrefixHintId = useId();
   const isImageStructuredDefaultParams = defaultParamsMode === "image-structured";
   const isContentStructuredDefaultParams = defaultParamsMode === "content-structured";
 
@@ -148,6 +150,12 @@ export default function PromptManagerBase({
   }, [rows, q, searchField, showAdminOnlyFilter, allowAccessLevel, adminOnlyFilter]);
 
   const usageTipLength = useMemo(() => Array.from(String(editing?.usageTip || "")).length, [editing?.usageTip]);
+  const hasReservedKeyAccessMismatch = Boolean(
+    editing &&
+      allowAccessLevel &&
+      isReservedInternalPromptKey(editing.key) &&
+      normalizePromptAccessLevel(editing.accessLevel) !== "admin",
+  );
 
   const setEditorState = (next: EditingState) => {
     setEditing(next);
@@ -198,6 +206,7 @@ export default function PromptManagerBase({
 
   const onSave = async () => {
     if (!editing) return;
+    if (hasReservedKeyAccessMismatch) return;
 
     const nextKey = String(editing.key || "").trim();
     const nextTitle = String(editing.title || "").trim();
@@ -586,7 +595,7 @@ export default function PromptManagerBase({
                     <Lang text={{ ko: "삭제", en: "Delete" }} />
                   </Button>
                 )}
-                <Button size="sm" onClick={onSave}>
+                <Button size="sm" onClick={onSave} disabled={hasReservedKeyAccessMismatch}>
                   <Lang text={{ ko: "저장", en: "Save" }} />
                 </Button>
               </div>
@@ -601,7 +610,19 @@ export default function PromptManagerBase({
                   <Input
                     value={editing.key || ""}
                     onChange={(e) => setEditing((prev) => (prev ? { ...prev, key: e.target.value } : prev))}
+                    aria-invalid={hasReservedKeyAccessMismatch || undefined}
+                    aria-describedby={hasReservedKeyAccessMismatch ? reservedPrefixHintId : undefined}
                   />
+                  {hasReservedKeyAccessMismatch && (
+                    <p id={reservedPrefixHintId} role="alert" className="mt-1 text-xs text-destructive">
+                      <Lang
+                        text={{
+                          ko: "amu-로 시작하는 키는 어드민 전용으로만 저장할 수 있어요.",
+                          en: "Keys starting with amu- can only be saved as admin-only templates.",
+                        }}
+                      />
+                    </p>
+                  )}
                 </div>
 
                 <div>

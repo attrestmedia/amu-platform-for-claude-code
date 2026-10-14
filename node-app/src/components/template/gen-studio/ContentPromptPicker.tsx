@@ -38,13 +38,8 @@ import { logger } from "utils/log";
 import { Lang, lang } from "components/module/i18n";
 import type { UserScopeType, TextProviderType } from "types/ai";
 import type { FormScopeType } from "types/ui";
-import {
-  AI_GEN_CONTENT_LIMIT,
-  DEFAULT_TEXT_MODEL_BY_PROVIDER,
-  TEXT_MODEL_MAP,
-  TEXT_PROVIDER_TYPES,
-  supportsTextModelImageInput,
-} from "consts/ai";
+import { AI_GEN_CONTENT_LIMIT, TEXT_PROVIDER_TYPES, supportsTextModelImageInput } from "consts/ai";
+import { AI_DEFAULT_TEXT_MODEL_BY_PROVIDER, AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 import { getCatalogDefaultModelByProvider } from "utils/app/genStudioCatalogClient";
 import {
   CONTENT_LENGTH_CUSTOM_VALUE,
@@ -53,6 +48,7 @@ import {
   CONTENT_PLATFORM_CUSTOM_VALUE,
   CONTENT_PLATFORM_OPTIONS,
   DEFAULT_CONTENT_OUTPUT_FORMAT,
+  GEN_STUDIO_CUSTOM_PROMPT_TEMPLATE_KEY,
 } from "consts/app";
 import { getGenStudioTemplateArticleUrl, subscribePromptListChanged, loadStudioContentPromptItems } from "utils/app";
 import { useAuthStore } from "store/auth";
@@ -118,7 +114,6 @@ type Item = {
   };
 };
 
-const GEN_STUDIO_CUSTOM_PROMPT_TEMPLATE_KEY = "__gen_studio_custom_prompt__";
 const CONTENT_REFERENCE_IMAGE_LIMIT = 4;
 const CONTENT_REFERENCE_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
 const GEN_STUDIO_GHOST_SCROLLBAR_CLASS = "scrollbar-ghost";
@@ -269,7 +264,7 @@ export default function ContentPromptPicker({
   } = useGenStudioModelCatalog("text");
 
   const [provider, setProvider] = useState<TextProviderType>("google");
-  const [modelName, setModelName] = useState<string>(DEFAULT_TEXT_MODEL_BY_PROVIDER.google);
+  const [modelName, setModelName] = useState<string>(AI_DEFAULT_TEXT_MODEL_BY_PROVIDER.google);
   const [items, setItems] = useState<Item[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [detail, setDetail] = useState<Item | null>(null);
@@ -458,7 +453,7 @@ export default function ContentPromptPicker({
   );
   const textDefaultModelByProvider = useMemo(
     () => ({
-      ...Object.fromEntries(TEXT_PROVIDER_TYPES.map((item) => [item, DEFAULT_TEXT_MODEL_BY_PROVIDER[item]])),
+      ...Object.fromEntries(TEXT_PROVIDER_TYPES.map((item) => [item, AI_DEFAULT_TEXT_MODEL_BY_PROVIDER[item]])),
       ...getCatalogDefaultModelByProvider(textSection),
     }),
     [textSection],
@@ -466,7 +461,7 @@ export default function ContentPromptPicker({
   const textModelOptions = useMemo(() => {
     const catalogProvider = (textSection?.providers || []).find((item) => item.provider === provider);
     if (catalogProvider?.models?.length) return catalogProvider.models;
-    return (((TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || []) as string[]).map(
+    return (((AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || []) as string[]).map(
       (name: string) => ({
         name,
         displayName: name,

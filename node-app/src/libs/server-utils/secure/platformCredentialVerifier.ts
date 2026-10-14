@@ -41,6 +41,9 @@ import {
   TYPESAFE_VERIFY_DEFERRED_CODE,
 } from "./typesafeCredentialVerification";
 import { verifyQwenModelStudioCredential } from "./qwenCredentialVerification";
+import { getTossCertAccessToken } from "libs/server-utils/identity/tossCert/tossCertToken";
+import { classifyTossCertCredentialVerificationError } from "libs/server-utils/identity/tossCert/tossCertErrors";
+import { isTossCertTestCredential } from "libs/server-utils/identity/tossCert/tossCertConfig";
 
 type VerificationResult = {
   valid: boolean;
@@ -221,6 +224,22 @@ export async function verifyPlatformCredential(
           return { valid: false, code: "WP_NOT_AUTHENTICATED" };
         }
         return { valid: false, code: `WP_HTTP_${response.status}` };
+      }
+      case "integration.toss.cert": {
+        if (!isTossCertTestCredential(payload)) {
+          return { valid: false, code: "TOSS_CERT_LIVE_CREDENTIAL_BLOCKED" };
+        }
+
+        try {
+          // Verify the submitted pending payload itself. Do not resolve the active version here.
+          await getTossCertAccessToken({
+            resolveCredential: async () => ({ payload, version: 0 }),
+            cache: new Map(),
+          });
+          return { valid: true, code: "TOSS_CERT_TOKEN_OK" };
+        } catch (error) {
+          return { valid: false, code: classifyTossCertCredentialVerificationError(error) };
+        }
       }
       case "infra.aws.ses":
         // SES SDK·IAM 호출은 SES-310/320에서 검증한다. 여기서는 승인된 비밀 아닌 설정의 일치만 확인한다.

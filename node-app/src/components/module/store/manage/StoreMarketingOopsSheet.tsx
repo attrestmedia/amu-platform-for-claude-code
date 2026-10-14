@@ -182,7 +182,7 @@ export function StoreMarketingOopsSheet({ open, onOpenChange, universeId, draft 
       const jobId = String(data.jobId || "").trim();
       if (!jobId) throw new Error("marketing_job_not_created");
       window.location.assign(
-        `/marketing-oops/workspace?universeId=${encodeURIComponent(universeId)}&tab=review&jobId=${encodeURIComponent(jobId)}`,
+        `/marketing-oops/workspace/review?universeId=${encodeURIComponent(universeId)}&jobId=${encodeURIComponent(jobId)}`,
       );
     } catch (error) {
       setErrorMessage(

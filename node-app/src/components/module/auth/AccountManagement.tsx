@@ -8,6 +8,7 @@ import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFoote
 import { Lang, lang } from "components/module/i18n";
 import { useAuthStore } from "store/auth";
 import AmuChatPreferencePanel from "./AmuChatPreferencePanel";
+import OverseasTransferRefusalPanel from "./OverseasTransferRefusalPanel";
 
 type AccountData = {
   uid: string;
@@ -215,6 +216,7 @@ export default function AccountManagement() {
       </section>
 
       <AmuChatPreferencePanel />
+      <OverseasTransferRefusalPanel />
 
       {newsletterLoading ? (
         <section className="rounded-2xl border border-border bg-surface p-5 sm:p-6" aria-labelledby="newsletter-loading-title" aria-busy="true">

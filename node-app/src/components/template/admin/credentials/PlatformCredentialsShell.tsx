@@ -28,7 +28,7 @@ import { QWEN_MODEL_STUDIO_MIGRATION_REASON } from "types/secure/platformCredent
 import { formatCredentialResetDate, resolveCredentialFieldPlaceholder } from "utils/admin/platformCredentialDisplay";
 import { cn } from "utils/common";
 import { toErrorMessage } from "utils/common/typeUtils";
-import { PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
+import { THEME_OVERRIDE_CLASS } from "utils/theme";
 
 type CredentialListResponse = {
   success: boolean;
@@ -201,8 +201,7 @@ export function PlatformCredentialsShell() {
   }
 
   return (
-    <div className={PAGE_LAYOUT_CLASS}>
-      <div className={cn("container mx-auto max-w-5xl p-4", THEME_OVERRIDE_CLASS)}>
+    <div className={cn("mx-auto w-full max-w-5xl", THEME_OVERRIDE_CLASS)}>
         <SubHeader
           align="start"
           className="mb-6"
@@ -455,7 +454,6 @@ export function PlatformCredentialsShell() {
             </section>
           ))}
         </div>
-      </div>
     </div>
   );
 }

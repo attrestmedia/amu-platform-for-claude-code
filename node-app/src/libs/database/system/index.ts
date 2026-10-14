@@ -1,22 +1,29 @@
-export { getSystemSetting, readSystemSetting, setSystemSetting } from "./systemSettingRepo";
+export {
+  deleteSystemSettingIfUnchanged,
+  getSystemSetting,
+  insertSystemSettingIfAbsent,
+  listSystemSettingsByKeyPrefix,
+  readSystemSetting,
+  readSystemSettingDocument,
+  replaceSystemSettingValueIfUnchanged,
+  setSystemSetting,
+} from "./systemSettingRepo";
 export type { SystemSettingRead } from "./systemSettingValue";
 export {
-  readSpeechBudgetUsage,
-  recordSpeechBudgetUsage,
+  readCommittedSpeechBudgetUsage,
+  adjustSpeechBudgetUsageForReservation,
   resolveSpeechBudgetPeriodKeys,
-  type SpeechBudgetUsageReadResult,
+  type SpeechBudgetCommittedUsageReadResult,
 } from "./speechBudgetUsageRepo";
 export {
-  deleteSystemModelCatalogEntries,
-  listSystemModelCatalogEntries,
-  upsertSystemModelCatalogEntries,
-  type SystemModelCatalogRepoInput,
-} from "./systemModelCatalogRepo";
-export {
-  listSystemPricingCatalogEntries,
-  upsertSystemPricingCatalogEntries,
-  type SystemPricingCatalogRepoInput,
-} from "./systemPricingCatalogRepo";
+  createSpeechBudgetReservationRecord,
+  findSpeechBudgetReservation,
+  incrementSpeechBudgetGuard,
+  listExpiredSpeechBudgetReservations,
+  runSpeechBudgetTransaction,
+  transitionSpeechBudgetReservation,
+  type SpeechBudgetReservationRecordInput,
+} from "./speechBudgetReservationRepo";
 export {
   createSystemControlAudit,
   getSystemControlAuditByAuditId,

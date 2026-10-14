@@ -12,7 +12,6 @@ import type { ContentBasicBody, ContentCustomBody } from "libs/server-utils/api/
 import type { IUpdateUserData } from "types/user";
 import { toUnknownRecord } from "utils/common";
 import { resolveStudioGenerationSource } from "libs/server-utils/lab/studioGenerationSource";
-import { getMagazineEmbedSession } from "libs/server-utils/magazine/magazineEmbedSession";
 
 /**
  * @docHint
@@ -80,57 +79,6 @@ async function handleGET(_data: unknown, user: AuthenticatedUserType, request: N
   return NextResponse.json({ ok: true, data: { jobs } });
 }
 
-async function validateMagazineContentEmbed(args: {
-  kind: StudioContentJobKindType;
-  payload: ContentBasicBody | ContentCustomBody;
-}) {
-  const source = args.payload.source;
-  if (source?.surface !== "magazine-article-embed") return { ok: true as const, payload: args.payload };
-
-  if (args.kind !== "template-content") {
-    return { ok: false as const, status: 400, error: "MAGAZINE_EMBED_TEMPLATE_ONLY" };
-  }
-
-  const session = await getMagazineEmbedSession(args.payload.embedSessionId);
-  if (!session || session.moduleType !== "content_embed" || session.serviceKey !== "gen-studio" || !session.templateKey) {
-    return { ok: false as const, status: 403, error: "MAGAZINE_EMBED_SESSION_REQUIRED" };
-  }
-
-  if (String(args.payload.templateKey || "").trim() !== session.templateKey) {
-    return { ok: false as const, status: 403, error: "MAGAZINE_TEMPLATE_NOT_ALLOWED" };
-  }
-
-  if (args.payload.templateScope && args.payload.templateScope !== "system") {
-    return { ok: false as const, status: 400, error: "MAGAZINE_TEMPLATE_SCOPE_NOT_ALLOWED" };
-  }
-
-  if (args.payload.generationMode === "custom") {
-    return { ok: false as const, status: 400, error: "MAGAZINE_EMBED_TEMPLATE_ONLY" };
-  }
-
-  if (args.payload.visibility && args.payload.visibility !== "private") {
-    return { ok: false as const, status: 400, error: "MAGAZINE_EMBED_PRIVATE_ONLY" };
-  }
-
-  const variables = toUnknownRecord(args.payload.variables);
-  const allowedKeys = new Set(session.allowedProps?.allowlistedInputKeys || []);
-  const unknownKeys = Object.keys(variables).filter((key) => !allowedKeys.has(key));
-  if (unknownKeys.length > 0) {
-    return { ok: false as const, status: 400, error: "MAGAZINE_TEMPLATE_VARIABLE_NOT_ALLOWED" };
-  }
-
-  return {
-    ok: true as const,
-    payload: {
-      ...args.payload,
-      templateScope: "system" as const,
-      generationMode: "template" as const,
-      visibility: "private" as const,
-      n: 1,
-    },
-  };
-}
-
 async function handlePOST(data: unknown, user: AuthenticatedUserType, request: NextRequest) {
   const body = toUnknownRecord(data);
   const kind = normalizeKind(body.kind);
@@ -139,13 +87,10 @@ async function handlePOST(data: unknown, user: AuthenticatedUserType, request: N
   const payload = {
     ...toUnknownRecord(body.payload),
     // client source is deliberately discarded; the route derives it from the same-origin Referer.
-    source: await resolveStudioGenerationSource(request, toUnknownRecord(body.payload).embedSessionId),
+    source: await resolveStudioGenerationSource(request),
   } as ContentBasicBody | ContentCustomBody;
-  const magazineValidation = await validateMagazineContentEmbed({ kind, payload });
-  if (!magazineValidation.ok) return NextResponse.json({ ok: false, error: magazineValidation.error }, { status: magazineValidation.status });
-  const trustedPayload = magazineValidation.payload;
   const clientRequestId = String(body.clientRequestId || "").trim();
-  const universeId = String(trustedPayload.universeId || "").trim();
+  const universeId = String(payload.universeId || "").trim();
 
   if (universeId) {
     const universe = await getUniverseById(universeId);
@@ -155,7 +100,7 @@ async function handlePOST(data: unknown, user: AuthenticatedUserType, request: N
     }
   }
 
-  const result = await enqueueStudioContentJob({ kind, payload: trustedPayload, user, clientRequestId });
+  const result = await enqueueStudioContentJob({ kind, payload, user, clientRequestId });
 
   if (!result.ok) {
     const status = result.error === "UNAUTHORIZED" ? 401 : 400;

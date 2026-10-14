@@ -53,9 +53,17 @@ type ForgeSidebarProps = {
   desktopCollapsed: boolean;
   desktopSidebarId: string;
   sheetId: string;
+  onSheetCloseAutoFocus: (event: Event) => void;
 };
 
-export function ForgeSidebar({ open, onOpenChange, desktopCollapsed, desktopSidebarId, sheetId }: ForgeSidebarProps) {
+export function ForgeSidebar({
+  open,
+  onOpenChange,
+  desktopCollapsed,
+  desktopSidebarId,
+  sheetId,
+  onSheetCloseAutoFocus,
+}: ForgeSidebarProps) {
   return (
     <>
       {/* 데스크톱 고정 사이드바 (lg 이상). 다크 스코프 도입 시 배경을 --sidebar-bg로 전환한다. */}
@@ -74,6 +82,7 @@ export function ForgeSidebar({ open, onOpenChange, desktopCollapsed, desktopSide
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           id={sheetId}
+          onCloseAutoFocus={onSheetCloseAutoFocus}
           side="left"
           className="w-[236px] max-w-[85vw] gap-0 bg-surface p-0 motion-reduce:animate-none motion-reduce:transition-none"
           overlayClassName="motion-reduce:animate-none motion-reduce:transition-none"

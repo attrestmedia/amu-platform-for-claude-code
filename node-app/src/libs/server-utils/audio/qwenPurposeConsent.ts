@@ -10,6 +10,8 @@ import {
   isQwenPrivacyPolicyReleaseReady,
   type QwenModelStudioConsentPurposeId,
 } from "consts/legal/voiceDataConsent";
+import { getPolicyFeatureDecision } from "libs/server-utils/legal/policyFeatureGate";
+import { getPolicyReleaseRuntime } from "libs/server-utils/legal/policyReleaseRuntime";
 
 /**
  * @docHint
@@ -27,12 +29,16 @@ export type QwenPurposeConsentDecision = {
   reasonCode:
     | "purpose_contract_unavailable"
     | "policy_release_unavailable"
+    | "policy_release_hold"
+    | "feature_reconsent_required"
     | "consent_required"
     | "consent_revoked"
     | "consent_version_mismatch"
     | "consent_granted";
   consentVersion: string | null;
   linkedPrivacyVersion: string | null;
+  errorCode?: "POLICY_FEATURE_RECONSENT_REQUIRED" | "POLICY_RELEASE_HOLD" | "POLICY_RELEASE_UNAVAILABLE";
+  status?: 403 | 503;
 };
 
 function isRevoked(value: unknown) {
@@ -40,23 +46,85 @@ function isRevoked(value: unknown) {
 }
 
 /** Uses server-loaded user consent records; ASR reads voice_data and Omni remains fail-closed. */
-export function resolveQwenPurposeConsent(args: {
+export async function resolveQwenPurposeConsent(args: {
   purposeId: QwenModelStudioConsentPurposeId;
   user: unknown;
-}): QwenPurposeConsentDecision {
+  legacyProviderPolicyReady?: boolean;
+}): Promise<QwenPurposeConsentDecision> {
   const denied = (
     reasonCode: QwenPurposeConsentDecision["reasonCode"],
     consentVersion: string | null = null,
     linkedPrivacyVersion: string | null = null,
+    errorCode?: QwenPurposeConsentDecision["errorCode"],
+    status?: QwenPurposeConsentDecision["status"],
   ): QwenPurposeConsentDecision => ({
     allowed: false,
     purposeId: args.purposeId,
     reasonCode,
     consentVersion,
     linkedPrivacyVersion,
+    ...(errorCode ? { errorCode } : {}),
+    ...(status ? { status } : {}),
   });
 
-  if (!isQwenPrivacyPolicyReleaseReady(VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION)) {
+  const runtime = getPolicyReleaseRuntime();
+  if (args.purposeId === QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID && runtime.mode === "unavailable") {
+    return denied("policy_release_unavailable", VOICE_DATA_CONSENT_VERSION, null, "POLICY_RELEASE_UNAVAILABLE", 503);
+  }
+  if (args.purposeId === QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID && runtime.mode === "manifest") {
+    const rawConsents = toUnknownRecord(args.user).purposeConsents;
+    const purposeConsents = Array.isArray(rawConsents)
+      ? rawConsents.map((record) => toUnknownRecord(record)).filter((record) => record.purposeId === VOICE_DATA_CONSENT_PURPOSE_ID)
+      : [];
+    const current = purposeConsents
+      .filter((record) => record.version === VOICE_DATA_CONSENT_VERSION)
+      .sort((left, right) => new Date(String(right.agreedAt || "")).getTime() - new Date(String(left.agreedAt || "")).getTime())[0];
+    const activeCurrentConsents = purposeConsents
+      .filter((record) => record.version === VOICE_DATA_CONSENT_VERSION && !isRevoked(record.revokedAt))
+      .map((record) => ({
+        purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
+        linkedPrivacyVersion: typeof record.linkedPrivacyVersion === "string" ? record.linkedPrivacyVersion : null,
+        revokedAt: record.revokedAt as string | Date | null | undefined,
+      }));
+    const featureDecision = await getPolicyFeatureDecision({
+      featureKey: "voice.qwen-asr",
+      purposeConsents: activeCurrentConsents,
+      purposeId: VOICE_DATA_CONSENT_PURPOSE_ID,
+    });
+
+    if (!featureDecision.open) {
+      if (featureDecision.errorCode === "POLICY_FEATURE_RECONSENT_REQUIRED") {
+        return denied("feature_reconsent_required", VOICE_DATA_CONSENT_VERSION, featureDecision.linkedPrivacyVersion, featureDecision.errorCode, 403);
+      }
+      if (featureDecision.errorCode === "POLICY_RELEASE_HOLD") {
+        return denied("policy_release_hold", VOICE_DATA_CONSENT_VERSION, featureDecision.linkedPrivacyVersion, featureDecision.errorCode, 503);
+      }
+      return denied("policy_release_unavailable", VOICE_DATA_CONSENT_VERSION, featureDecision.linkedPrivacyVersion, "POLICY_RELEASE_UNAVAILABLE", 503);
+    }
+
+    if (!current) {
+      return denied(
+        purposeConsents.length ? "consent_version_mismatch" : "consent_required",
+        VOICE_DATA_CONSENT_VERSION,
+        featureDecision.linkedPrivacyVersion,
+      );
+    }
+    if (isRevoked(current.revokedAt)) {
+      return denied("consent_revoked", VOICE_DATA_CONSENT_VERSION, featureDecision.linkedPrivacyVersion);
+    }
+    return {
+      allowed: true,
+      purposeId: args.purposeId,
+      reasonCode: "consent_granted",
+      consentVersion: VOICE_DATA_CONSENT_VERSION,
+      linkedPrivacyVersion: featureDecision.linkedPrivacyVersion,
+    };
+  }
+
+  if (
+    !args.legacyProviderPolicyReady &&
+    !isQwenPrivacyPolicyReleaseReady(VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION)
+  ) {
     return denied(
       "policy_release_unavailable",
       args.purposeId === QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID ? VOICE_DATA_CONSENT_VERSION : null,
@@ -150,12 +218,16 @@ export function resolveQwenPurposeConsent(args: {
   };
 }
 
-export function assertQwenPurposeConsent(args: { purposeId: QwenModelStudioConsentPurposeId; user: unknown }) {
-  const decision = resolveQwenPurposeConsent(args);
+export async function assertQwenPurposeConsent(args: {
+  purposeId: QwenModelStudioConsentPurposeId;
+  user: unknown;
+  legacyProviderPolicyReady?: boolean;
+}) {
+  const decision = await resolveQwenPurposeConsent(args);
   if (!decision.allowed) {
     throw Object.assign(new Error("Qwen 목적별 처리가 승인되지 않았습니다."), {
-      errorCode: "QWEN_PURPOSE_CONSENT_UNAVAILABLE",
-      status: 423,
+      errorCode: decision.errorCode ?? "QWEN_PURPOSE_CONSENT_UNAVAILABLE",
+      status: decision.status ?? 423,
       decision,
     });
   }

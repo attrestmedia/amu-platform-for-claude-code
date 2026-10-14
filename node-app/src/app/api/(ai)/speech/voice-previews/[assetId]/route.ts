@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { USER_ROLES } from "consts/auth";
+import { PLAY_FEATURE_KEYS } from "consts/system/featureRollout";
 import { withAuth } from "libs/server-utils/api/apiMiddleware";
 import type { AuthenticatedUserType, NextRouteContext } from "libs/server-utils/api/_helpers";
 import { getUserRole } from "libs/server-utils/auth/userRoleUtils";
@@ -176,6 +177,10 @@ const validatePatch = (data: UnknownRecord) => {
   return { valid: true };
 };
 
-export const GET = withAuth(getHandler, undefined, "speech/voice-previews:asset-get");
-export const PATCH = withAuth(patchHandler, validatePatch, "speech/voice-previews:asset-patch");
+export const GET = withAuth(getHandler, undefined, "speech/voice-previews:asset-get", {
+  featureAccess: PLAY_FEATURE_KEYS.characterChatVoice,
+});
+export const PATCH = withAuth(patchHandler, validatePatch, "speech/voice-previews:asset-patch", {
+  featureAccess: PLAY_FEATURE_KEYS.characterChatVoice,
+});
 export const DELETE = withAuth(deleteHandler, undefined, "speech/voice-previews:asset-delete");

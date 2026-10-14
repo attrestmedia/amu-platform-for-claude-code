@@ -2,23 +2,18 @@
 
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, BookOpen, ImagePlus, Keyboard, Mic, Square, X } from "lucide-react";
-import type { ChatImagePreviewType, IPersonaSprite, SpeechProviderType } from "types/ai";
+import { Send, BookOpen, Mic } from "lucide-react";
+import type { IPersonaSprite, SpeechProviderType } from "types/ai";
 import { Button } from "@amu-labs/ui";
-import { ImageBox } from "components/module/image";
 import { Lang, lang } from "components/module/i18n";
-import { ELEVENLABS_STT_DISCLOSURE } from "consts/legal/elevenlabsSttDisclosure";
 import { ACCOUNT_POLICY_LINKS } from "consts/legal/accountPolicy";
 import {
-  isQwenPrivacyPolicyReleaseReady,
-  VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION,
   VOICE_DATA_CONSENT_NOTICE,
   VOICE_DATA_CONSENT_PURPOSE_ID,
   VOICE_DATA_CONSENT_VERSION,
 } from "consts/legal/voiceDataConsent";
 import { cn } from "utils/common";
 import { CharacterSpriteAvatar } from "../CharacterSpriteAvatar";
-import { ConversationHintBar } from "./ConversationHintBar";
 import { VoiceInputUnavailableNotice } from "./VoiceInputUnavailableNotice";
 
 type ChatInputBarProps = {
@@ -43,7 +38,6 @@ type ChatInputBarProps = {
   isRestricted: boolean;
   voice: {
     provider: SpeechProviderType | "qwen";
-    tutorsExperience: boolean;
     enabled: boolean;
     isSupported: boolean;
     canUseInterimTranscript: boolean;
@@ -60,20 +54,6 @@ type ChatInputBarProps = {
     unavailableNotice?: {
       supportedLanguages: readonly string[];
     };
-    disclosure?: {
-      required: boolean;
-      version: string;
-      notice: string;
-      acknowledged: boolean;
-      onAcknowledge: () => void;
-      onDecline: () => void;
-    };
-  };
-  conversationHints?: {
-    hints: string[];
-    isLoading?: boolean;
-    onPick: (hint: string) => void;
-    onRegenerate?: () => void;
   };
 
   // refs/handlers
@@ -82,14 +62,6 @@ type ChatInputBarProps = {
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void | Promise<void>;
-  imageAttachment?: {
-    enabled: boolean;
-    disabled: boolean;
-    preview: ChatImagePreviewType | null;
-    preparing: boolean;
-    onOpenPicker: () => void;
-    onClear: () => void;
-  };
 
   // user portrait toggle
   userSprite: IPersonaSprite | null;
@@ -100,10 +72,9 @@ type ChatInputBarProps = {
 };
 
 export function ChatInputBar(props: ChatInputBarProps) {
-  const qwenPolicyReleaseReady = isQwenPrivacyPolicyReleaseReady(VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION);
   return (
     <ChatInputBarContent
-      key={`${props.voice.provider}:${qwenPolicyReleaseReady ? "ready" : "blocked"}`}
+      key={props.voice.provider}
       {...props}
     />
   );
@@ -125,13 +96,11 @@ function ChatInputBarContent({
   showAIEndRequest,
   isRestricted,
   voice,
-  conversationHints,
   chatInputRef,
   onClearKnowledgeContext,
   onChange,
   onKeyDown,
   onSend,
-  imageAttachment,
   userSprite,
   userPortraitSrc,
   userCharacterName,
@@ -142,18 +111,21 @@ function ChatInputBarContent({
   const suppressVoiceClickRef = React.useRef(false);
   const voiceHoldActiveRef = React.useRef(false);
   const isQwenAsrProvider = voice.provider === "qwen";
-  const qwenPolicyReleaseReady = isQwenPrivacyPolicyReleaseReady(VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION);
+  const [qwenPolicyReleaseReady, setQwenPolicyReleaseReady] = React.useState<boolean | null>(null);
+  const [linkedPrivacyVersion, setLinkedPrivacyVersion] = React.useState<string | null>(null);
   const [purposeConsentState, setPurposeConsentState] = React.useState<"loading" | "required" | "granted" | "error">("loading");
   const purposeConsentDisplayState = !isQwenAsrProvider
     ? "inactive"
-    : !qwenPolicyReleaseReady
+    : qwenPolicyReleaseReady === null
+      ? purposeConsentState === "error" ? "error" : "loading"
+      : !qwenPolicyReleaseReady
       ? "unavailable"
       : purposeConsentState;
   const [purposeConsentBusy, setPurposeConsentBusy] = React.useState(false);
   const [purposeConsentError, setPurposeConsentError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!isQwenAsrProvider || !qwenPolicyReleaseReady) return;
+    if (!isQwenAsrProvider) return;
 
     let active = true;
     void fetch(`/api/account/voice-data-consent?purposeId=${VOICE_DATA_CONSENT_PURPOSE_ID}`, {
@@ -163,14 +135,25 @@ function ChatInputBarContent({
     })
       .then(async (response) => {
         const payload = await response.json().catch(() => ({}));
-        const consent = (payload as { consent?: { granted?: boolean } }).consent;
-        if (!response.ok || (payload as { ok?: boolean }).ok !== true || typeof consent?.granted !== "boolean") {
+        const consent = (payload as { consent?: { granted?: boolean; policyReleaseReady?: boolean; linkedPrivacyVersion?: string | null } }).consent;
+        if (
+          !response.ok ||
+          (payload as { ok?: boolean }).ok !== true ||
+          typeof consent?.granted !== "boolean" ||
+          typeof consent.policyReleaseReady !== "boolean" ||
+          (consent.linkedPrivacyVersion !== null && typeof consent.linkedPrivacyVersion !== "string")
+        ) {
           throw new Error("VOICE_DATA_CONSENT_STATUS_UNAVAILABLE");
         }
-        if (active) setPurposeConsentState(consent.granted ? "granted" : "required");
+        if (active) {
+          setQwenPolicyReleaseReady(consent.policyReleaseReady);
+          setLinkedPrivacyVersion(consent.linkedPrivacyVersion);
+          setPurposeConsentState(consent.granted ? "granted" : "required");
+        }
       })
       .catch(() => {
         if (active) {
+          setLinkedPrivacyVersion(null);
           setPurposeConsentState("error");
           setPurposeConsentError(lang({ ko: "음성 동의 상태를 확인하지 못했습니다. 음성 입력을 사용할 수 없습니다.", en: "Could not check voice consent. Voice input is unavailable." }));
         }
@@ -179,7 +162,7 @@ function ChatInputBarContent({
     return () => {
       active = false;
     };
-  }, [isQwenAsrProvider, qwenPolicyReleaseReady]);
+  }, [isQwenAsrProvider]);
 
   const updatePurposeConsent = async (action: "agree" | "revoke") => {
     if (action === "revoke" && (voice.isRecording || voice.isSubmitting)) return;
@@ -197,16 +180,31 @@ function ChatInputBarContent({
         body: action === "agree" ? JSON.stringify({ purposeId: VOICE_DATA_CONSENT_PURPOSE_ID, agreed: true }) : undefined,
       });
       const payload = await response.json().catch(() => ({}));
-      const consent = (payload as { consent?: { granted?: boolean } }).consent;
-      if (!response.ok || (payload as { ok?: boolean }).ok !== true || typeof consent?.granted !== "boolean") {
-        throw new Error("VOICE_DATA_CONSENT_UPDATE_FAILED");
+      const consent = (payload as { consent?: { granted?: boolean; policyReleaseReady?: boolean; linkedPrivacyVersion?: string | null } }).consent;
+      if (
+        !response.ok ||
+        (payload as { ok?: boolean }).ok !== true ||
+        typeof consent?.granted !== "boolean" ||
+        typeof consent.policyReleaseReady !== "boolean" ||
+        (consent.linkedPrivacyVersion !== null && typeof consent.linkedPrivacyVersion !== "string")
+      ) {
+        const errorCode = String((payload as { errorCode?: unknown }).errorCode || "VOICE_DATA_CONSENT_UPDATE_FAILED");
+        if (errorCode === "POLICY_RELEASE_HOLD" || errorCode === "POLICY_RELEASE_UNAVAILABLE") {
+          setQwenPolicyReleaseReady(false);
+        }
+        throw new Error(errorCode);
       }
+      setQwenPolicyReleaseReady(consent.policyReleaseReady);
+      setLinkedPrivacyVersion(consent.linkedPrivacyVersion);
       setPurposeConsentState(consent.granted ? "granted" : "required");
-    } catch {
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.message : "";
+      const policyUnavailable = errorCode === "POLICY_RELEASE_HOLD" || errorCode === "POLICY_RELEASE_UNAVAILABLE";
+      if (policyUnavailable) setQwenPolicyReleaseReady(false);
       setPurposeConsentError(
         lang({ ko: "동의 상태를 저장하지 못했습니다. 음성 입력은 계속 차단됩니다.", en: "Could not save consent. Voice input remains blocked." }),
       );
-      setPurposeConsentState(action === "agree" ? "required" : "error");
+      setPurposeConsentState(action === "agree" && !policyUnavailable ? "required" : "error");
     } finally {
       setPurposeConsentBusy(false);
     }
@@ -220,21 +218,15 @@ function ChatInputBarContent({
   const inputMode = voice.inputMode;
   // 음성 사용 불가 환경이면 inputMode 값과 무관하게 항상 text 모드로 파생 — 기존 동작 보존
   const isVoiceMode = voiceAvailable && inputMode === "voice";
-  const isTutorVoiceMode = voice.tutorsExperience && isVoiceMode;
-  const isDisclosureBlocking = Boolean(
-    isTutorVoiceMode && voice.disclosure?.required && !voice.disclosure.acknowledged,
-  );
   const isPurposeConsentBlocking =
     isQwenAsrProvider && (purposeConsentDisplayState !== "granted" || purposeConsentBusy);
 
   const trimmed = resolvedInput.trim();
-  const hasImage = Boolean(imageAttachment?.preview);
   const hasUserVisual = Boolean(userSprite?.url || userPortraitSrc);
   const progressPct =
     limitMsgLength > 0 ? Math.min(100, Math.max(0, (resolvedInput.length / limitMsgLength) * 100)) : 0;
-  const isConversationHintDisabled = isPreparingConversation || isRestricted || voice.isSubmitting;
   const isVoiceControlDisabled =
-    (!isLoggedIn && !isCommerceUniverse) || isPreparingConversation || isRestricted || voice.isSubmitting || isDisclosureBlocking || isPurposeConsentBlocking;
+    (!isLoggedIn && !isCommerceUniverse) || isPreparingConversation || isRestricted || voice.isSubmitting || isPurposeConsentBlocking;
 
   const placeholder =
     !isLoggedIn && !isCommerceUniverse
@@ -251,21 +243,9 @@ function ChatInputBarContent({
               ? lang({ ko: "대화를 시작해보세요.", en: "Start a conversation." })
               : lang({ ko: "대화를 입력하세요.", en: "Type a message." });
 
-  const voiceStatus = voice.errorMessage
-    ? voice.errorMessage
-    : voice.isSubmitting
-      ? lang({ ko: "음성과 발음을 분석하고 있어요.", en: "Analyzing your speech and pronunciation." })
-      : voice.permissionState === "prompt"
-        ? lang({ ko: "마이크 권한을 확인해 주세요.", en: "Allow microphone access to continue." })
-        : resolvedInput
-          ? resolvedInput
-          : voice.isRecording
-            ? lang({ ko: "듣고 있어요. 편하게 말해 주세요.", en: "Listening. Speak naturally." })
-            : null;
-
   const handleVoicePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (e.pointerType === "touch") return;
-    if (!voice.enabled || !voice.isSupported || voice.isSubmitting || isDisclosureBlocking || isPurposeConsentBlocking) return;
+    if (!voice.enabled || !voice.isSupported || voice.isSubmitting || isPurposeConsentBlocking) return;
     e.preventDefault();
     voiceHoldActiveRef.current = true;
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -301,7 +281,7 @@ function ChatInputBarContent({
       return;
     }
 
-    if (!voice.enabled || !voice.isSupported || voice.isSubmitting || isDisclosureBlocking || isPurposeConsentBlocking) return;
+    if (!voice.enabled || !voice.isSupported || voice.isSubmitting || isPurposeConsentBlocking) return;
     if (voice.onToggle) {
       void voice.onToggle();
       return;
@@ -315,16 +295,6 @@ function ChatInputBarContent({
       <div className="flex flex-col gap-1">
         {voice.unavailableNotice ? (
           <VoiceInputUnavailableNotice supportedLanguages={voice.unavailableNotice.supportedLanguages} />
-        ) : null}
-
-        {conversationHints ? (
-          <ConversationHintBar
-            hints={conversationHints.hints}
-            isLoading={conversationHints.isLoading}
-            disabled={isConversationHintDisabled}
-            onPick={conversationHints.onPick}
-            onRegenerate={conversationHints.onRegenerate}
-          />
         ) : null}
 
         {/* 번역 상태 */}
@@ -353,7 +323,7 @@ function ChatInputBarContent({
         )}
 
         {/* 문자 제한 */}
-        {!isTutorVoiceMode && (remainingChars === 0 || isOverLimit) && (
+        {(remainingChars === 0 || isOverLimit) && (
           <div className="flex items-center justify-between px-2">
             <div className={`text-xs ${isOverLimit ? "text-red-500" : "text-primary"}`}>
               {isOverLimit && (
@@ -371,66 +341,6 @@ function ChatInputBarContent({
           </div>
         )}
 
-        {imageAttachment?.preview ? (
-          <div className="relative ml-2 mb-1 w-fit rounded-xl border border-white/15 bg-black/35 p-1">
-            <ImageBox
-              src={imageAttachment.preview.url}
-              alt={lang({ ko: "전송할 사진 미리보기", en: "Photo preview" })}
-              width={72}
-              height={72}
-              objectFit="object-cover"
-              className="rounded-lg"
-            />
-            <Button
-              variant="blank"
-              rounded="full"
-              size="icon-xs"
-              className="absolute -right-2 -top-2 bg-black/80 text-white hover:bg-black"
-              aria-label={lang({ ko: "사진 제거", en: "Remove photo" })}
-              onClick={imageAttachment.onClear}
-            >
-              <X size={14} />
-            </Button>
-          </div>
-        ) : null}
-
-        {isTutorVoiceMode && voiceStatus ? (
-          <p
-            className={cn(
-              "flex min-h-11 items-center justify-center px-3 text-center text-sm leading-relaxed text-white/80",
-              voice.errorMessage && "font-medium text-red-200",
-            )}
-            aria-live="polite"
-            aria-atomic="true"
-          >
-            <span className="line-clamp-2 break-words">{voiceStatus}</span>
-          </p>
-        ) : null}
-
-        {isDisclosureBlocking && voice.disclosure ? (
-          <div
-            role="group"
-            aria-label={lang({ ko: "음성 전송 고지", en: "Voice transfer notice" })}
-            className="rounded-2xl border border-white/15 bg-black/40 p-3 text-white"
-          >
-            <p className="text-sm leading-relaxed text-white/85">
-              {voice.disclosure.notice || ELEVENLABS_STT_DISCLOSURE.notice}
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Button variant="accent" className="min-h-11 px-4" onClick={voice.disclosure.onAcknowledge}>
-                <Lang text={{ ko: "동의하고 계속", en: "Agree and continue" }} />
-              </Button>
-              <Button
-                variant="blank"
-                className="min-h-11 border border-white/15 px-4"
-                onClick={voice.disclosure.onDecline}
-              >
-                <Lang text={{ ko: "음성 입력 사용 안 함", en: "Do not use voice input" }} />
-              </Button>
-            </div>
-          </div>
-        ) : null}
-
         {isQwenAsrProvider ? (
           purposeConsentDisplayState === "unavailable" ? (
             <p role="status" aria-live="polite" className="rounded-2xl border border-white/15 bg-black/40 p-3 text-sm leading-relaxed text-white/85">
@@ -447,7 +357,7 @@ function ChatInputBarContent({
               </p>
               <p className="mt-2 text-sm leading-relaxed text-white/85">{VOICE_DATA_CONSENT_NOTICE}</p>
               <a className="mt-2 inline-flex min-h-11 items-center text-sm underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80" href={ACCOUNT_POLICY_LINKS.privacy} target="_blank" rel="noreferrer">
-                <Lang text={{ ko: `개인정보처리방침 v${VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION} 보기`, en: `View privacy policy v${VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION}` }} />
+                <Lang text={{ ko: `개인정보처리방침 v${linkedPrivacyVersion} 보기`, en: `View privacy policy v${linkedPrivacyVersion}` }} />
               </a>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Button variant="accent" className="min-h-11 px-4" disabled={purposeConsentBusy} loading={purposeConsentBusy} onClick={() => void updatePurposeConsent("agree")}>
@@ -470,34 +380,11 @@ function ChatInputBarContent({
         {purposeConsentError ? <p role="alert" className="text-sm text-red-200">{purposeConsentError}</p> : null}
 
         {/* 입력 필드 */}
-        <div
-          className={cn(
-            "text-white",
-            isTutorVoiceMode
-              ? "flex items-center justify-center gap-8"
-              : "flex items-center gap-2 rounded-full bg-black/40 p-2 shadow-[0_1px_0_rgba(255,255,255,0.1)]",
-          )}
-        >
-          {imageAttachment?.enabled ? (
-            <Button
-              variant="blank"
-              rounded="full"
-              size="icon-lg"
-              disabled={imageAttachment.disabled || imageAttachment.preparing}
-              loading={imageAttachment.preparing}
-              className="shrink-0 border border-white/10 bg-white/5 text-white/80"
-              aria-label={lang({ ko: "사진 추가", en: "Add a photo" })}
-              onClick={imageAttachment.onOpenPicker}
-            >
-              <ImagePlus size={18} />
-            </Button>
-          ) : isTutorVoiceMode ? (
-            <span className="size-12" aria-hidden="true" />
-          ) : null}
+        <div className="flex items-center gap-2 rounded-full bg-black/40 p-2 text-white shadow-[0_1px_0_rgba(255,255,255,0.1)]">
 
           {/* 지식 컨텍스트 아이콘 */}
           <AnimatePresence>
-            {!isTutorVoiceMode && hasKnowledgeContext && (
+            {hasKnowledgeContext && (
               <motion.div
                 initial={{ opacity: 0, scale: 0.8, x: -10 }}
                 animate={{ opacity: 1, scale: 1, x: 0 }}
@@ -518,49 +405,7 @@ function ChatInputBarContent({
             )}
           </AnimatePresence>
 
-          {isTutorVoiceMode ? (
-            <>
-              <Button
-                variant="blank"
-                rounded="full"
-                disabled={isVoiceControlDisabled}
-                className={cn(
-                  "relative flex size-20 touch-manipulation items-center justify-center justify-self-center border bg-white/5 text-white/80 transition-colors hover:bg-white/10",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80",
-                  voice.isRecording
-                    ? "border-red-200/70 bg-white/10 text-red-100 hover:bg-white/15"
-                    : "border-white/15",
-                  isVoiceControlDisabled && "cursor-not-allowed opacity-55",
-                )}
-                aria-label={lang({
-                  ko: voice.isRecording ? "음성 녹음 종료" : "음성 녹음 시작",
-                  en: voice.isRecording ? "Stop voice recording" : "Start voice recording",
-                })}
-                aria-pressed={voice.isRecording}
-                onClick={handleVoiceClick}
-                onPointerDown={handleVoicePointerDown}
-                onPointerUp={handleVoicePointerUp}
-                onPointerCancel={handleVoicePointerCancel}
-              >
-                {voice.isRecording ? (
-                  <Square className="size-6 fill-current" aria-hidden="true" />
-                ) : (
-                  <Mic className="size-8" aria-hidden="true" />
-                )}
-              </Button>
-
-              <Button
-                variant="blank"
-                rounded="full"
-                size="icon-lg"
-                className="justify-self-end border border-white/10 bg-white/5 text-white/80 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                aria-label={lang({ ko: "키보드 입력 모드로 전환", en: "Switch to keyboard input" })}
-                onClick={() => voice.onChangeInputMode("text")}
-              >
-                <Keyboard className="size-5" aria-hidden="true" />
-              </Button>
-            </>
-          ) : isVoiceMode ? (
+          {isVoiceMode ? (
             <>
               <div
                 className="flex min-h-12 min-w-0 flex-1 items-center overflow-y-auto py-3 text-lg leading-relaxed"
@@ -572,19 +417,6 @@ function ChatInputBarContent({
                   <span className="text-gray/30">{placeholder}</span>
                 )}
               </div>
-
-              {hasImage ? (
-                <Button
-                  variant="accent"
-                  rounded="full"
-                  size="icon-lg"
-                  onClick={() => void onSend()}
-                  disabled={isSendDisabled}
-                  aria-label={lang({ ko: "사진 보내기", en: "Send photo" })}
-                >
-                  <Send className="icon-xs" />
-                </Button>
-              ) : null}
 
               <Button
                 variant="blank"
@@ -632,7 +464,7 @@ function ChatInputBarContent({
                 rows={1}
               />
 
-              {(!isLoggedIn && !isCommerceUniverse) || (!trimmed && !hasImage) || isOverLimit ? (
+              {(!isLoggedIn && !isCommerceUniverse) || !trimmed || isOverLimit ? (
                 hasUserVisual ? (
                   <CharacterSpriteAvatar
                     sprite={userSprite}
@@ -671,16 +503,14 @@ function ChatInputBarContent({
         </div>
 
         {/* 진행 표시줄 */}
-        {!isTutorVoiceMode ? (
-          <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray/10">
-            <div
-              className={`h-full transition-all duration-300 ${
-                remainingChars < 20 ? "bg-red-500" : "bg-gradient-purple-cyan-tr"
-              }`}
-              style={{ width: `${progressPct}%` }}
-            />
-          </div>
-        ) : null}
+        <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-gray/10">
+          <div
+            className={`h-full transition-all duration-300 ${
+              remainingChars < 20 ? "bg-red-500" : "bg-gradient-purple-cyan-tr"
+            }`}
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { TEXT_MODEL_MAP } from "consts/ai";
+import { AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 import type { MarketingChannel } from "consts/marketing/queue";
 import {
   createMarketingAsset,
@@ -24,8 +24,10 @@ import { assertSystemModelSelectableOrThrow } from "libs/server-utils/api/system
 import type { AiProviderType } from "types/ai";
 import {
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
   isXaiLongContextTieredTextModel,
   pickXaiPricingVariantByInputTokens,
+  pickClaudePricingVariantByInputTokens,
 } from "utils/ai/providerHelper";
 import { isUnknownRecord, toSafeString, type UnknownRecord } from "utils/common/typeUtils";
 import { logger } from "utils/log";
@@ -37,9 +39,9 @@ type SupportedChannel = "threads" | "instagram" | "linkedin" | "naver_blog";
 const SUPPORTED_CHANNELS = new Set<SupportedChannel>(["threads", "instagram", "linkedin", "naver_blog"]);
 
 function resolveModel(providerRaw: unknown, modelRaw: unknown) {
-  const provider = toSafeString(providerRaw) as keyof typeof TEXT_MODEL_MAP;
+  const provider = toSafeString(providerRaw) as keyof typeof AI_TEXT_MODEL_MAP;
   const modelName = toSafeString(modelRaw);
-  const allowed = (TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
+  const allowed = (AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[provider] || [];
   return allowed.includes(modelName) ? { provider, modelName } : null;
 }
 
@@ -167,7 +169,8 @@ export async function evaluateMarketingJobStrategyFit(args: {
   });
   const needsTieredVariants =
     (selectedModel.provider === "google" && isGoogleProTextModel(selectedModel.modelName)) ||
-    (selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName));
+    (selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName)) ||
+    (selectedModel.provider === "claude" && isClaudeLongContextTieredTextModel(selectedModel.modelName));
   await assertPricingPreflightOrThrow({
     provider: selectedModel.provider,
     modelName: selectedModel.modelName,
@@ -190,7 +193,8 @@ export async function evaluateMarketingJobStrategyFit(args: {
     app: "ai_marketing_strategy_fit",
     provider: selectedModel.provider,
     modelName: selectedModel.modelName,
-    ...(selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName)
+    ...((selectedModel.provider === "xai" && isXaiLongContextTieredTextModel(selectedModel.modelName)) ||
+    (selectedModel.provider === "claude" && isClaudeLongContextTieredTextModel(selectedModel.modelName))
       ? { variant: "long" }
       : {}),
     usage: { text: { input: promptInputEstimate, output: 3200 } },
@@ -224,6 +228,8 @@ export async function evaluateMarketingJobStrategyFit(args: {
     ? aiResult.usage.inputTokens > 200_000 ? "long" : "short"
     : provider === "xai" && isXaiLongContextTieredTextModel(aiResult.modelName)
       ? pickXaiPricingVariantByInputTokens(aiResult.usage.inputTokens)
+      : provider === "claude" && isClaudeLongContextTieredTextModel(aiResult.modelName)
+        ? pickClaudePricingVariantByInputTokens(aiResult.usage.inputTokens)
       : undefined;
   const billingParams = {
     uid: args.uid,

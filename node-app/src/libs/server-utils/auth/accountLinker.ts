@@ -12,7 +12,8 @@ import {
   findWordPressUserByEmail,
   saveWordPressPolicyConsents,
 } from "./wordpressAccountService";
-import type { currentPolicyConsents } from "consts/legal/accountPolicy";
+import type { PolicyConsentRecord } from "consts/legal/accountPolicy";
+import { getSignupPolicyOffer } from "libs/server-utils/legal/accountPolicyDecision";
 import { toUnknownRecord } from "utils/common/typeUtils";
 
 /**
@@ -30,7 +31,7 @@ type LinkInput = {
   name?: string | null;
   image?: string | null;
   allowCreate?: boolean;
-  policyConsents?: ReturnType<typeof currentPolicyConsents>;
+  policyConsents?: PolicyConsentRecord[];
   registrationSource?: "magazine" | "platform";
   profile?: Record<string, unknown>;
 };
@@ -41,6 +42,57 @@ export type LinkedSocialAccount = {
   signupCompleted: boolean;
   registrationSource: string;
 };
+
+function policyConsentMismatchError() {
+  return Object.assign(new Error("정책 동의 정보가 현재 릴리스와 일치하지 않습니다."), {
+    errorCode: "POLICY_RELEASE_MISMATCH",
+    status: 409,
+  });
+}
+
+async function saveLinkedWordPressPolicyConsents(userId: number, consents: readonly PolicyConsentRecord[]) {
+  const offer = getSignupPolicyOffer();
+  if (offer.mode !== "manifest") {
+    await saveWordPressPolicyConsents(userId, [...consents]);
+    return;
+  }
+
+  const accountPolicyIdByManifestId: Record<string, PolicyConsentRecord["policyId"] | undefined> = {
+    "terms-of-service": "terms",
+    "privacy-policy": "privacy",
+  };
+  const releaseIds = offer.releaseIds.filter((releaseId) => {
+    const separator = releaseId.lastIndexOf("@");
+    if (separator <= 0) return false;
+    const policyId = accountPolicyIdByManifestId[releaseId.slice(0, separator)];
+    const version = releaseId.slice(separator + 1);
+    return Boolean(policyId && consents.some((consent) => consent.policyId === policyId && consent.version === version));
+  });
+  const first = consents[0];
+  const agreedAtMs = first ? new Date(first.agreedAt).getTime() : Number.NaN;
+  if (
+    !offer.manifestRevision ||
+    releaseIds.length !== consents.length ||
+    !releaseIds.length ||
+    !first ||
+    !Number.isFinite(agreedAtMs) ||
+    consents.some((consent) =>
+      consent.method !== first.method ||
+      new Date(consent.agreedAt).getTime() !== agreedAtMs ||
+      consent.provider !== first.provider,
+    )
+  ) {
+    throw policyConsentMismatchError();
+  }
+
+  await saveWordPressPolicyConsents(userId, [...consents], {
+    releaseIds,
+    manifestRevision: offer.manifestRevision,
+    agreedAt: first.agreedAt,
+    method: first.method,
+    ...(first.provider ? { provider: first.provider } : {}),
+  });
+}
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -167,7 +219,7 @@ export async function linkSocialToExistingUserByEmail(
     }
     if (policyConsents.length) {
       const wpUser = await findWordPressUserByEmail(canonicalEmail);
-      if (wpUser) await saveWordPressPolicyConsents(wpUser.id, policyConsents);
+      if (wpUser) await saveLinkedWordPressPolicyConsents(wpUser.id, policyConsents);
       await UserIndexModel.updateOne({ _id: linked._id }, { $push: { policyConsents: { $each: policyConsents } } });
     }
     return {
@@ -256,7 +308,7 @@ export async function linkSocialToExistingUserByEmail(
 
   if (wpUser && policyConsents.length) {
     try {
-      await saveWordPressPolicyConsents(wpUser.id, policyConsents);
+      await saveLinkedWordPressPolicyConsents(wpUser.id, policyConsents);
     } catch (error) {
       if (isNewIntegratedAccount) await deleteWordPressAccount(wpUser.id).catch(() => undefined);
       throw error;

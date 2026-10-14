@@ -54,10 +54,7 @@ export default function MagazineReturnPage() {
 
   return (
     <main className="flex min-h-[100dvh] items-center justify-center bg-background px-6 text-primary-text">
-      <section
-        className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 text-center"
-        aria-live="polite"
-      >
+      <section className="w-full max-w-md rounded-2xl p-8 text-center" aria-live="polite">
         <div className="mb-6 flex justify-center gap-3" aria-hidden="true">
           <AmuSimbol width={40} height={40} className="text-primary" />
           <AmuLogo width={100} className="relative top-[2px] text-primary" />

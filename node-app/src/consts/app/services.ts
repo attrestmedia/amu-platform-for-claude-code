@@ -81,6 +81,7 @@ export const DEFAULT_CONTENT_OUTPUT_FORMAT = "markdown/mermaid" as const;
 
 // ----- The Tutors -----
 export const TUTORS_NAMESPACE_KEY = "tutors" as const;
+export const RETIRED_TUTORS_ROUTE_HINT = "tutors" as const;
 export const TUTORS_MAX_SELECTED = 5;
 export const TUTORS_BLOCKED_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 export const TUTORS_HUMAN_PROFILE_TEMPLATE_GROUP_KEY = "tutors-profile-human" as const;

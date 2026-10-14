@@ -1,5 +1,8 @@
 import fetchClient from "libs/api/fetchClient";
+import type { AiCostMonitorReportV1, AiCostMonitorWindowPreset } from "types/ai";
 import type { UnknownRecord } from "utils/common/typeUtils";
+
+export type { AiCostMonitorReportV1 } from "types/ai";
 
 export type SystemModelControlClientItem = {
   key: string;
@@ -21,7 +24,7 @@ export type SystemModelControlClientItem = {
   reasoningEffortLevels: string[];
   status: "active" | "deprecated";
   deprecated: boolean;
-  catalogSource: "policy" | "db";
+  catalogSource: "manifest";
   policyDefaultModel: boolean;
   launchState: "internal" | "admin_only" | "public";
   policyLaunchState?: "internal" | "admin_only" | "public";
@@ -82,34 +85,6 @@ export async function fetchSystemModelControls() {
   return res.data.models || [];
 }
 
-export async function patchSystemModelControls(args: {
-  patches: Array<{
-    key: string;
-    enabled?: boolean;
-    adminOnly?: boolean;
-    status?: "active" | "deprecated";
-    recommendedModel?: boolean;
-    reasoningEffort?: string;
-  }>;
-  reason: string;
-}) {
-  const res = await fetchClient.patch<{ ok: boolean; models: SystemModelControlClientItem[] }>(
-    "/admin/system-controls/models",
-    args,
-    { responseType: "json" },
-  );
-  return res.data.models || [];
-}
-
-export async function setSystemDefaultModel(args: { defaultModelKey: string; reason: string }) {
-  const res = await fetchClient.patch<{ ok: boolean; models: SystemModelControlClientItem[] }>(
-    "/admin/system-controls/models",
-    args,
-    { responseType: "json" },
-  );
-  return res.data.models || [];
-}
-
 export async function fetchSystemControlHistory(limit = 20) {
   const res = await fetchClient.get<{ ok: boolean; audits: SystemControlAuditClientItem[] }>(
     "/admin/system-controls/history",
@@ -119,22 +94,6 @@ export async function fetchSystemControlHistory(limit = 20) {
     },
   );
   return res.data.audits || [];
-}
-
-export async function rollbackSystemControlAudit(args: {
-  auditId: string;
-  reason: string;
-  confirmPhrase: string;
-}) {
-  const res = await fetchClient.post<{
-    ok: boolean;
-    auditId: string;
-    rollbackOfAuditId: string;
-    models: SystemModelControlClientItem[];
-  }>("/admin/system-controls/history/rollback", args, {
-    responseType: "json",
-  });
-  return res.data;
 }
 
 export type SystemPricingSummary = {
@@ -152,8 +111,8 @@ export type SystemPricingPreviewResult = {
   breakdown: UnknownRecord;
   tokenPricing: { input: number; output: number } | null;
   fixedPricing: { perSecond?: number; perMinute?: number; perImage?: number; perVideo?: number } | null;
-  tokenPricingSource: "db" | "fallback" | null;
-  fixedPricingSource: "db" | "fallback" | null;
+  tokenPricingSource: "manifest" | null;
+  fixedPricingSource: "manifest" | null;
 };
 
 export async function fetchSystemPricingSummary() {
@@ -185,4 +144,15 @@ export async function previewSystemPricing(args: {
     { responseType: "json" },
   );
   return res.data.preview;
+}
+
+export async function fetchAiCostMonitor(window: AiCostMonitorWindowPreset) {
+  const res = await fetchClient.get<{ ok: boolean; report: AiCostMonitorReportV1 }>(
+    "/admin/system-controls/cost-monitor",
+    {
+      params: { window },
+      responseType: "json",
+    },
+  );
+  return res.data.report;
 }

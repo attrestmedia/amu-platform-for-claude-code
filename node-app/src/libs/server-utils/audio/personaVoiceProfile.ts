@@ -1,19 +1,18 @@
 import "server-only";
 import {
   ELEVENLABS_DEFAULT_TTS_MODEL,
-  OPENAI_DEFAULT_TTS_MODEL,
+  getElevenLabsVoiceCatalogEntry,
   getOpenAiVoiceCatalogEntry,
 } from "consts/ai/voiceCatalog";
 import { MONGODB_PERSONA_URL } from "consts/env/server";
 import { getModel } from "libs/database/modelCache";
-import { getTutorsCollectionName } from "libs/services/tutors/tutorsCollectionKey";
-import { resolveTutorPersonaReadAccess } from "libs/services/tutors/tutorGiftGrants";
 import { PersonaSchema } from "models/universe";
 import type { IPersonaDocument } from "models/universe";
 import type { IPersona, ISpeechVoiceProfile } from "types/ai";
 import { buildVoiceFingerprint } from "./cacheKeys";
 import type { IResolvedVoiceProfile } from "./types";
 import type { UnknownRecord } from "utils/common/typeUtils";
+import { resolveLegacyOpenAiVoiceToElevenLabs } from "./legacyOpenAiVoiceMapping";
 
 function normalizeTrimmedString(raw: unknown, maxLength: number) {
   const value = typeof raw === "string" ? raw.trim() : raw == null ? "" : String(raw).trim();
@@ -26,13 +25,18 @@ export function normalizePersonaVoiceProfile(raw: unknown): ISpeechVoiceProfile 
 
   const rec = raw as UnknownRecord;
   const provider = normalizeTrimmedString(rec.provider, 32).toLowerCase();
-  if (provider === "elevenlabs") {
-    const voiceId = normalizeTrimmedString(rec.voiceId, 128);
-    const voiceRevision = normalizeTrimmedString(rec.voiceRevision, 80);
-    const provenance = normalizeTrimmedString(rec.provenance, 64);
-    const rightsStatus = normalizeTrimmedString(rec.rightsStatus, 64);
+  const storedVoiceId = normalizeTrimmedString(rec.voiceId, 128);
+  const storedElevenLabsEntry = getElevenLabsVoiceCatalogEntry(storedVoiceId);
+  if (provider === "elevenlabs" || (!provider && storedElevenLabsEntry)) {
+    const voiceId = storedVoiceId;
+    const voiceRevision = normalizeTrimmedString(rec.voiceRevision, 80) || storedElevenLabsEntry?.voiceRevision || "";
+    const provenance = normalizeTrimmedString(rec.provenance, 64) || "approved_catalog";
+    const rightsStatus = normalizeTrimmedString(rec.rightsStatus, 64) || storedElevenLabsEntry?.rightsStatus || "";
     if (!voiceId || !/^[A-Za-z0-9_-]{8,128}$/.test(voiceId)) return undefined;
-    if (!voiceRevision || !provenance || rightsStatus !== "verified_commercial") return undefined;
+    if (
+      !storedElevenLabsEntry || storedElevenLabsEntry.usage !== "production" ||
+      !voiceRevision || !provenance || rightsStatus !== "verified_commercial"
+    ) return undefined;
 
     const modelName = normalizeTrimmedString(rec.modelName, 120) || ELEVENLABS_DEFAULT_TTS_MODEL;
     const locale = normalizeTrimmedString(rec.locale, 16) || undefined;
@@ -72,27 +76,33 @@ export function normalizePersonaVoiceProfile(raw: unknown): ISpeechVoiceProfile 
   }
   if (provider && provider !== "openai") return undefined;
 
-  const voiceId = normalizeTrimmedString(rec.voiceId, 64).toLowerCase();
-  if (!voiceId) return undefined;
+  const legacyVoiceId = normalizeTrimmedString(rec.voiceId, 64).toLowerCase();
+  if (!legacyVoiceId) return undefined;
 
-  const catalogEntry = getOpenAiVoiceCatalogEntry(voiceId);
-  if (!catalogEntry) return undefined;
+  const legacyCatalogEntry = getOpenAiVoiceCatalogEntry(legacyVoiceId);
+  const mappedVoiceId = legacyCatalogEntry ? resolveLegacyOpenAiVoiceToElevenLabs(legacyVoiceId) : null;
+  const catalogEntry = mappedVoiceId ? getElevenLabsVoiceCatalogEntry(mappedVoiceId) : undefined;
+  if (!catalogEntry || catalogEntry.rightsStatus !== "verified_commercial" || catalogEntry.usage !== "production") return undefined;
 
-  const modelName = normalizeTrimmedString(rec.modelName, 120) || OPENAI_DEFAULT_TTS_MODEL;
+  const voiceId = catalogEntry.voiceId;
+  const modelName = ELEVENLABS_DEFAULT_TTS_MODEL;
   const locale = normalizeTrimmedString(rec.locale, 16).toLowerCase() || undefined;
-  const instructions =
-    normalizeTrimmedString(rec.instructions, 1000) || normalizeTrimmedString(catalogEntry.instructions, 1000);
+  const instructions = normalizeTrimmedString(rec.instructions, 1000) || undefined;
   const source = normalizeTrimmedString(rec.source, 64) || "persona-profile";
 
   return {
-    provider: "openai",
-    voiceId: catalogEntry.voiceId,
+    provider: "elevenlabs",
+    voiceId,
+    voiceRevision: catalogEntry.voiceRevision,
+    provenance: "approved_catalog",
+    rightsStatus: catalogEntry.rightsStatus,
     modelName,
     locale,
     instructions,
     voiceFingerprint: buildVoiceFingerprint({
-      provider: "openai",
-      voiceId: catalogEntry.voiceId,
+      provider: "elevenlabs",
+      voiceId,
+      voiceRevision: catalogEntry.voiceRevision,
       modelName,
       locale,
       instructions,
@@ -111,7 +121,7 @@ export function normalizePersonaVoiceProfileForGender(raw: unknown, _gender: unk
 
 export async function persistResolvedPersonaVoiceProfile(args: {
   user: unknown;
-  routeHint: "ai" | "tutors" | "commerce";
+  routeHint: "ai" | "commerce";
   universeId: string;
   personaId: string;
   persona?: Partial<IPersona> | null;
@@ -144,12 +154,7 @@ export async function persistResolvedPersonaVoiceProfile(args: {
   });
   if (!nextProfile) return false;
 
-  if (args.routeHint === "tutors") {
-    const resolved = await resolveTutorPersonaReadAccess(args.user, personaId).catch(() => null);
-    if (!resolved?.access || resolved.access.kind !== "owner") return false;
-  }
-
-  const collectionName = args.routeHint === "tutors" ? getTutorsCollectionName(args.user) : universeId;
+  const collectionName = universeId;
   const PersonaModel = await getModel<IPersonaDocument>(MONGODB_PERSONA_URL, collectionName, PersonaSchema, collectionName);
   const result = await PersonaModel.updateOne(
     {

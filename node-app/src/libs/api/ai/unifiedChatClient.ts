@@ -34,8 +34,7 @@ export type UnifiedTextChatRequest = {
 
 export async function chatWithUnifiedTextEndpoint(req: UnifiedTextChatRequest): Promise<IAiResponse> {
   try {
-    const endpoint =
-      req.routeHint === "commerce" ? "commerce/chat" : req.routeHint === "tutors" ? "tutors/chat" : "ai/chat";
+    const endpoint = req.routeHint === "commerce" ? "commerce/chat" : "ai/chat";
     const path = `/${endpoint}`;
 
     const headers: Record<string, string> = {};

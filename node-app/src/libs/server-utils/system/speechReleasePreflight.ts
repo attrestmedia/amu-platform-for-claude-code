@@ -7,6 +7,7 @@
  */
 
 import type { SpeechCatalogProviderType, SpeechModelPolicy } from "consts/ai";
+import { SPEECH_RUNTIME_MANIFEST, type SpeechManifestBudgetOwner } from "consts/ai/speechRuntimeManifest";
 import {
   SPEECH_BUDGET_REQUIRED_PROVIDERS,
   type SpeechRuntimeControls,
@@ -100,16 +101,30 @@ function finding(
   return { reasonCode, provider, ...(modelName ? { modelName } : {}), detail };
 }
 
-function allBudgetCapsUnset(controls: SpeechRuntimeControls) {
+function allBudgetCapsUnset(controls: SpeechRuntimeControls, provider: string) {
+  const roleScope = SPEECH_RUNTIME_MANIFEST.budgetRoleScope[normalizeProvider(provider)];
+  if (roleScope) {
+    const caps = [
+      roleScope.global.perRequestUsdCap,
+      roleScope.global.dailyUsdCap,
+      roleScope.global.monthlyUsdCap,
+      ...Object.values(roleScope.byOwner).flatMap((limits) =>
+        limits
+          ? [limits.perRequestUsdCap, limits.dailyUsdCap, limits.monthlyUsdCap]
+          : [],
+      ),
+    ];
+    return caps.every((cap) => cap === null);
+  }
+
   const caps = [
     controls.budget.perRequestUsdCap,
     controls.budget.dailyUsdCap,
     controls.budget.monthlyUsdCap,
-    ...Object.values(controls.budgetByOwner).flatMap((limits) => [
-      limits.perRequestUsdCap,
-      limits.dailyUsdCap,
-      limits.monthlyUsdCap,
-    ]),
+    ...(Object.keys(SPEECH_RUNTIME_MANIFEST.budgetByOwner) as SpeechManifestBudgetOwner[]).flatMap((owner) => {
+      const limits = controls.budgetByOwner[owner];
+      return [limits.perRequestUsdCap, limits.dailyUsdCap, limits.monthlyUsdCap];
+    }),
   ];
   return caps.every((cap) => cap === null);
 }
@@ -255,7 +270,7 @@ export function evaluateSpeechReleasePreflight(
 
     if (
       (SPEECH_BUDGET_REQUIRED_PROVIDERS as readonly string[]).includes(providerKey) &&
-      allBudgetCapsUnset(input.runtimeControls)
+      allBudgetCapsUnset(input.runtimeControls, providerKey)
     ) {
       blocking.push(
         finding(

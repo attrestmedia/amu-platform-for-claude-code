@@ -246,6 +246,7 @@ export async function listStudioImageMetasPage(params?: {
   sourceService?: StudioGenerationSourceServiceType;
   libraryKind?: LibraryImageKindType;
   sourceSurface?: string;
+  purpose?: "character-anchor";
   createdFrom?: string;
   createdBefore?: string;
 }) {
@@ -267,6 +268,7 @@ export async function listStudioImageMetasPage(params?: {
       ...(params?.sourceService ? { sourceService: params.sourceService } : {}),
       ...(params?.libraryKind ? { libraryKind: params.libraryKind } : {}),
       ...(params?.sourceSurface ? { sourceSurface: params.sourceSurface } : {}),
+      ...(params?.purpose ? { purpose: params.purpose } : {}),
       ...(params?.createdFrom ? { createdFrom: params.createdFrom } : {}),
       ...(params?.createdBefore ? { createdBefore: params.createdBefore } : {}),
       includeMeta: true,
@@ -286,9 +288,13 @@ export async function listStudioImageMetasPage(params?: {
   };
 }
 
-export async function uploadLibraryImage(file: File) {
+export async function uploadLibraryImage(
+  file: File,
+  options?: { sourceSurface?: "assets-studio-character" },
+) {
   const form = new FormData();
   form.set("file", file);
+  if (options?.sourceSurface) form.set("sourceSurface", options.sourceSurface);
   const out = await fetchClient.post<ApiEnvelopeType<LibraryImageUploadResult>>(
     "/lab/studio-images/upload",
     form,

@@ -14,6 +14,12 @@ export async function resolveUniverseResponseViewer(request: NextRequest): Promi
 
 export function sanitizeUniverseForViewer(universe: IUniverse, viewer: IUpdateUserData | null) {
   if (viewer && canEditUniverse(viewer, universe)) return universe;
-  const { billingOwnerEmail: _owner, commerceAdmins: _admins, wallet: _wallet, ...publicUniverse } = universe;
+  const {
+    billingOwnerEmail: _owner,
+    commerceAdmins: _admins,
+    wallet: _wallet,
+    ownerUids: _ownerUids,
+    ...publicUniverse
+  } = universe;
   return publicUniverse;
 }

@@ -1,20 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
+import { use, useEffect } from "react";
 import { Preloader } from "@amu-labs/ui";
 import { useRouter } from "next/navigation";
 import { useAuthCheck, useUserData } from "hooks/auth";
 import { useAuthStore } from "store/auth";
 import { CanonAdminConsole } from "components/module/admin/canon";
 
-export default function UniverseCanonAdminPage({ params }: { params: { universeId: string } }) {
+export default function UniverseCanonAdminPage({ params }: { params: Promise<{ universeId: string }> }) {
+  const { universeId: rawUniverseId } = use(params);
   const router = useRouter();
   const { userData, isLoading: isUserLoading } = useUserData();
   const { hasHydrated } = useAuthStore();
   const isLoggedIn = useAuthStore((state) => state.isLogged());
   useAuthCheck();
 
-  const universeId = decodeURIComponent(params.universeId || "");
+  const universeId = decodeURIComponent(rawUniverseId || "");
   const isAdministrator = userData?.roles?.includes("administrator") === true;
 
   useEffect(() => {

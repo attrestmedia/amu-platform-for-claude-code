@@ -5,7 +5,6 @@ import { normalizeChatTranslationLanguage, useTranslationStore } from "./transla
 import type { SystemPromptOptionsType } from "types/ai/prompt";
 import type { IExtendedNpcData } from "types/game";
 import { PROMPT_OPTION_CHAR_CAPS } from "consts/ai/promptCaps";
-import { normalizeTutorConversationLevel, normalizeTutorTargetLanguage } from "consts/tutors";
 import { promptLimitCap } from "utils/ai";
 
 /**
@@ -23,8 +22,6 @@ interface PromptState {
   archiveContext: string; // 이전 대화의 요약 내용
   knowledgeContext: string; // 캐릭터가 알고 있는 지식 정보
   addTranslation: string; // 특정 언어로 번역 응답 추가 요청
-  tutorTargetLanguage: string; // Tutors 채팅에서 캐릭터가 사용할 강제 응답 언어
-  tutorConversationLevel: string; // Tutors 채팅에서 현재 세션에 적용할 대화 수준
 }
 
 interface PromptActions {
@@ -34,8 +31,6 @@ interface PromptActions {
   setArchiveContext: (context: string) => void;
   setKnowledgeContext: (context: string) => void;
   setAddTranslation: (language: string) => void;
-  setTutorTargetLanguage: (language: string) => void;
-  setTutorConversationLevel: (conversationLevel: string) => void;
   getPromptOptions: () => SystemPromptOptionsType; // 서버에 전달할 옵션만 생성
 }
 
@@ -46,13 +41,8 @@ export const usePromptStore = create<PromptState & PromptActions>((set, get) => 
   archiveContext: "",
   knowledgeContext: "",
   addTranslation: "",
-  tutorTargetLanguage: "",
-  tutorConversationLevel: "",
 
   setAddTranslation: (language) => set({ addTranslation: language }),
-  setTutorTargetLanguage: (language) => set({ tutorTargetLanguage: normalizeTutorTargetLanguage(language, "") }),
-  setTutorConversationLevel: (conversationLevel) =>
-    set({ tutorConversationLevel: conversationLevel ? normalizeTutorConversationLevel(conversationLevel) : "" }),
 
   setCurrentCharacter: (character) => {
     set({ currentCharacter: character });
@@ -88,26 +78,8 @@ export const usePromptStore = create<PromptState & PromptActions>((set, get) => 
       allowNative,
       additionalInstructions,
       knowledgeContext,
-      currentCharacter,
-      tutorTargetLanguage,
-      tutorConversationLevel,
     } = get();
     const language = useGlobalStore.getState().language;
-    const characterPolicy =
-      currentCharacter?.tutorsPolicy && typeof currentCharacter.tutorsPolicy === "object"
-        ? currentCharacter.tutorsPolicy
-        : {};
-    const fallbackTutorTargetLanguage = normalizeTutorTargetLanguage(
-      characterPolicy.targetLanguage || currentCharacter?.language || "",
-      "",
-    );
-    const resolvedTutorTargetLanguage = normalizeTutorTargetLanguage(
-      tutorTargetLanguage || fallbackTutorTargetLanguage,
-      "",
-    );
-    const resolvedTutorConversationLevel = normalizeTutorConversationLevel(
-      tutorConversationLevel || characterPolicy.conversationLevel,
-    );
 
     const translationSettings = useTranslationStore.getState();
     const shouldAddTranslation = translationSettings.enabled && translationSettings.targetLanguage;
@@ -118,8 +90,6 @@ export const usePromptStore = create<PromptState & PromptActions>((set, get) => 
       language,
       allowNative,
       addTranslation: addTranslation || "",
-      tutorTargetLanguage: resolvedTutorTargetLanguage,
-      tutorConversationLevel: resolvedTutorConversationLevel,
       additionalInstructions: promptLimitCap(additionalInstructions, PROMPT_OPTION_CHAR_CAPS.additionalInstructions),
       knowledgeContext: promptLimitCap(knowledgeContext, PROMPT_OPTION_CHAR_CAPS.knowledgeContext),
     };

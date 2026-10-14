@@ -19,3 +19,12 @@ export {
   SYSTEM_CONTROL_AUDIT_TARGET_TYPES,
 } from "./SystemControlAuditSchema";
 export { type ISpeechBudgetUsageDocument, SpeechBudgetUsageSchema } from "./SpeechBudgetUsageSchema";
+export {
+  type ISpeechBudgetReservationDocument,
+  type SpeechBudgetReservationState,
+  type SpeechBudgetReservationAccountingState,
+  SPEECH_BUDGET_RESERVATION_STATES,
+  SPEECH_BUDGET_RESERVATION_ACCOUNTING_STATES,
+  SpeechBudgetReservationSchema,
+} from "./SpeechBudgetReservationSchema";
+export { type ISpeechBudgetGuardDocument, SpeechBudgetGuardSchema } from "./SpeechBudgetGuardSchema";

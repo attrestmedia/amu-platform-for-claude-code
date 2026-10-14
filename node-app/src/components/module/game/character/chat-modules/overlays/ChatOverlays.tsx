@@ -13,7 +13,6 @@ import type {
   TextProviderType,
 } from "types/ai";
 import type { ICommerceProduct } from "types/commerce";
-import type { TutorConversationLevel } from "consts/tutors";
 import { Button } from "@amu-labs/ui";
 import { Lang } from "components/module/i18n";
 import { ProductList } from "components/module/commerce";
@@ -60,13 +59,6 @@ type ChatOverlaysProps = {
   canUseTranslation?: boolean;
   voicePlaybackAvailable: boolean;
   voiceInputAvailable?: boolean;
-  tutorTargetLanguage?: string;
-  onTutorTargetLanguageChange?: (language: string) => void;
-  tutorConversationLevel?: string;
-  onTutorConversationLevelChange?: (conversationLevel: TutorConversationLevel) => void;
-  conversationHintsAvailable?: boolean;
-  conversationHintsEnabled?: boolean;
-  onConversationHintsEnabledChange?: (enabled: boolean) => void;
 
   // ai end
   showAIEndRequest: boolean;
@@ -123,13 +115,6 @@ export function ChatOverlays({
   canUseTranslation,
   voicePlaybackAvailable,
   voiceInputAvailable,
-  tutorTargetLanguage,
-  onTutorTargetLanguageChange,
-  tutorConversationLevel,
-  onTutorConversationLevelChange,
-  conversationHintsAvailable,
-  conversationHintsEnabled,
-  onConversationHintsEnabledChange,
 
   showAIEndRequest,
   aiEndRequestMessage,
@@ -176,13 +161,6 @@ export function ChatOverlays({
             canUseTranslation={canUseTranslation}
             voicePlaybackAvailable={voicePlaybackAvailable}
             voiceInputAvailable={voiceInputAvailable}
-            tutorTargetLanguage={tutorTargetLanguage}
-            onTutorTargetLanguageChange={onTutorTargetLanguageChange}
-            tutorConversationLevel={tutorConversationLevel}
-            onTutorConversationLevelChange={onTutorConversationLevelChange}
-            conversationHintsAvailable={conversationHintsAvailable}
-            conversationHintsEnabled={conversationHintsEnabled}
-            onConversationHintsEnabledChange={onConversationHintsEnabledChange}
           />
         )}
       </AnimatePresence>

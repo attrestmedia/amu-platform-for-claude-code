@@ -3,13 +3,15 @@
 import {
   ASPECT_TO_OPENAI_COMPAT_SIZE,
   DEFAULT_IMAGE_ASPECT,
-  DEFAULT_IMAGE_MODEL_BY_PROVIDER,
-  IMAGE_REF_LIMIT_BY_PROVIDER,
   OPENAI_COMPAT_UI_RATIOS,
   getSupportedGoogleAspectRatios,
   getSupportedGoogleImageSizes,
   type SupportedAspectRatio,
 } from "consts/ai";
+import {
+  AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER,
+  AI_IMAGE_REF_LIMIT_BY_PROVIDER,
+} from "consts/ai/generated/modelCatalog.generated";
 import { Lang, lang } from "components/module/i18n";
 import { Checkbox, Input, RadioGroup, RadioGroupItem, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, Textarea } from "@amu-labs/ui";
 import { clampAspectForProvider, normalizeGoogleImageSizeForModel } from "utils/app";
@@ -25,22 +27,22 @@ const IMAGE_PROVIDER_OPTIONS: Array<{
 }> = [
   {
     value: "google",
-    title: DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
+    title: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
     description: { ko: "Gen Studio 기본 이미지 모델군", en: "Default Gen Studio image family" },
   },
   {
     value: "openai",
-    title: DEFAULT_IMAGE_MODEL_BY_PROVIDER.openai,
+    title: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.openai,
     description: { ko: "편집/상품 보정 호환 모델군", en: "Editing-friendly image family" },
   },
   {
     value: "xai",
-    title: DEFAULT_IMAGE_MODEL_BY_PROVIDER.xai,
+    title: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.xai,
     description: { ko: "대체 이미지 모델군", en: "Alternative image family" },
   },
   {
     value: "zai",
-    title: DEFAULT_IMAGE_MODEL_BY_PROVIDER.zai,
+    title: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.zai,
     description: { ko: "GLM 이미지 모델군", en: "GLM image family" },
   },
 ];
@@ -56,13 +58,13 @@ function pickImageDefaultProvider(raw?: string): ImageProviderType {
 }
 
 function resolveAspectForProvider(provider: ImageProviderType, raw?: string) {
-  const defaultModel = String(DEFAULT_IMAGE_MODEL_BY_PROVIDER[provider] || DEFAULT_IMAGE_MODEL_BY_PROVIDER.google);
+  const defaultModel = String(AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER[provider] || AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google);
   return clampAspectForProvider(provider, String(raw || DEFAULT_IMAGE_ASPECT), defaultModel);
 }
 
 function resolveSizeForProvider(provider: ImageProviderType, aspectRatio: SupportedAspectRatio, raw?: string) {
   if (provider === "google") {
-    return normalizeGoogleImageSizeForModel(String(DEFAULT_IMAGE_MODEL_BY_PROVIDER.google), raw);
+    return normalizeGoogleImageSizeForModel(String(AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google), raw);
   }
   return String(ASPECT_TO_OPENAI_COMPAT_SIZE[aspectRatio] || ASPECT_TO_OPENAI_COMPAT_SIZE[DEFAULT_IMAGE_ASPECT]);
 }
@@ -151,15 +153,15 @@ export function ImagePromptStructuredFields({
 }) {
   const aspectOptions =
     value.provider === "google"
-      ? [...getSupportedGoogleAspectRatios(String(DEFAULT_IMAGE_MODEL_BY_PROVIDER.google))]
+      ? [...getSupportedGoogleAspectRatios(String(AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google))]
       : [...OPENAI_COMPAT_UI_RATIOS];
   const resolvedAspect = resolveAspectForProvider(value.provider, value.aspectRatio) as SupportedAspectRatio;
   const googleSizeOptions =
     value.provider === "google"
-      ? [...getSupportedGoogleImageSizes(String(DEFAULT_IMAGE_MODEL_BY_PROVIDER.google))]
+      ? [...getSupportedGoogleImageSizes(String(AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google))]
       : [];
   const resolvedSize = resolveSizeForProvider(value.provider, resolvedAspect, value.size);
-  const referenceLimit = Math.max(1, Number(IMAGE_REF_LIMIT_BY_PROVIDER[value.provider] || 1));
+  const referenceLimit = Math.max(1, Number((AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[value.provider] || 1));
   const maxCountOptions = Array.from({ length: referenceLimit }, (_, index) => String(index + 1));
   const minCountOptions = Array.from(
     { length: value.referenceRequired ? referenceLimit : referenceLimit + 1 },
@@ -169,7 +171,7 @@ export function ImagePromptStructuredFields({
 
   const updateProvider = (provider: ImageProviderType) => {
     const nextAspect = resolveAspectForProvider(provider, value.aspectRatio) as SupportedAspectRatio;
-    const nextLimit = Math.max(1, Number(IMAGE_REF_LIMIT_BY_PROVIDER[provider] || 1));
+    const nextLimit = Math.max(1, Number((AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[provider] || 1));
     const nextMin = Math.min(
       nextLimit,
       Math.max(value.referenceRequired ? 1 : 0, value.referenceRequired ? Math.max(1, value.referenceMinCount) : 0),
@@ -274,12 +276,12 @@ export function ImagePromptStructuredFields({
           </label>
           {value.provider === "google" ? (
             <Select
-              value={normalizeGoogleImageSizeForModel(String(DEFAULT_IMAGE_MODEL_BY_PROVIDER.google), value.size)}
+              value={normalizeGoogleImageSizeForModel(String(AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google), value.size)}
               onValueChange={(next) =>
                 onChange({
                   ...value,
                   size: normalizeGoogleImageSizeForModel(
-                    String(DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
+                    String(AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
                     String(next || ""),
                   ),
                 })

@@ -25,6 +25,7 @@ const AGENT_WP_PROXY_ENDPOINT = "ai/agent/wp-proxy";
 const ALLOWED_METHODS = new Set(["GET", "POST", "DELETE"]);
 const ALLOWED_RESOURCES = new Set(["posts", "tags", "categories", "users", "media", "pages"]);
 const WP_PATH_PREFIX = "/wp-json/wp/v2/";
+const FEATURED_IMAGE_PATH_RE = /^\/wp-json\/amu\/v1\/posts\/\d+\/featured-image$/;
 
 // SEO·콘텐츠 재고 조회(mu-plugin amu-seo-insights)는 읽기 전용이라 별도 네임스페이스로 통제한다.
 const SEO_INSIGHTS_PREFIX = "/wp-json/amu/v1/seo-insights";
@@ -36,6 +37,7 @@ const CONTENT_REDIRECTS_RESOURCE = "content-redirects";
 const RESOURCE_SCOPES: Record<string, string> = {
   pages: "wp:pages:write",
   [SEO_INSIGHTS_RESOURCE]: "wp:seo:read",
+  "featured-image": "wp:posts:write",
 };
 const DEFAULT_WP_SCOPE = "wp:posts:write";
 
@@ -82,6 +84,10 @@ function validateWpPath(
 ): { ok: true; path: string; resource: string } | { ok: false; error: string } {
   const path = toSafeString(rawPath);
   if (path.includes("..") || path.includes("://")) return { ok: false, error: "path_traversal_blocked" };
+
+  if (FEATURED_IMAGE_PATH_RE.test(path)) {
+    return { ok: true, path, resource: "featured-image" };
+  }
 
   // SEO 조회 네임스페이스는 고정 경로 + 쿼리스트링만 허용한다(하위 경로 확장 금지).
   if (path === SEO_INSIGHTS_PREFIX || path.startsWith(`${SEO_INSIGHTS_PREFIX}?`)) {
@@ -133,6 +139,13 @@ export async function POST(request: NextRequest) {
     if (!pathCheck.ok) {
       return NextResponse.json(
         { ok: false, error: pathCheck.error, errorCode: "INVALID_INPUT" },
+        { status: 400 },
+      );
+    }
+
+    if (pathCheck.resource === "featured-image" && method !== "GET" && method !== "POST") {
+      return NextResponse.json(
+        { ok: false, error: "featured_image_method_not_allowed", errorCode: "INVALID_INPUT" },
         { status: 400 },
       );
     }

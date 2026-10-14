@@ -13,7 +13,12 @@ import {
 import { normalizeString } from "libs/server-utils/api/apiSafetyHelper";
 import { readOffsetPageParams, sliceOffsetPageRows } from "libs/server-utils/api/offsetPagination";
 import { IMAGE_USAGE_TIP_MAX } from "consts/app";
-import { PUBLIC_PROMPT_ACCESS_LEVELS, normalizePromptAccessLevel } from "utils/app/promptAccess";
+import {
+  assertSystemPromptKeyAccessLevel,
+  PROMPT_KEY_RESERVED_PREFIX_ERROR_CODE,
+  PUBLIC_PROMPT_ACCESS_LEVELS,
+  normalizePromptAccessLevel,
+} from "utils/app/promptAccess";
 import { rejectInvalidPromptTemplate } from "libs/server-utils/api/promptTemplateValidation";
 import {
   hasLegacyImagePromptNegativeSection,
@@ -31,6 +36,25 @@ import { isPlainObject, toErrorLike, type UnknownRecord } from "utils/common";
  */
 
 export const runtime = "nodejs";
+
+function reservedPromptKeyErrorResponse(error: unknown) {
+  if (toErrorLike(error).errorCode !== PROMPT_KEY_RESERVED_PREFIX_ERROR_CODE) return null;
+  return NextResponse.json(
+    { ok: false, error: "reserved_key_prefix", errorCode: PROMPT_KEY_RESERVED_PREFIX_ERROR_CODE },
+    { status: 400 },
+  );
+}
+
+function reservedPromptKeyAccessErrorResponse(key: unknown, accessLevel: unknown) {
+  try {
+    assertSystemPromptKeyAccessLevel(key, normalizePromptAccessLevel(accessLevel));
+    return null;
+  } catch (error: unknown) {
+    const response = reservedPromptKeyErrorResponse(error);
+    if (response) return response;
+    throw error;
+  }
+}
 
 function getUsageTipOrError(body: UnknownRecord) {
   const usageTip = normalizeString(body?.usageTip);
@@ -111,6 +135,9 @@ async function postHandler(body: UnknownRecord, _user: unknown) {
   });
   if (invalidTemplate) return invalidTemplate;
 
+  const reservedAccessError = reservedPromptKeyAccessErrorResponse(body.key, body.accessLevel);
+  if (reservedAccessError) return reservedAccessError;
+
   const categories = Array.isArray(body.categories) && body.categories.length > 0 ? body.categories : ["general"];
 
   // 이미 존재하면 409로 거절
@@ -137,6 +164,8 @@ async function postHandler(body: UnknownRecord, _user: unknown) {
       });
       return NextResponse.json({ ok: true, data: created });
     } catch (e: unknown) {
+      const reservedError = reservedPromptKeyErrorResponse(e);
+      if (reservedError) return reservedError;
       if (toErrorLike(e).errorCode === "DUPLICATE_KEY") {
         return NextResponse.json({ ok: false, error: "duplicate_key" }, { status: 409 });
       }
@@ -166,7 +195,9 @@ async function postHandler(body: UnknownRecord, _user: unknown) {
     try {
       const saved = await upsertImagePrompt(newPayload);
       return NextResponse.json({ ok: true, data: saved });
-    } catch {
+    } catch (e: unknown) {
+      const reservedError = reservedPromptKeyErrorResponse(e);
+      if (reservedError) return reservedError;
       return NextResponse.json({ ok: false, error: "save_failed" }, { status: 500 });
     }
   }
@@ -176,10 +207,16 @@ async function postHandler(body: UnknownRecord, _user: unknown) {
   if (exists && overwrite !== true) {
     return NextResponse.json({ ok: false, error: "duplicate_key" }, { status: 409 });
   }
-  const saved = await upsertImagePrompt(newPayload);
-  await replaceImageTemplateKeyInGroups(String(originalKey).trim(), newPayload.key);
-  await removeImagePrompt(String(originalKey).trim());
-  return NextResponse.json({ ok: true, data: saved });
+  try {
+    const saved = await upsertImagePrompt(newPayload);
+    await replaceImageTemplateKeyInGroups(String(originalKey).trim(), newPayload.key);
+    await removeImagePrompt(String(originalKey).trim());
+    return NextResponse.json({ ok: true, data: saved });
+  } catch (e: unknown) {
+    const reservedError = reservedPromptKeyErrorResponse(e);
+    if (reservedError) return reservedError;
+    throw e;
+  }
 }
 export const POST = withAuth(postHandler, undefined, "lab/image-prompts", { requireAdmin: true });
 

@@ -361,21 +361,21 @@ export async function markCharacterReferenceKitsUsed(args: {
   return Number(result?.modifiedCount || 0);
 }
 
-/** Play Persona가 이 kit을 참조하기 시작한 사실을 멱등적으로 기록한다. */
+/** Play Persona가 이 kit을 참조하기 시작한 사실을 멱등적으로 기록한다.
+ *  ASH-20 — kitId는 전역 유일하므로 캐릭터와 킷의 universeId를 같은 값으로 제한하지 않는다.
+ */
 export async function markCharacterReferenceKitUsedByPlayPersona(args: {
   kitId: string;
-  universeId: string;
   personaPid: string;
   updatedBy: string;
 }) {
   const kitId = toSafeString(args.kitId);
-  const universeId = toSafeString(args.universeId);
   const personaPid = toSafeString(args.personaPid);
-  if (!kitId || !universeId || !personaPid) return 0;
+  if (!kitId || !personaPid) return 0;
 
   const model = await getCharacterReferenceKitModel();
   const result = await model.updateOne(
-    { kitId, universeId, status: { $ne: "archived" } },
+    { kitId, status: { $ne: "archived" } },
     {
       $addToSet: { "usage.playPersonaPids": personaPid },
       $set: {

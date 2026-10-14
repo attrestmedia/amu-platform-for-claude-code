@@ -1,6 +1,7 @@
 import { Schema, type Document, type Query, type Model, type UpdateQuery } from "mongoose";
 import type { IUniverse } from "types/game";
 import type { UnknownRecord } from "utils/common/typeUtils";
+import { UNIVERSE_OWNER_UIDS_MAX } from "consts/game/characterGenesisPolicy";
 
 type UniverseValidatorContext = {
   getUpdate?: () => UpdateQuery<IUniverseDocument> | null;
@@ -230,6 +231,23 @@ export const UniverseSchema = new Schema<IUniverseDocument>(
     typeSpecific: {
       type: Schema.Types.Mixed,
       default: {},
+    },
+    ownerUids: {
+      type: [String],
+      default: undefined,
+      validate: {
+        validator: (ownerUids: unknown) => {
+          if (ownerUids == null) return true;
+          if (!Array.isArray(ownerUids) || ownerUids.length > UNIVERSE_OWNER_UIDS_MAX) return false;
+
+          const normalizedUids = ownerUids.map((uid) => (typeof uid === "string" ? uid.trim() : ""));
+          return (
+            normalizedUids.every((uid, index) => typeof ownerUids[index] === "string" && uid.length > 0 && uid.length <= 64) &&
+            new Set(normalizedUids).size === normalizedUids.length
+          );
+        },
+        message: `ownerUids must contain up to ${UNIVERSE_OWNER_UIDS_MAX} unique, non-empty UIDs of at most 64 characters.`,
+      },
     },
     commerceAdmins: {
       type: [String],

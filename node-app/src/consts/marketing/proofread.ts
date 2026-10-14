@@ -1,13 +1,15 @@
-import type { TEXT_MODEL_MAP } from "consts/ai";
+import {
+  AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
+  AI_MARKETING_PROOFREAD_MODEL_BY_PROVIDER,
+  type AI_TEXT_MODEL_MAP,
+} from "../ai/generated/modelCatalog.generated";
+import type { AssertAssignable } from "../ai/catalogShapeAssertion";
 
-export const MARKETING_PROOFREAD_DEFAULT_PROVIDER = "google" as const;
-export const MARKETING_PROOFREAD_DEFAULT_MODEL = "gemini-3.5-flash-lite" as const;
 
-export const MARKETING_PROOFREAD_DEFAULT_MODEL_BY_PROVIDER = {
-  google: MARKETING_PROOFREAD_DEFAULT_MODEL,
-  openai: "gpt-5.6-luna",
-  claude: "claude-haiku-4-5",
-  deepseek: "deepseek-v4-flash",
-  xai: "grok-4.7",
-  zai: "glm-5.3-flash",
-} as const satisfies Record<keyof typeof TEXT_MODEL_MAP, string>;
+export type MarketingProofreadCanonicalShape = [
+  AssertAssignable<typeof AI_MARKETING_PROOFREAD_MODEL_BY_PROVIDER,
+    Record<keyof typeof AI_TEXT_MODEL_MAP, string>
+  >,
+];
+
+export const MARKETING_PROOFREAD_DEFAULT_MODEL = AI_MARKETING_PROOFREAD_DEFAULT_MODEL;

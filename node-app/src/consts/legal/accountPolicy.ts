@@ -1,4 +1,10 @@
-export const CURRENT_ACCOUNT_POLICY = {
+// Legacy 모드 판정 원본이다. 새 소비부는 accountPolicyDecision facade를 사용한다.
+export type AccountPolicyConfiguration = {
+  terms: { policyId: "terms"; version: string; noticeDate: string; effectiveDate: string };
+  privacy: { policyId: "privacy"; version: string; noticeDate: string; effectiveDate: string };
+};
+
+export const CURRENT_ACCOUNT_POLICY: AccountPolicyConfiguration = {
   terms: {
     policyId: "terms",
     version: "1.3.0",
@@ -11,7 +17,7 @@ export const CURRENT_ACCOUNT_POLICY = {
     noticeDate: "2026-09-29T00:00:00+09:00",
     effectiveDate: "2026-10-29T00:00:00+09:00",
   },
-} as const;
+};
 
 // API 미들웨어의 빠른 사전 검사에는 가장 이른 시행일을 사용한다.
 export const ACCOUNT_POLICY_EFFECTIVE_DATE = "2026-09-23T00:00:00+09:00";
@@ -36,6 +42,8 @@ export type PolicyConsentRecord = {
   agreedAt: Date | string;
   method: PolicyConsentMethod;
   provider?: string;
+  displayedReleaseId?: string;
+  displayedContentSha256?: string;
 };
 
 export type AccountPolicyConsentStatus = {

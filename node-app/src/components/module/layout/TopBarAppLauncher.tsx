@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
   BarChart3,
-  BookOpen,
   ChevronRight,
   ExternalLink,
   Gamepad2,
@@ -32,7 +31,6 @@ type LauncherApp = "drawing" | "scrape-links" | "search-images";
 const SERVICE_ITEMS = [
   { id: "play", href: "/play", icon: Gamepad2, label: "Play" },
   { id: "gen-studio", href: "/gen-studio", icon: Sparkles, label: "Gen Studio" },
-  { id: "tutors", href: "/tutors", icon: BookOpen, label: "Tutors" },
   { id: "marketing-oops", href: "/marketing-oops", icon: BarChart3, label: "Marketing Oops" },
   { id: "store", href: "/store", icon: Store, label: "Store" },
 ] as const;

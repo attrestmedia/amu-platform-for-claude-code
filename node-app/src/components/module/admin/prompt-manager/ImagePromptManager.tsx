@@ -3,8 +3,9 @@
 import { useCallback } from "react";
 import PromptManagerBase from "./PromptManagerBase";
 import { listImagePrompts, upsertImagePrompt, deleteImagePrompt } from "libs/api/lab";
-import { DEFAULT_IMAGE_SIZE, IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai";
-import type { UiScopeType } from "types/ai";
+import { DEFAULT_IMAGE_SIZE } from "consts/ai";
+import { AI_IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
+import type { ImageProviderType, UiScopeType } from "types/ai";
 import type { PromptItemType, PromptItemOptionType } from "types/app";
 
 export default function ImagePromptManager({
@@ -68,7 +69,7 @@ export default function ImagePromptManager({
           referenceImage: {
             required: false,
             minCount: 0,
-            maxCount: IMAGE_REF_LIMIT_BY_PROVIDER.google,
+            maxCount: (AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>).google,
             enforceInCustomMode: true,
           },
         },

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 import { dbConnect } from "libs/database/mongoose";
 import { MONGODB_USERS_URL } from "consts/env/server";
-import { currentPolicyConsents, CURRENT_ACCOUNT_POLICY } from "consts/legal/accountPolicy";
+import { buildAccountConsentRecords, getSignupPolicyOffer } from "libs/server-utils/legal/accountPolicyDecision";
 import { UserIndexSchema, type IUserIndexDocument } from "models/user";
 import { accountIdentityHash } from "libs/server-utils/auth/accountIdentity";
 import {
@@ -22,9 +22,25 @@ function isStrongEnough(password: string) {
   return password.length >= 10 && /[A-Za-z]/.test(password) && /\d/.test(password);
 }
 
+function sameReleaseIdSet(value: unknown, expected: readonly string[]) {
+  if (!Array.isArray(value) || !value.every((releaseId) => typeof releaseId === "string")) return false;
+  const received = new Set(value);
+  const offered = new Set(expected);
+  return received.size === value.length && received.size === offered.size &&
+    [...offered].every((releaseId) => received.has(releaseId));
+}
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as
-    | { email?: unknown; password?: unknown; name?: unknown; terms?: unknown; privacy?: unknown }
+    | {
+        email?: unknown;
+        password?: unknown;
+        name?: unknown;
+        terms?: unknown;
+        privacy?: unknown;
+        releaseIds?: unknown;
+        manifestRevision?: unknown;
+      }
     | null;
   const email = String(body?.email || "").trim().toLowerCase();
   const password = String(body?.password || "");
@@ -70,6 +86,36 @@ export async function POST(request: Request) {
 
   let createdWpUserId = 0;
   try {
+    const offer = getSignupPolicyOffer();
+    if (offer.mode === "manifest" && (
+      !sameReleaseIdSet(body?.releaseIds, offer.releaseIds) ||
+      typeof body?.manifestRevision !== "string" ||
+      body.manifestRevision.length === 0
+    )) {
+      return NextResponse.json(
+        { ok: false, error: "정책 안내가 갱신되었습니다. 내용을 다시 확인해 주세요.", errorCode: "POLICY_RELEASE_MISMATCH" },
+        { status: 409 },
+      );
+    }
+    const agreedAt = new Date();
+    const method = "platform_email_signup" as const;
+    const releaseIds = offer.mode === "manifest" ? body?.releaseIds as string[] : offer.releaseIds;
+    const manifestRevision = offer.mode === "manifest" ? body?.manifestRevision as string : offer.manifestRevision;
+    const built = buildAccountConsentRecords({
+      method,
+      agreedAt,
+      releaseIds,
+      manifestRevision,
+    });
+    const consents = built.records;
+    if (built.warning === "MANIFEST_REVISION_MISMATCH") {
+      logger.warn("[auth/register] manifest revision mismatch accepted", {
+        expectedRevision: offer.manifestRevision,
+        receivedRevision: manifestRevision,
+        source: "platform_email_signup",
+      });
+    }
+
     if (await findWordPressUserByEmail(email)) {
       return NextResponse.json(
         { ok: false, error: "이미 가입된 이메일입니다. 로그인 또는 비밀번호 찾기를 이용해 주세요.", errorCode: "EMAIL_EXISTS" },
@@ -78,8 +124,16 @@ export async function POST(request: Request) {
     }
     const wpUser = await createWordPressAccount({ email, password, name });
     createdWpUserId = wpUser.id;
-    const consents = currentPolicyConsents("platform_email_signup");
-    await saveWordPressPolicyConsents(wpUser.id, consents);
+    if (offer.mode === "manifest") {
+      await saveWordPressPolicyConsents(wpUser.id, consents, {
+        releaseIds,
+        manifestRevision: manifestRevision as string,
+        agreedAt,
+        method,
+      });
+    } else {
+      await saveWordPressPolicyConsents(wpUser.id, consents);
+    }
 
     const conn = await dbConnect(MONGODB_USERS_URL);
     const UserIndexModel: mongoose.Model<IUserIndexDocument> =
@@ -118,7 +172,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { ok: true, uid: String(wpUser.id), policy: CURRENT_ACCOUNT_POLICY, emailVerificationRequired },
+      { ok: true, uid: String(wpUser.id), policy: offer.policy, policies: offer.policies, emailVerificationRequired },
       { status: 201 },
     );
   } catch (error) {
@@ -131,7 +185,9 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: coded.message || "통합회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+        error: coded.errorCode === "POLICY_RELEASE_UNAVAILABLE"
+          ? "정책 정보를 일시적으로 확인할 수 없습니다. 잠시 후 다시 시도해 주세요."
+          : coded.message || "통합회원가입을 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.",
         errorCode: coded.errorCode || "INTEGRATED_SIGNUP_FAILED",
       },
       { status: coded.status && coded.status >= 400 ? coded.status : 500 },

@@ -9,6 +9,7 @@ import { Button, Preloader } from "@amu-labs/ui";
 import { Lang, lang } from "components/module/i18n";
 import { ImageBox } from "components/module/image";
 import { SiteFooter, TopBar } from "components/module/layout";
+import PolicyNoticeBanner from "./PolicyNoticeBanner";
 import { useAuthStore } from "store/auth";
 import { useUserData } from "hooks/auth";
 import { getPosts } from "libs/api/wp/wp";
@@ -153,6 +154,8 @@ export default function HomePageClient() {
           <AmuLogo width={108} color="var(--text-primary)" className="relative top-[2px] hidden sm:block" />
         </div>
       </TopBar>
+
+      <PolicyNoticeBanner />
 
       {pendingHref && (
         <Preloader

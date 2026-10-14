@@ -1,8 +1,6 @@
 import "server-only";
 import type { RouteHintType, SystemPromptOptionsType } from "types/ai/prompt";
 import { buildSystemPrompt, estimateTokens, buildCommercePolicyPrompt } from "utils/ai";
-import { buildTutorsPolicyPrompt } from "utils/app";
-import { normalizeTutorsState } from "libs/services/tutors/tutorsState";
 import {
   buildCatalogSectionForPrompt,
   buildStoreKnowledgeContextForPrompt,
@@ -19,17 +17,13 @@ import { GAME_CONSTANTS as GC } from "consts/game";
 import type { UniverseType } from "types/game";
 import type { IPersonaItem } from "types/ai";
 import { DEFAULT_WORLD_UNIVERSE } from "consts/app";
-import { normalizeTutorConversationLevel, normalizeTutorTargetLanguage } from "consts/tutors";
 import { PROMPT_OPTION_CHAR_CAPS, SYSTEM_PROMPT_TRIM_CAPS } from "consts/ai/promptCaps";
-import { getTutorPersonaForPrompt } from "libs/database/tutors";
-import { safePolicyObj, deepMergeSafe } from "../api/apiSafetyHelper";
 import { MONGODB_SYSTEM_PERSONA_COLLECTION } from "consts/db";
 import { MONGODB_AI_URL } from "consts/env/server";
 import { loadConversationMemoryBlock } from "libs/server-utils/chat/conversationMemoryPipeline";
 import { toUnknownRecord, type UnknownRecord } from "utils/common/typeUtils";
 import {
   buildTutorServiceProjection,
-  projectTutorPolicyForPrompt,
   renderTutorSharedRolePrompt,
 } from "libs/server-utils/tutors/tutorGenesisAdapter";
 import { loadNarrativePromptProjection } from "libs/server-utils/narrative/narrativeProjection";
@@ -54,7 +48,6 @@ type SystemPersonaPromptDoc = {
   enabled?: boolean;
 };
 
-const TUTORS_POLICY_TAG = "AMU_TUTORS_POLICY";
 const CONVERSATION_MEMORY_TAG = "AMU_CONVERSATION_MEMORY";
 const NARRATIVE_RUNTIME_TAG = "AMU_NARRATIVE_RUNTIME";
 
@@ -132,7 +125,6 @@ async function getSystemPersonaPromptText(
 
 function baseKeyByRoute(routeHint: RouteHintType) {
   if (routeHint === "commerce") return "app.commerce.base";
-  if (routeHint === "tutors") return "app.tutors.base";
   return "app.game.base";
 }
 
@@ -195,60 +187,15 @@ export async function composeAuthoritativeSystemPrompt(args: {
    * Director를 이 요청 안에서 직접 해석해야 할 때 넘긴다. uid/universeId/characterId는 서버가 결정하므로
    * 호출부는 scene·session·provider·model·invoke만 지정한다. 실패는 static directive로 강등되고 예외를 던지지 않는다.
    */
-  narrativeDirectorRequest?: Omit<NarrativeDirectorRuntimeInput, "uid" | "universeId" | "narrativeProfileId">;
+  narrativeDirectorRequest?: Omit<NarrativeDirectorRuntimeInput, "uid" | "universeId" | "narrativeProfileId" | "consumer">;
   narrativeMemory?: string[];
 }) {
   const routeHint = args.routeHint;
 
-  // tutors일 때는 persona에서 universeId를 끌어올 수 있음
-  let universeId = (args.universeId || "").trim();
+  const universeId = (args.universeId || "").trim();
   const pid = (args.npcId || "").trim();
   const user = args.user || null;
   const userRec = toUnknownRecord(user);
-
-  // Tutors state는 여러 곳에서 쓰이니 한번만 normalize해서 재사용
-  let tutorsNorm: UnknownRecord | null = null;
-  try {
-    const rawState = userRec.__tutorsState;
-    tutorsNorm = rawState ? (normalizeTutorsState(rawState) as unknown as UnknownRecord) : null;
-  } catch {
-    tutorsNorm = null;
-  }
-
-  // tutors persona는 유저 tutors 컬렉션에서 로드
-  let tutorsPersona: UnknownRecord | null = null;
-  if (routeHint === "tutors" && user && pid) {
-    try {
-      tutorsPersona = (await getTutorPersonaForPrompt(user, pid)) as UnknownRecord | null;
-      const uid = String(tutorsPersona?.universeId || "").trim();
-      if (uid) universeId = uid; // 서버 권위 보정
-    } catch {
-      tutorsPersona = null;
-    }
-  }
-
-  // Tutors persona lock enforcement (서버 강제)
-  // "lock이 감지되면 pid 변경을 거부"하는 fail-closed 방어
-  if (routeHint === "tutors" && pid) {
-    const tutorsSelection = toUnknownRecord(tutorsNorm?.selection);
-    const lockedPid = String(
-      tutorsNorm?.lockedPersonaPid ||
-        tutorsNorm?.lockedPid ||
-        tutorsSelection.lockedPersonaPid ||
-        tutorsSelection.lockedPid ||
-        "",
-    ).trim();
-
-    if (lockedPid && lockedPid !== pid) {
-      const err = new Error("현재 세션에서 Tutors 페르소나가 잠겨 있어 변경할 수 없습니다.") as Error & {
-        errorCode?: string;
-        status?: number;
-      };
-      err.errorCode = "TUTORS_PERSONA_LOCKED";
-      err.status = 409;
-      throw err;
-    }
-  }
 
   const opt = args.promptOptions || {};
   const userInfo = toUnknownRecord(userRec.userInfo);
@@ -274,12 +221,6 @@ export async function composeAuthoritativeSystemPrompt(args: {
   const additionalInstructions = safeTrim(opt.additionalInstructions, promptCaps.additionalInstructions);
 
   const knowledgeContext = safeTrim(opt.knowledgeContext, promptCaps.knowledgeContext);
-  const tutorTargetLanguageOverride =
-    effectiveRouteHint === "tutors" ? normalizeTutorTargetLanguage(opt.tutorTargetLanguage, "") : "";
-  const tutorConversationLevelOverride =
-    effectiveRouteHint === "tutors" && opt.tutorConversationLevel
-      ? normalizeTutorConversationLevel(opt.tutorConversationLevel)
-      : "";
 
   // UniverseDetail 로드 (commerce only)
   const universeDetail = isCommerceUniverse && universeId ? await loadUniverseDetailForPrompt(universeId) : null;
@@ -333,21 +274,13 @@ ${additionalInstructions}`
     ? [customPromptInstructions, clientAdditionalBlock, serverFixedCommercePolicy].filter(Boolean).join("\n\n")
     : [additionalInstructions].filter(Boolean).join("\n\n");
 
-  // knowledgeContext:
-  // - commerce: 서버 storeKnowledge만 / tutors: 정책/소스 기반이 핵심 (클라 자유 텍스트 지식 주입 기본 차단)
+  // commerce는 서버 storeKnowledge를 사용하고 그 외 유니버스 대화는 요청의 지식 맥락을 사용한다.
   const finalKnowledgeContext = isCommerceUniverse
     ? serverStoreKnowledgeContext
-    : effectiveRouteHint === "tutors"
-      ? ""
-      : knowledgeContext;
+    : knowledgeContext;
 
   // 2) persona 조회
-  const persona =
-    effectiveRouteHint === "tutors"
-      ? tutorsPersona
-      : universeId && pid
-        ? await getPersonaForPrompt(universeId, pid)
-        : null;
+  const persona = universeId && pid ? await getPersonaForPrompt(universeId, pid) : null;
 
   // 3) SystemPersonaPrompt 조합
   const baseKey = baseKeyByRoute(effectiveRouteHint);
@@ -376,7 +309,7 @@ ${additionalInstructions}`
 
   const tutorServiceProjection = buildTutorServiceProjection({
     data: persona,
-    service: effectiveRouteHint === "tutors" ? "tutors" : "play",
+    service: "play",
   });
   const sharedRolePrompt = renderTutorSharedRolePrompt(tutorServiceProjection);
   const personaSystemPrompts = [basePrompt, personaPrompt, sharedRolePrompt].filter(Boolean).join("\n\n").trim();
@@ -386,37 +319,34 @@ ${additionalInstructions}`
   let intimacy = "0";
   let currentUserCharacter: UnknownRecord | null = null;
 
-  // tutors는 “유저 캐릭터” 개념이 없고, NPC(tutor)와 유저가 직접 대화하는 형태
-  if (routeHint !== "tutors") {
-    // 대화중인 NPC(=pid)의 mood/intimacy는 user의 personas/userPersonas에서 찾기
-    const relItem = universeId && pid ? findPersonaItemFromUser(user, universeId, pid) : null;
-    const relItemRec = toUnknownRecord(relItem);
-    const relMood = typeof relItemRec.mood === "string" ? String(relItemRec.mood).trim() : "";
-    mood = relMood ? safeTrim(relMood, 64) : "neutral";
-    intimacy = String(clampInt(relItemRec.intimacy, 0, 999));
+  // 대화중인 NPC(=pid)의 mood/intimacy는 user의 personas/userPersonas에서 찾기
+  const relItem = universeId && pid ? findPersonaItemFromUser(user, universeId, pid) : null;
+  const relItemRec = toUnknownRecord(relItem);
+  const relMood = typeof relItemRec.mood === "string" ? String(relItemRec.mood).trim() : "";
+  mood = relMood ? safeTrim(relMood, 64) : "neutral";
+  intimacy = String(clampInt(relItemRec.intimacy, 0, 999));
 
-    // currentUserCharacter는 selectedPersonas[universeId] 기반으로 서버에서 재구성
-    const selectedPersonas = toUnknownRecord(userRec.selectedPersonas);
-    const selPidRaw = universeId ? selectedPersonas[universeId] : "";
-    const selPid = String(selPidRaw || "").trim();
+  // currentUserCharacter는 selectedPersonas[universeId] 기반으로 서버에서 재구성
+  const selectedPersonas = toUnknownRecord(userRec.selectedPersonas);
+  const selPidRaw = universeId ? selectedPersonas[universeId] : "";
+  const selPid = String(selPidRaw || "").trim();
 
-    if (universeId && selPid) {
-      const userCharItem = findPersonaItemFromUser(user, universeId, selPid);
-      const userCharAbility = pickAbilityFromItem(userCharItem);
+  if (universeId && selPid) {
+    const userCharItem = findPersonaItemFromUser(user, universeId, selPid);
+    const userCharAbility = pickAbilityFromItem(userCharItem);
 
-      // getPersonaForPrompt는 "텍스트 필드만 최소 조회"
-      const userCharPersona = await getPersonaForPrompt(universeId, selPid).catch(() => null);
+    // getPersonaForPrompt는 "텍스트 필드만 최소 조회"
+    const userCharPersona = await getPersonaForPrompt(universeId, selPid).catch(() => null);
 
-      if (userCharPersona) {
-        currentUserCharacter = {
-          ...toUnknownRecord(userCharPersona),
-          ability: userCharAbility,
-        };
-      } else if (userCharAbility) {
-        currentUserCharacter = { pid: selPid, ability: userCharAbility }; // 최소 fallback
-      } else {
-        currentUserCharacter = null;
-      }
+    if (userCharPersona) {
+      currentUserCharacter = {
+        ...toUnknownRecord(userCharPersona),
+        ability: userCharAbility,
+      };
+    } else if (userCharAbility) {
+      currentUserCharacter = { pid: selPid, ability: userCharAbility }; // 최소 fallback
+    } else {
+      currentUserCharacter = null;
     }
   }
 
@@ -435,19 +365,12 @@ ${additionalInstructions}`
     addTranslation || "",
     isCommerceUniverse,
     !!args.log,
-    effectiveRouteHint,
   );
 
-  // Tutors: server authoritative policy prompt injection (+ persona override merge)
   let finalSystemPrompt = systemPrompt;
   const serverUserId = String(userRec.ID || "").trim();
   const conversationSelectedPersonas = toUnknownRecord(userRec.selectedPersonas);
-  const conversationUserPersonaId =
-    effectiveRouteHint === "tutors"
-      ? "tutors"
-      : universeId
-        ? String(conversationSelectedPersonas[universeId] || "").trim()
-        : "";
+  const conversationUserPersonaId = universeId ? String(conversationSelectedPersonas[universeId] || "").trim() : "";
   const conversationMemory =
     !isCommerceUniverse && serverUserId && conversationUserPersonaId && pid
       ? await loadConversationMemoryBlock({
@@ -466,12 +389,13 @@ ${additionalInstructions}`
   const selectedPlayerId = universeId ? String(selectedPersonasForNarrative[universeId] || "").trim() : "";
   const narrativeProfileId =
     String(args.narrativeProfileId || "").trim() ||
-    (effectiveRouteHint === "tutors" ? `tutors:${pid}` : selectedPlayerId ? `play:${selectedPlayerId}` : "");
+    (selectedPlayerId ? `play:${selectedPlayerId}` : "");
   // Director는 요청당 최대 1회다. 결과가 fallback이어도 static directive가 반환되므로 프롬프트는 항상 구성된다.
   const resolvedDirective =
     !isCommerceUniverse && serverUserId && universeId && args.narrativeDirectorRequest && !args.narrativeDirective
       ? await resolveNarrativeDirective({
           ...args.narrativeDirectorRequest,
+          consumer: "chat",
           uid: serverUserId,
           universeId,
           ...(narrativeProfileId ? { narrativeProfileId } : {}),
@@ -490,28 +414,6 @@ ${additionalInstructions}`
       : null;
   if (narrativeProjection?.content) {
     finalSystemPrompt = injectTaggedBlockOnce(finalSystemPrompt, NARRATIVE_RUNTIME_TAG, narrativeProjection.content);
-  }
-
-  if (effectiveRouteHint === "tutors") {
-    const tutorsSettings: UnknownRecord = {
-      ...toUnknownRecord(tutorsNorm?.settings),
-      ...(Array.isArray(tutorsNorm?.knowledgeSources) ? { knowledgeSources: tutorsNorm.knowledgeSources } : {}),
-    };
-
-    // 페르소나별 override (tutorsPolicy) 병합
-    const personaOverride = safePolicyObj(personaRec.tutorsPolicy);
-    const projectedPersonaOverride = personaOverride ? projectTutorPolicyForPrompt(personaOverride, tutorServiceProjection.service) : null;
-    const mergedSettingsBase = personaOverride
-      ? deepMergeSafe(tutorsSettings || {}, projectedPersonaOverride)
-      : tutorsSettings || null;
-    const mergedSettings = {
-      ...toUnknownRecord(mergedSettingsBase),
-      ...(tutorTargetLanguageOverride ? { targetLanguage: tutorTargetLanguageOverride } : {}),
-      ...(tutorConversationLevelOverride ? { conversationLevel: tutorConversationLevelOverride } : {}),
-    };
-
-    const policy = buildTutorsPolicyPrompt({ settings: mergedSettings });
-    finalSystemPrompt = injectTaggedBlockOnce(finalSystemPrompt, TUTORS_POLICY_TAG, policy);
   }
 
   const limit = PROMPT_LIMITS.systemPrompt;

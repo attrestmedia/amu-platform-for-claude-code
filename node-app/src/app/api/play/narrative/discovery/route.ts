@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { PLAY_FEATURE_KEYS } from "consts/system/featureRollout";
 import { withAuth } from "libs/server-utils/api/apiMiddleware";
 import type { AuthenticatedUserType } from "libs/server-utils/api/_helpers";
 import {
@@ -6,6 +7,7 @@ import {
   getPlayNarrativeBundle,
   resolvePlayDiscoveryEvent,
 } from "libs/server-utils/play/playNarrativeAdapter";
+import { logger } from "utils/log";
 import { toUnknownRecord } from "utils/common";
 
 export const runtime = "nodejs";
@@ -13,7 +15,7 @@ export const runtime = "nodejs";
 /**
  * @docHint
  * @purpose Play 파일럿 discovery 이벤트 API (activation·attempt·state 조회)
- * @process 인증 UID 사용  서버 권위 판정  idempotencyKey 기반 중복 방지  Personal Canon event로만 반영
+ * @process 인증 UID 사용  서버 권위 difficulty 판정  입력 키 존재 경고  idempotencyKey 기반 중복 방지
  * @domain play-narrative
  * @scope play-api
  */
@@ -44,7 +46,7 @@ export const GET = withAuth(
   },
   undefined,
   "play/narrative:read",
-  { bodyParser: "none" },
+  { bodyParser: "none", featureAccess: PLAY_FEATURE_KEYS.narrativeDiscovery },
 );
 
 export const POST = withAuth(
@@ -61,13 +63,16 @@ export const POST = withAuth(
         return NextResponse.json({ ok: true, action: "activate", data: result }, { headers: { "Cache-Control": "no-store" } });
       }
       if (input.action === "attempt") {
+        if (Object.prototype.hasOwnProperty.call(input, "difficulty")) {
+          logger.warn("[play/narrative/discovery] client difficulty ignored; using server-owned capability", {
+            clientDifficultyProvided: true,
+          });
+        }
         const playerCharacterId = String(input.playerCharacterId || "").trim();
-        const difficulty = Number(input.difficulty);
         const result = await resolvePlayDiscoveryEvent({
           uid,
           playerCharacterId,
           idempotencyKey,
-          difficulty: Number.isFinite(difficulty) ? difficulty : undefined,
         });
         return NextResponse.json({ ok: true, action: "attempt", data: result }, { headers: { "Cache-Control": "no-store" } });
       }
@@ -82,5 +87,5 @@ export const POST = withAuth(
   },
   undefined,
   "play/narrative:write",
-  { bodyParser: "json" },
+  { bodyParser: "json", featureAccess: PLAY_FEATURE_KEYS.narrativeDiscovery },
 );

@@ -43,12 +43,6 @@ export {
 export { getNpcUsageModel } from "./NpcUsageSchema";
 export { type IConversationSessionDoc, ConversationSessionSchema } from "./ConversationSessionSchema";
 export { type IConversationMessageDoc, ConversationMessageSchema } from "./ConversationMessageSchema";
-export {
-  type ITutorsAssistantTtsJobDocument,
-  type TutorsAssistantTtsJobStatusType,
-  TutorsAssistantTtsJobSchema,
-  TUTORS_ASSISTANT_TTS_JOB_STATUS_TYPES,
-} from "./TutorsAssistantTtsJobSchema";
 export { type IConversationRawBackupDoc, ConversationRawBackupSchema } from "./ConversationRawBackupSchema";
 export {
   type INarrativePrivacyPreferenceDocument,

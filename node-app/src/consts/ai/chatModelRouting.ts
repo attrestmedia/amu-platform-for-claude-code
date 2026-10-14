@@ -1,4 +1,7 @@
 import type { TextProviderType } from "types/ai";
+import { AI_AMU_CHAT_FALLBACK_CHAIN } from "./generated/modelCatalog.generated";
+import type { AssertAssignable } from "./catalogShapeAssertion";
+
 
 /**
  * @docHint
@@ -14,13 +17,11 @@ export type AmuChatFallbackCandidate = {
   modelName: string;
 };
 
-// 서비스 역할 기본값과 사용자의 선호 모델은 분리한다. 이 순서는 운영 승인 정책이다.
-export const AMU_CHAT_APPROVED_FALLBACK_CHAIN = [
-  { key: "zai:glm-5.3-flash", provider: "zai", modelName: "glm-5.3-flash" },
-  { key: "openai:gpt-5.6-luna", provider: "openai", modelName: "gpt-5.6-luna" },
-  { key: "google:gemini-3.5-flash-lite", provider: "google", modelName: "gemini-3.5-flash-lite" },
-] as const satisfies readonly AmuChatFallbackCandidate[];
+export type ChatModelRoutingCanonicalShape = [
+  AssertAssignable<typeof AI_AMU_CHAT_FALLBACK_CHAIN, readonly AmuChatFallbackCandidate[]>,
+];
 
+// 서비스 역할 기본값과 사용자의 선호 모델은 분리한다. 이 순서는 운영 승인 정책이다.
 type CatalogCandidate = { provider: string; modelName: string; key?: string };
 
 export function buildAmuChatFallbackChain(
@@ -28,9 +29,9 @@ export function buildAmuChatFallbackChain(
   availableProviders: ReadonlySet<string>,
 ): AmuChatFallbackCandidate[] {
   const catalogKeys = new Set(
-    catalog.map((item) => item.key || `${String(item.provider).toLowerCase()}:${String(item.modelName)}`),
+    catalog.map((item) => `${String(item.provider).toLowerCase()}:${String(item.modelName)}`),
   );
-  return AMU_CHAT_APPROVED_FALLBACK_CHAIN.filter(
+  return AI_AMU_CHAT_FALLBACK_CHAIN.filter(
     (candidate) => catalogKeys.has(candidate.key) && availableProviders.has(candidate.provider),
   ).map((candidate) => ({ ...candidate }));
 }

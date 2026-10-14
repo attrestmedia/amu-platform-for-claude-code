@@ -12,7 +12,7 @@ import { extractCodedError } from "utils/common";
  * @domain system-control
  * @scope admin-api
  *
- * EL-004/EL-303. 승인 목록(ELEVENLABS_APPROVED_VOICE_CATALOG)에 넣을 voiceId·요율·권리를 확인하기 위한
+ * EL-004/EL-303. 승인 목록(AI_ELEVENLABS_APPROVED_VOICE_CATALOG)에 넣을 voiceId·요율·권리를 확인하기 위한
  * **조회 전용** 경로다. voiceId는 계정에 귀속된 opaque 값이라 추측할 수 없고, 요율(credit multiplier)은
  * Library 공유 voice에만 붙으므로 category를 함께 봐야 한다.
  *

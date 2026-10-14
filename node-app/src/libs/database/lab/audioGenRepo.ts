@@ -65,6 +65,7 @@ export async function createAudioGenJob(args: {
   manifestHash: string;
   segmentCount: number;
   billing?: Record<string, unknown>;
+  pricingSnapshot?: IAudioGenJobDocument["pricingSnapshot"];
 }) {
   const model = await getJobModel();
   const doc = await model.create({
@@ -83,6 +84,7 @@ export async function createAudioGenJob(args: {
     manifestHash: safe(args.manifestHash),
     segmentCount: Math.max(1, Number(args.segmentCount || 1)),
     status: "queued",
+    ...(args.pricingSnapshot ? { pricingSnapshot: args.pricingSnapshot } : {}),
     billing: args.billing || {},
     assets: [],
     completedSegments: [],
@@ -196,6 +198,8 @@ export async function markStaleRunningAudioGenJobUnknown(args: { jobId: string; 
 
 export async function updateAudioGenJobBilling(args: {
   jobId: string;
+  pricingRevision?: string;
+  reservedUsage?: IAudioGenJobDocument["billing"]["reservedUsage"];
   reserveOperationId?: string;
   reservedCoins?: number;
   reservedCharacters?: number;
@@ -207,6 +211,8 @@ export async function updateAudioGenJobBilling(args: {
   actualCoins?: number;
   refundedCoins?: number;
   reconciliationRequired?: boolean;
+  settlementState?: IAudioGenJobDocument["billing"]["settlementState"];
+  reconciliationCode?: string;
 }) {
   const $set: Record<string, unknown> = { updatedAt: new Date() };
   for (const [key, value] of Object.entries(args)) {
@@ -252,7 +258,7 @@ export async function markAudioGenJobFailed(args: {
   code: string;
   message: string;
   status?: Extract<AudioGenJobStatusType, "failed" | "cancelled" | "unknown_outcome">;
-  billing?: Pick<IAudioGenJobDocument["billing"], "actualCoins" | "refundedCoins" | "generatedCharacters" | "settledCharacters" | "settlementOperationId" | "settlementOperationIds">;
+  billing?: Pick<IAudioGenJobDocument["billing"], "actualCoins" | "refundedCoins" | "generatedCharacters" | "settledCharacters" | "settlementOperationId" | "settlementOperationIds" | "reconciliationRequired" | "settlementState" | "reconciliationCode">;
 }) {
   return await (await getJobModel()).findOneAndUpdate(
     { jobId: safe(args.jobId), status: { $in: ["queued", "running"] } },
@@ -266,6 +272,28 @@ export async function markAudioGenJobFailed(args: {
         ...(args.billing?.settledCharacters === undefined ? {} : { "billing.settledCharacters": Math.max(0, Math.floor(Number(args.billing.settledCharacters))) }),
         ...(args.billing?.settlementOperationId ? { "billing.settlementOperationId": safe(args.billing.settlementOperationId) } : {}),
         ...(args.billing?.settlementOperationIds ? { "billing.settlementOperationIds": uniqueStrings(args.billing.settlementOperationIds) } : {}),
+        ...(args.billing?.reconciliationRequired === undefined ? {} : { "billing.reconciliationRequired": args.billing.reconciliationRequired }),
+        ...(args.billing?.settlementState === undefined ? {} : { "billing.settlementState": args.billing.settlementState }),
+        ...(args.billing?.reconciliationCode === undefined ? {} : { "billing.reconciliationCode": safe(args.billing.reconciliationCode) }),
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    },
+    { new: true },
+  ).lean<IAudioGenJobDocument>();
+}
+
+export async function markFailedAudioGenJobUnknown(args: { jobId: string; code: string; message: string }) {
+  const code = safe(args.code) || "AUDIO_UNKNOWN_OUTCOME";
+  return await (await getJobModel()).findOneAndUpdate(
+    { jobId: safe(args.jobId), status: "failed" },
+    {
+      $set: {
+        status: "unknown_outcome",
+        error: { code, message: safe(args.message) || "audio outcome requires reconciliation" },
+        "billing.reconciliationRequired": true,
+        "billing.settlementState": "reconciliation_required",
+        "billing.reconciliationCode": code,
         completedAt: new Date(),
         updatedAt: new Date(),
       },
@@ -293,6 +321,8 @@ export async function requeueFailedAudioGenJob(args: {
   uid: string;
   jobId: string;
   billing?: Record<string, unknown>;
+  request?: Record<string, unknown>;
+  pricingSnapshot?: IAudioGenJobDocument["pricingSnapshot"];
 }) {
   const billing = args.billing || {};
   const $set: Record<string, unknown> = {
@@ -304,6 +334,8 @@ export async function requeueFailedAudioGenJob(args: {
     startedAt: null,
     completedAt: null,
     updatedAt: new Date(),
+    ...(args.request ? { request: args.request } : {}),
+    ...(args.pricingSnapshot ? { pricingSnapshot: args.pricingSnapshot } : {}),
   };
   for (const [key, value] of Object.entries(billing)) {
     if (value !== undefined) $set[`billing.${key}`] = value;

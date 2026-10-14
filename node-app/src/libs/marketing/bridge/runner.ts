@@ -6,12 +6,15 @@ import {
   assertPricingPreflightOrThrow,
   billAIUsageOrThrow,
 } from "libs/services/aiUsageBilling";
+import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
 import { claimProviderOperationOrThrow } from "libs/server-utils/api/providerOperationGuard";
 import type { AiProviderType } from "types/ai";
 import {
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
   isXaiLongContextTieredTextModel,
   pickXaiPricingVariantByInputTokens,
+  pickClaudePricingVariantByInputTokens,
 } from "utils/ai/providerHelper";
 import { runClaudeCliBridge } from "./providers/claudeCli";
 import { runCodexCliBridge } from "./providers/codexCli";
@@ -301,12 +304,16 @@ export async function runMarketingBridge(request: MarketingBridgeRequest): Promi
   const billingProvider = (request.task === "validation"
     ? "claude"
     : request.generationConfig?.modelProvider) as AiProviderType | undefined;
-  const billingModelName = request.task === "validation" ? "claude-opus-5" : request.generationConfig?.modelName;
+  const billingModelName = request.task === "validation" ? "claude-opus-5-5" : request.generationConfig?.modelName;
   const needsTieredVariants =
     (billingProvider === "google" && isGoogleProTextModel(billingModelName)) ||
-    (billingProvider === "xai" && isXaiLongContextTieredTextModel(billingModelName));
+    (billingProvider === "xai" && isXaiLongContextTieredTextModel(billingModelName)) ||
+    (billingProvider === "claude" && isClaudeLongContextTieredTextModel(billingModelName));
   const billingVariant =
-    billingProvider === "xai" && isXaiLongContextTieredTextModel(billingModelName) ? "long" : undefined;
+    (billingProvider === "xai" && isXaiLongContextTieredTextModel(billingModelName)) ||
+    (billingProvider === "claude" && isClaudeLongContextTieredTextModel(billingModelName))
+      ? "long"
+      : undefined;
   if (billing && (!toSafeString(billing.uid) || !toSafeString(billing.app) || !billingProvider || !billingModelName)) {
     throw makeBridgeError("마케팅 AI 과금 대상이 유효하지 않습니다.", "MARKETING_BILLING_TARGET_INVALID", 400);
   }
@@ -346,6 +353,14 @@ export async function runMarketingBridge(request: MarketingBridgeRequest): Promi
       });
     }
 
+    if (billingProvider && billingModelName) {
+      await assertSystemModelEnabledOrThrow({
+        provider: billingProvider,
+        modelName: billingModelName,
+        modality: "text",
+      });
+    }
+
     providerDispatchStarted = true;
     const profile =
       request.task === "validation"
@@ -362,6 +377,8 @@ export async function runMarketingBridge(request: MarketingBridgeRequest): Promi
     const actualVariant =
       profile.executionProvider === "xai" && isXaiLongContextTieredTextModel(profile.modelName)
         ? pickXaiPricingVariantByInputTokens(inputTokens)
+        : profile.executionProvider === "claude" && isClaudeLongContextTieredTextModel(profile.modelName)
+          ? pickClaudePricingVariantByInputTokens(inputTokens)
         : undefined;
     const actualBillingKey = actualVariant
       ? resolveBillingKey(profile.executionProvider, profile.modelName, actualVariant)

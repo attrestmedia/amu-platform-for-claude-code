@@ -15,12 +15,10 @@ import { useUserDataStore } from "store/game";
 import { useGlobalStore } from "store/global";
 import { stableMsgId, toDate } from "utils/common";
 import { logger } from "utils/log";
-import { toUnknownRecord } from "utils/common/typeUtils";
 import { calculateIntimacyIncrease, createChatMessageMeta } from "utils/ai";
 import { ensureGuestId } from "utils/normalize";
 import type { SendGuestOptions } from "store/chat/aiChatStore";
-import { DEFAULT_WORLD_UNIVERSE, TUTORS_NAMESPACE_KEY } from "consts/app";
-import { completeTutorsSession } from "libs/api/tutors/progress";
+import { DEFAULT_WORLD_UNIVERSE } from "consts/app";
 import { settleNpcConversation } from "libs/api/game/npcIntimacyClient";
 import { buildNpcConversationResult } from "utils/game/npcConversationResult";
 import type { NpcConversationResult } from "types/game/npc-conversation-result";
@@ -39,7 +37,6 @@ export function useChat(
   modelOverride?: { provider?: SendGuestOptions["provider"]; modelName?: string },
 ) {
   const pathname = usePathname();
-  const isTutorsRoute = pathname.startsWith("/tutors");
   const isPlayRoute = pathname === "/play" || pathname.startsWith("/play/");
   const [messages, setMessages] = useState<IChatMessage[]>([]);
   const [conversationHistoryMessages, setConversationHistoryMessages] = useState<IChatMessage[]>([]);
@@ -57,8 +54,8 @@ export function useChat(
   const { universeId, isCommerceUniverse } = useUniverseData();
   const userData = useUserDataStore((state) => state.userData);
   const userPersonaId = userData?.selectedPersonas ? userData?.selectedPersonas[universeId] : "";
-  const effectiveUniverseId = isTutorsRoute ? String(character?.universeId || universeId || "").trim() : universeId;
-  const conversationUserPersonaId = isTutorsRoute ? TUTORS_NAMESPACE_KEY : userPersonaId;
+  const effectiveUniverseId = universeId;
+  const conversationUserPersonaId = userPersonaId;
 
   // 게스트 ID는 "커머스 + 비로그인"일 때만 필요 (부작용/불필요한 storage write 줄이기)
   const guestId = useMemo(() => {
@@ -105,11 +102,7 @@ export function useChat(
   // ----------------------------------
   const buildAiRequestOptions = useCallback(
     (overrides: Partial<SendGuestOptions> = {}): SendGuestOptions => {
-      const routeHint: SendGuestOptions["routeHint"] = isTutorsRoute
-        ? "tutors"
-        : isCommerceUniverse
-          ? "commerce"
-          : "ai";
+      const routeHint: SendGuestOptions["routeHint"] = isCommerceUniverse ? "commerce" : "ai";
 
       return {
         // 게스트는 커머스 + 비로그인일 때만
@@ -126,7 +119,6 @@ export function useChat(
     },
     [
       isLoggedIn,
-      isTutorsRoute,
       isCommerceUniverse,
       effectiveUniverseId,
       conversationUserPersonaId,
@@ -165,26 +157,6 @@ export function useChat(
       const clientId = meta.clientId;
       const sessionId = useMessageStore.getState().sessionId;
 
-      if (isTutorsRoute) {
-        // Tutors의 영속 저장 소유자는 tutors/chat route다. 클라이언트는 응답을 로컬에만 반영한다.
-        const alreadyPresent = useMessageStore
-          .getState()
-          .conversations[personaId]?.some((message) => message.sessionId === sessionId && message.clientId === clientId);
-        if (!alreadyPresent) {
-          useMessageStore.getState().addMessage(personaId, {
-            role: "assistant",
-            content,
-            sessionId,
-            timestamp: ts,
-            clientId,
-            ...(translation ? { translation } : {}),
-            ...(systemCode ? { systemCode } : {}),
-            ...(productCode ? { productCode } : {}),
-          });
-        }
-        return true;
-      }
-
       if (isLoggedIn && user?.id && conversationUserPersonaId) {
         await useMessageStore.getState().saveMessage({
           userId: user.id,
@@ -193,7 +165,7 @@ export function useChat(
           sessionId,
           content,
           isUser: false,
-          location: isTutorsRoute ? TUTORS_NAMESPACE_KEY : location,
+          location,
           systemCode,
           translation,
           productCode,
@@ -224,7 +196,7 @@ export function useChat(
       return false;
     },
     // React Compiler 의존성 추론(`user`)과 정합성을 맞추기 위해 `user?.id` 대신 `user` 사용
-    [isTutorsRoute, isLoggedIn, user, conversationUserPersonaId, isCommerceUniverse, effectiveUniverseId, guestId],
+    [isLoggedIn, user, conversationUserPersonaId, isCommerceUniverse, effectiveUniverseId, guestId],
   );
 
   // 실시간 친밀도 업데이트
@@ -235,7 +207,7 @@ export function useChat(
       messageText?: string,
       isFirstInteraction?: boolean,
     ) => {
-      if (isPlayRoute || isTutorsRoute || !isLoggedIn || !effectiveUniverseId || !character.pid) return null;
+      if (isPlayRoute || !isLoggedIn || !effectiveUniverseId || !character.pid) return null;
 
       try {
         const personaType = await getPersonaType(effectiveUniverseId, character.pid);
@@ -291,13 +263,13 @@ export function useChat(
         return null;
       }
     },
-    [isPlayRoute, isTutorsRoute, isLoggedIn, effectiveUniverseId, getPersonaType, getPersonaData, updatePersonaIntimacy],
+    [isPlayRoute, isLoggedIn, effectiveUniverseId, getPersonaType, getPersonaData, updatePersonaIntimacy],
   );
 
   // 유저 캐릭터 능력치 업데이트 함수 (updatePersonaOnMessage 함수 내부에 추가)
   const updateUserCharacterStats = useCallback(
     async (messageText: string, intimacyIncrease: number, isFirstInteraction: boolean) => {
-      if (isTutorsRoute || !isLoggedIn || !effectiveUniverseId || !userPersonaId) return;
+      if (!isLoggedIn || !effectiveUniverseId || !userPersonaId) return;
 
       try {
         // 유저 캐릭터는 항상 userPersonas에 포함
@@ -379,7 +351,6 @@ export function useChat(
       }
     },
     [
-      isTutorsRoute,
       isLoggedIn,
       effectiveUniverseId,
       userPersonaId,
@@ -393,7 +364,7 @@ export function useChat(
   // 메시지 전송 시 능력치 업데이트 함수
   const updatePersonaOnMessage = useCallback(
     async (character: IExtendedNpcData, messageText: string) => {
-      if (isTutorsRoute || !isLoggedIn || !effectiveUniverseId || !character.pid) return;
+      if (!isLoggedIn || !effectiveUniverseId || !character.pid) return;
 
       try {
         // 먼저 캐릭터가 어디에 존재하는지 확인
@@ -436,7 +407,6 @@ export function useChat(
       }
     },
     [
-      isTutorsRoute,
       isLoggedIn,
       effectiveUniverseId,
       addPersonaFromNPC,
@@ -638,13 +608,11 @@ export function useChat(
 
       const ts = fixed.timestamp;
       const clientId = fixed.clientId;
-      const assistantClientId = isTutorsRoute
-        ? `tutors-assistant:${clientId}`.slice(0, 160)
-        : createChatMessageMeta("assistant", { seed: "send-assistant" }).clientId;
+      const assistantClientId = createChatMessageMeta("assistant", { seed: "send-assistant" }).clientId;
 
       try {
         // 유저 메시지 저장
-        if (!isTutorsRoute && isLoggedIn && user?.id && conversationUserPersonaId && character.pid) {
+        if (isLoggedIn && user?.id && conversationUserPersonaId && character.pid) {
           const saved = await useMessageStore.getState().saveMessage(
             {
               userId: user.id,
@@ -653,7 +621,7 @@ export function useChat(
               sessionId,
               content: textToSend,
               isUser: true,
-              location: isTutorsRoute ? TUTORS_NAMESPACE_KEY : "chat-window",
+              location: "chat-window",
               translation: meta?.translation,
               clientId,
               timestamp: ts,
@@ -662,7 +630,7 @@ export function useChat(
           );
 
           // 저장 성공 이후에 persona 업데이트
-          if (saved && !isTutorsRoute) {
+          if (saved) {
             updatePersonaOnMessage(character, textToSend).catch((error) => {
               logger.warn("페르소나 능력치 업데이트 실패 (무시됨):", error);
             });
@@ -688,28 +656,14 @@ export function useChat(
           }
         }
 
-        let response = await sendToAI(textToSend, character.pid, {
+        const response = await sendToAI(textToSend, character.pid, {
           userClientId: clientId,
           assistantClientId,
           voiceInput: meta?.voiceInput,
           imageInput: meta?.imageInput,
         });
 
-        // provider operationId는 같은 userClientId에 묶여 있으므로, 저장 실패 때만 route를 재호출해
-        // provider 재호출·재과금 없이 message upsert를 한 번 재시도한다.
-        if (!response.isError && isTutorsRoute && toUnknownRecord(response.meta).saveOk === false) {
-          response = await sendToAI(textToSend, character.pid, {
-            userClientId: clientId,
-            assistantClientId,
-            voiceInput: meta?.voiceInput,
-            imageInput: meta?.imageInput,
-          });
-        }
-
-        const tutorPersistenceFailed =
-          isTutorsRoute && !response.isError && toUnknownRecord(response.meta).saveOk === false;
-
-        if (!response.isError && !tutorPersistenceFailed) {
+        if (!response.isError) {
           await persistAssistantMessage({
             personaId: character.pid,
             content: response.content,
@@ -723,7 +677,7 @@ export function useChat(
 
         }
 
-        if (!response.isError && !tutorPersistenceFailed) {
+        if (!response.isError) {
           // 성공 시 error-* 잔존 방지
           setMessages((prev) => prev.filter((m) => !String(m.id || "").startsWith("error-")));
           setLastMessageSender("assistant");
@@ -733,12 +687,7 @@ export function useChat(
 
         // 에러 메시지는 “rawMessage 우선”
         const latestType = useErrorStore.getState().errorType;
-        const errorMsg = tutorPersistenceFailed
-          ? lang({
-              ko: "메시지를 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
-              en: "The message could not be saved. Please try again shortly.",
-            })
-          : useErrorStore.getState().getErrorMessage(latestType, undefined, response.error);
+        const errorMsg = useErrorStore.getState().getErrorMessage(latestType, undefined, response.error);
 
         setMessages((prev) => [
           ...prev,
@@ -771,7 +720,6 @@ export function useChat(
       user,
       conversationUserPersonaId,
       effectiveUniverseId,
-      isTutorsRoute,
       isCommerceUniverse,
       guestId,
       sendToAI,
@@ -791,17 +739,6 @@ export function useChat(
       });
     }
     if (!character || !isLoggedIn) return null;
-
-    if (isTutorsRoute) {
-      if (!sessionId) return null;
-      try {
-        const result = await completeTutorsSession({ personaId: character.pid, sessionId });
-        logger.log("Tutors 세션 정산 완료", result.data);
-      } catch (error) {
-        logger.warn("Tutors 세션 정산 보류", error);
-      }
-      return null;
-    }
 
     if (!effectiveUniverseId) return null;
 
@@ -867,7 +804,6 @@ export function useChat(
   }, [
     character,
     isPlayRoute,
-    isTutorsRoute,
     isLoggedIn,
     effectiveUniverseId,
     conversationUserPersonaId,

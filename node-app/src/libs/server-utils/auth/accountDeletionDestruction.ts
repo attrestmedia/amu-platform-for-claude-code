@@ -235,7 +235,7 @@ export const DESTRUCTION_ALLOWLIST: readonly DestructionTarget[] = [
   { kind: "r2", bucket: "public", prefix: "persona-image-library/users/{uid}/", scope: "prefix" },
   // 음성 자산 — EL-002 정책(2026-09-10 사용자 승인): "이용자에 속한 자산은 계정 삭제 시 함께 삭제한다".
   // 대화 음성 키는 voice/chat/{routeHint}/{uid}/... 이고 routeHint가 uid 앞에 온다. 중간 와일드카드를
-  // 표현할 수 없으므로 routeHint 3종을 각각 나열한다(RouteHintType = ai | commerce | tutors).
+  // 표현할 수 없으므로 현행 routeHint와 기존 Tutors 저장 prefix를 각각 나열한다.
   { kind: "r2", bucket: "private", prefix: "voice/chat/ai/{uid}/", scope: "prefix" },
   { kind: "r2", bucket: "private", prefix: "voice/chat/tutors/{uid}/", scope: "prefix" },
   { kind: "r2", bucket: "private", prefix: "voice/chat/commerce/{uid}/", scope: "prefix" },

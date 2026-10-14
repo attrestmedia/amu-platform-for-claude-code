@@ -34,7 +34,7 @@ import {
   buildGenStudioTemplateUrl,
   resolveGenStudioCloseUrl,
 } from "utils/app/genStudioRouteContract";
-import { DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai";
+import { AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 import {
   GEN_STUDIO_CUSTOM_PROMPT_TEMPLATE_KEY,
   GEN_STUDIO_REALISTIC_CHARACTER_REFERENCE_TEMPLATE_KEY,
@@ -925,7 +925,7 @@ export function ImageStudioEditor(props: ImageStudioEditorProps) {
   const defaultImageModelByProvider = useMemo<Record<ImageProvider, string>>(
     () =>
       ({
-        ...DEFAULT_IMAGE_MODEL_BY_PROVIDER,
+        ...AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER,
         ...getCatalogDefaultModelByProvider(imageCatalogSection),
       }) as Record<ImageProvider, string>,
     [imageCatalogSection],

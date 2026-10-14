@@ -1,5 +1,6 @@
-import { DEFAULT_VIDEO_MODEL_BY_PROVIDER, VIDEO_MODEL_MAP } from "consts/ai";
-import { FIXED_COSTS } from "consts/payment";
+import { AI_DEFAULT_VIDEO_MODEL_BY_PROVIDER, AI_SELL_FIXED_COSTS, AI_VIDEO_CAPABILITIES } from "../../consts/ai/generated/modelCatalog.generated";
+import type { AssertAssignable } from "../../consts/ai/catalogShapeAssertion";
+
 
 export const VIDEO_GENERATION_MODES = [
   "text-to-video",
@@ -89,69 +90,14 @@ export type VideoCapability = {
   pricingVariant?: string;
 };
 
-const COMMON_ASPECT_RATIOS = ["16:9", "9:16", "1:1"] as const;
+export type VideoGenerationCanonicalShape = [
+  AssertAssignable<typeof AI_VIDEO_CAPABILITIES, readonly VideoCapability[]>,
+];
 
 /**
  * S4-01의 UI·서버 공통 capability fixture.
  * 운영 catalog가 capability를 제공하기 전까지는 안전한 최소 조합만 허용한다.
  */
-export const VIDEO_CAPABILITY_MATRIX: readonly VideoCapability[] = [
-  {
-    provider: "google",
-    modelName: DEFAULT_VIDEO_MODEL_BY_PROVIDER.google,
-    modes: ["text-to-video", "image-to-video", "reference-to-video"],
-    durations: [4, 6, 8],
-    resolutions: ["720p", "1080p"],
-    aspectRatios: COMMON_ASPECT_RATIOS,
-    audio: true,
-    maxReferenceImages: 1,
-    pricingVariant: "720p",
-  },
-  {
-    provider: "google",
-    modelName: VIDEO_MODEL_MAP.google[0],
-    modes: ["text-to-video", "image-to-video"],
-    durations: [4, 6, 8],
-    resolutions: ["720p", "1080p", "4K"],
-    aspectRatios: ["16:9", "9:16"],
-    audio: true,
-    maxReferenceImages: 1,
-    pricingVariant: "720p",
-  },
-  {
-    provider: "google",
-    modelName: VIDEO_MODEL_MAP.google[2],
-    modes: ["text-to-video", "image-to-video"],
-    durations: [4, 6, 8],
-    resolutions: ["720p", "1080p"],
-    aspectRatios: ["16:9", "9:16"],
-    audio: false,
-    maxReferenceImages: 1,
-    pricingVariant: "720p",
-  },
-  {
-    provider: "xai",
-    modelName: DEFAULT_VIDEO_MODEL_BY_PROVIDER.xai,
-    modes: ["text-to-video", "image-to-video", "reference-to-video", "extend"],
-    durations: [5, 10],
-    resolutions: ["480p", "720p", "1080p"],
-    aspectRatios: COMMON_ASPECT_RATIOS,
-    audio: false,
-    maxReferenceImages: 3,
-    pricingVariant: "720p",
-  },
-  {
-    provider: "zai",
-    modelName: DEFAULT_VIDEO_MODEL_BY_PROVIDER.zai,
-    modes: ["text-to-video", "image-to-video"],
-    durations: [5, 10],
-    resolutions: ["720p"],
-    aspectRatios: ["16:9"],
-    audio: false,
-    maxReferenceImages: 1,
-  },
-] as const;
-
 export type VideoGenerationValidationResult =
   | { ok: true; capability: VideoCapability }
   | { ok: false; reason: VideoGenerationRejectionReasonType };
@@ -170,7 +116,7 @@ export const VIDEO_GENERATION_REJECTION_REASONS = [
 export type VideoGenerationRejectionReasonType = (typeof VIDEO_GENERATION_REJECTION_REASONS)[number];
 
 function findCapability(provider: string | undefined, modelName: string | undefined) {
-  return VIDEO_CAPABILITY_MATRIX.find(
+  return (AI_VIDEO_CAPABILITIES as readonly VideoCapability[]).find(
     (item) =>
       item.provider === String(provider || "").trim().toLowerCase() &&
       item.modelName === String(modelName || "").trim(),
@@ -219,7 +165,7 @@ export function estimateVideoGenerationCoins(args: {
   resolution: string;
   pricing?: Record<string, { perSecond?: number; perVideo?: number }>;
 }): VideoGenerationCoinEstimate | null {
-  const pricing = args.pricing || (FIXED_COSTS as Record<string, { perSecond?: number; perVideo?: number }>);
+  const pricing = args.pricing || (AI_SELL_FIXED_COSTS as Record<string, { perSecond?: number; perVideo?: number }>);
   const base = `${args.provider}:${args.modelName}`;
   const candidates = [`${base}:${args.resolution}`, base];
   const billingKey = candidates.find((key) => pricing[key]) || "";
@@ -240,5 +186,5 @@ export function estimateVideoGenerationCoins(args: {
 }
 
 export function getDefaultVideoModel(provider: "google" | "xai" | "zai") {
-  return DEFAULT_VIDEO_MODEL_BY_PROVIDER[provider];
+  return AI_DEFAULT_VIDEO_MODEL_BY_PROVIDER[provider];
 }

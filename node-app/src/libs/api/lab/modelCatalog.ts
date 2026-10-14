@@ -1,13 +1,16 @@
-import { SPEECH_MODEL_CATALOG, type SpeechModelPolicy } from "consts/ai/speechModel";
+import type { SpeechModelPolicy } from "consts/ai/speechModel";
+import {
+  AI_SPEECH_MODEL_CATALOG,
+  AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER,
+  AI_DEFAULT_TEXT_MODEL_BY_PROVIDER,
+  AI_IMAGE_SELECTABLE_MODEL_MAP,
+  AI_IMAGE_REF_LIMIT_BY_PROVIDER,
+  AI_TEXT_MODEL_MAP,
+} from "consts/ai/generated/modelCatalog.generated";
 import { ELEVENLABS_DEFAULT_TTS_MODEL } from "consts/ai/voiceCatalog";
 import {
-  DEFAULT_IMAGE_MODEL_BY_PROVIDER,
-  DEFAULT_TEXT_MODEL_BY_PROVIDER,
-  IMAGE_REF_LIMIT_BY_PROVIDER,
-  IMAGE_SELECTABLE_MODEL_MAP,
   OPENAI_COMPAT_IMAGE_SIZES,
   OPENAI_COMPAT_UI_RATIOS,
-  TEXT_MODEL_MAP,
   supportsTextModelImageInput,
   supportsTextModelAudioInput,
   supportsTextModelAudioUnderstanding,
@@ -18,6 +21,7 @@ import {
   resolveUpstreamModelName,
 } from "consts/ai";
 import fetchClient from "libs/api/fetchClient";
+import type { ImageProviderType } from "types/ai";
 
 export type GenStudioModelCatalogClientType = "all" | "audio" | "image" | "text" | "video";
 
@@ -68,14 +72,14 @@ export type GenStudioModelCatalogClientResult = {
 };
 
 function buildTextSection(): GenStudioModelCatalogClientSection {
-  const providers = Object.entries(TEXT_MODEL_MAP).map(([provider, modelNames]) => {
+  const providers = Object.entries(AI_TEXT_MODEL_MAP).map(([provider, modelNames]) => {
     const models = [...modelNames].map((modelName) => ({
       name: modelName,
       displayName: modelName,
       upstreamModelName: resolveUpstreamModelName(provider, modelName),
       enabled: true,
       adminOnly: false,
-      defaultModel: DEFAULT_TEXT_MODEL_BY_PROVIDER[provider as keyof typeof DEFAULT_TEXT_MODEL_BY_PROVIDER] === modelName,
+      defaultModel: AI_DEFAULT_TEXT_MODEL_BY_PROVIDER[provider as keyof typeof AI_DEFAULT_TEXT_MODEL_BY_PROVIDER] === modelName,
       recommendedModel: false,
       supportsImageInput: supportsTextModelImageInput(modelName),
       supportsAudioInput: supportsTextModelAudioInput(modelName),
@@ -83,7 +87,7 @@ function buildTextSection(): GenStudioModelCatalogClientSection {
       deprecated: false,
     }));
     const defaultModelName =
-      DEFAULT_TEXT_MODEL_BY_PROVIDER[provider as keyof typeof DEFAULT_TEXT_MODEL_BY_PROVIDER] || models[0]?.name || "";
+      AI_DEFAULT_TEXT_MODEL_BY_PROVIDER[provider as keyof typeof AI_DEFAULT_TEXT_MODEL_BY_PROVIDER] || models[0]?.name || "";
     return {
       provider,
       defaultModelName,
@@ -101,7 +105,9 @@ function buildTextSection(): GenStudioModelCatalogClientSection {
 }
 
 function buildImageSection(): GenStudioModelCatalogClientSection {
-  const providers = Object.entries(IMAGE_SELECTABLE_MODEL_MAP).map(([provider, modelNames]) => {
+  const providers = Object.entries(
+    AI_IMAGE_SELECTABLE_MODEL_MAP as Readonly<Record<ImageProviderType, readonly string[]>>,
+  ).map(([provider, modelNames]) => {
     const models = [...modelNames].map((modelName) => ({
       name: modelName,
       displayName: getImageModelAliasLabel(provider, modelName) || modelName,
@@ -115,17 +121,17 @@ function buildImageSection(): GenStudioModelCatalogClientSection {
       sizes: provider === "google" ? [...getSupportedGoogleImageSizes(modelName)] : [...OPENAI_COMPAT_IMAGE_SIZES],
       enabled: true,
       adminOnly: false,
-      defaultModel: DEFAULT_IMAGE_MODEL_BY_PROVIDER[provider as keyof typeof DEFAULT_IMAGE_MODEL_BY_PROVIDER] === modelName,
+      defaultModel: AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER[provider as keyof typeof AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER] === modelName,
       recommendedModel: false,
       deprecated: false,
     }));
     const defaultModelName =
-      DEFAULT_IMAGE_MODEL_BY_PROVIDER[provider as keyof typeof DEFAULT_IMAGE_MODEL_BY_PROVIDER] || models[0]?.name || "";
+      AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER[provider as keyof typeof AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER] || models[0]?.name || "";
     return {
       provider,
       defaultModelName,
       modelCount: models.length,
-      referenceLimit: IMAGE_REF_LIMIT_BY_PROVIDER[provider as keyof typeof IMAGE_REF_LIMIT_BY_PROVIDER],
+      referenceLimit: (AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[provider as ImageProviderType],
       models,
     };
   });
@@ -149,11 +155,11 @@ function buildVideoSection(): GenStudioModelCatalogClientSection {
 
 /**
  * EL-502 — audio(TTS) client section. 서버 route가 audio section을 아직 내려보내지 않으므로
- * client가 코드 정책(SPEECH_MODEL_CATALOG)에서 직접 조립해 round-trip을 보장한다.
+ * client가 canonical speech catalog에서 직접 조립해 round-trip을 보장한다.
  * 서비스 노출은 G-EL-PILOT 전까지 off이므로 enabled=false로 내려 UI가 임의 노출하지 않는다.
  */
 function buildAudioSection(): GenStudioModelCatalogClientSection {
-  const policies: readonly SpeechModelPolicy[] = SPEECH_MODEL_CATALOG;
+  const policies: readonly SpeechModelPolicy[] = AI_SPEECH_MODEL_CATALOG as readonly SpeechModelPolicy[];
   const models = policies
     .filter((policy) => policy.provider === "elevenlabs" && policy.roles.includes("speech_tts") && policy.billingUnit === "character")
     .map((policy) => ({

@@ -2,12 +2,16 @@ import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { USER_ROLES } from "consts/auth";
 import {
-  OPENAI_DEFAULT_TTS_MODEL,
   OPENAI_DEFAULT_TTS_SPEED,
   OPENAI_VOICE_PREVIEW_SAMPLE_TEXT,
   TTS_PREVIEW_ASSET_LIMIT,
-  getOpenAiVoiceCatalogEntry,
 } from "consts/ai";
+import {
+  ELEVENLABS_DEFAULT_TTS_MODEL,
+  ELEVENLABS_TTS_SPEED_RANGE,
+  getElevenLabsVoiceCatalogEntry,
+} from "consts/ai/voiceCatalog";
+import { PLAY_FEATURE_KEYS } from "consts/system/featureRollout";
 import { withAuth } from "libs/server-utils/api/apiMiddleware";
 import type { AuthenticatedUserType } from "libs/server-utils/api/_helpers";
 import { getUserRole } from "libs/server-utils/auth/userRoleUtils";
@@ -27,6 +31,7 @@ import {
 import { getUniverseDetail } from "libs/database/universe";
 import { buildSpeechBillingContext } from "libs/server-utils/audio/routeUtils";
 import { synthesizeSpeech } from "libs/server-utils/audio";
+import { PLAY_SPEECH_BUDGET_OWNER } from "libs/server-utils/audio/playCharacterChatSpeechRole";
 import {
   buildVoicePreviewStorageKey,
   deleteVoiceAssetByStorage,
@@ -81,8 +86,10 @@ function normalizeSource(raw: unknown): TtsPreviewSource {
 }
 
 function clampSpeed(raw: unknown) {
-  const value = Number(raw ?? OPENAI_DEFAULT_TTS_SPEED);
-  return Number.isFinite(value) ? Math.min(4, Math.max(0.25, value)) : OPENAI_DEFAULT_TTS_SPEED;
+  const value = Number(raw ?? 1);
+  return Number.isFinite(value)
+    ? Math.min(ELEVENLABS_TTS_SPEED_RANGE.max, Math.max(ELEVENLABS_TTS_SPEED_RANGE.min, value))
+    : 1;
 }
 
 function buildBaseKey(args: {
@@ -122,9 +129,11 @@ function toDto(asset: UnknownRecord, user: AuthenticatedUserType) {
 
 async function getHandler(_data: unknown, user: AuthenticatedUserType, request: NextRequest) {
   const params = new URL(request.url).searchParams;
-  const voiceId = String(params.get("voiceId") || "").trim().toLowerCase();
-  const entry = getOpenAiVoiceCatalogEntry(voiceId);
-  if (!entry) return NextResponse.json({ ok: false, error: "UNSUPPORTED_VOICE_ID" }, { status: 400 });
+  const voiceId = String(params.get("voiceId") || "").trim();
+  const entry = getElevenLabsVoiceCatalogEntry(voiceId);
+  if (!entry || entry.rightsStatus !== "verified_commercial" || entry.usage !== "production") {
+    return NextResponse.json({ ok: false, error: "UNSUPPORTED_VOICE_ID" }, { status: 400 });
+  }
 
   const rows = await listTtsPreviewAssets({
     uid: uidOf(user),
@@ -141,15 +150,17 @@ async function postHandler(data: UnknownRecord, user: AuthenticatedUserType) {
   const uid = uidOf(user);
   if (!uid) return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
 
-  const voiceId = String(data.voiceId || "").trim().toLowerCase();
-  const entry = getOpenAiVoiceCatalogEntry(voiceId);
-  if (!entry) return NextResponse.json({ ok: false, error: "UNSUPPORTED_VOICE_ID" }, { status: 400 });
+  const voiceId = String(data.voiceId || "").trim();
+  const entry = getElevenLabsVoiceCatalogEntry(voiceId);
+  if (!entry || entry.rightsStatus !== "verified_commercial" || entry.usage !== "production") {
+    return NextResponse.json({ ok: false, error: "UNSUPPORTED_VOICE_ID" }, { status: 400 });
+  }
 
   const source = normalizeSource(data.source);
   const text = source === "default" ? OPENAI_VOICE_PREVIEW_SAMPLE_TEXT : normalizeText(data.text);
   if (!text) return NextResponse.json({ ok: false, error: "PREVIEW_TEXT_REQUIRED" }, { status: 400 });
 
-  const modelName = String(data.modelName || OPENAI_DEFAULT_TTS_MODEL).trim().slice(0, 120);
+  const modelName = String(data.modelName || ELEVENLABS_DEFAULT_TTS_MODEL).trim().slice(0, 120);
   const locale = normalizeLocale(data.locale);
   const visibility = normalizeVisibility(data.visibility);
   const universeId = String(data.universeId || "").trim().slice(0, 128);
@@ -157,10 +168,10 @@ async function postHandler(data: UnknownRecord, user: AuthenticatedUserType) {
   const universeDetail = source === "custom" ? await getUniverseDetail(universeId).catch(() => null) : null;
   const speed =
     source === "default"
-      ? OPENAI_DEFAULT_TTS_SPEED
+      ? 1
       : clampSpeed(universeDetail?.metadata?.voiceConfig?.defaultTtsSpeed);
 
-  const baseKey = buildBaseKey({ provider: "openai", modelName, voiceId: entry.voiceId, locale, text, speed });
+  const baseKey = buildBaseKey({ provider: "elevenlabs", modelName, voiceId: entry.voiceId, locale, text, speed });
   const dedupeKey = buildTtsPreviewDedupeKey({ uid, baseKey, visibility });
   const reusable = await findReusableTtsPreviewAsset({ uid, baseKey, visibility });
   if (reusable) {
@@ -220,33 +231,33 @@ async function postHandler(data: UnknownRecord, user: AuthenticatedUserType) {
 
   let uploadedStorage: VoiceAssetStorageMeta | null = null;
   try {
+    const speechBillingContext = buildSpeechBillingContext({
+      user,
+      routeHint: "ai",
+      universeId,
+      sessionId: "voice-preview",
+      npcId: `voice-preview:${entry.voiceId}`,
+      clientId: assetId,
+      operation: "speech_synthesize",
+    });
     const result = await synthesizeSpeech({
-      provider: "openai",
+      user,
+      provider: "elevenlabs",
       modelName,
       text,
       speed,
       locale,
-      routeHint: "tutors",
+      routeHint: "ai",
       voiceProfile: {
-        provider: "openai",
+        provider: "elevenlabs",
         voiceId: entry.voiceId,
         modelName,
         locale,
-        instructions: entry.instructions,
-        source: "request-override",
-        score: 1000,
-        matchedTags: [...entry.tags],
-        matchedReasons: ["voice preview request"],
       },
-      billing: buildSpeechBillingContext({
-        user,
-        routeHint: "tutors",
-        universeId,
-        sessionId: "voice-preview",
-        npcId: `voice-preview:${entry.voiceId}`,
-        clientId: assetId,
-        operation: "speech_synthesize",
-      }),
+      billing: {
+        ...speechBillingContext,
+        meta: { ...speechBillingContext.meta, budgetOwner: PLAY_SPEECH_BUDGET_OWNER },
+      },
     });
 
     if (result.audioBuffer.length > MAX_PREVIEW_AUDIO_BYTES) {
@@ -292,7 +303,10 @@ async function postHandler(data: UnknownRecord, user: AuthenticatedUserType) {
       billingCharged: result.meta?.billingCharged === true,
     });
   } catch (error) {
-    const errorCode = error instanceof Error ? error.message : "VOICE_PREVIEW_GENERATION_FAILED";
+    const errorCode = String(
+      (error as { errorCode?: unknown })?.errorCode ||
+        (error instanceof Error ? error.message : "VOICE_PREVIEW_GENERATION_FAILED"),
+    );
     if (uploadedStorage) {
       await deleteVoiceAssetByStorage(uploadedStorage).catch(() => false);
     }
@@ -301,5 +315,9 @@ async function postHandler(data: UnknownRecord, user: AuthenticatedUserType) {
   }
 }
 
-export const GET = withAuth(getHandler, undefined, "speech/voice-previews:get");
-export const POST = withAuth(postHandler, undefined, "speech/voice-previews:post");
+export const GET = withAuth(getHandler, undefined, "speech/voice-previews:get", {
+  featureAccess: PLAY_FEATURE_KEYS.characterChatVoice,
+});
+export const POST = withAuth(postHandler, undefined, "speech/voice-previews:post", {
+  featureAccess: PLAY_FEATURE_KEYS.characterChatVoice,
+});

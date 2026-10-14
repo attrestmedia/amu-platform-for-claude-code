@@ -23,6 +23,12 @@ export type TutorPlayProjectionResult = TutorPlayProjectionDecision & {
   beatApplied: boolean;
   relationApplied: boolean;
   projectionId: string | null;
+  reconciliationRequired?: boolean;
+};
+
+export type TutorPlayProjectionDependencies = {
+  applyNarrativeOutcome?: typeof applyNarrativeOutcome;
+  releaseTutorPlayProjection?: typeof releaseTutorPlayProjection;
 };
 
 function id(value: unknown, max = 160) {
@@ -58,7 +64,9 @@ export async function projectTutorLearningToPlay(input: {
   beatId: string;
   playerCharacterInstanceId: string;
   evaluation: ServerTutorLearningEvaluation;
-}) : Promise<TutorPlayProjectionResult> {
+}, dependencies: TutorPlayProjectionDependencies = {}): Promise<TutorPlayProjectionResult> {
+  const applyOutcome = dependencies.applyNarrativeOutcome || applyNarrativeOutcome;
+  const releaseProjection = dependencies.releaseTutorPlayProjection || releaseTutorPlayProjection;
   const runtime = resolveTutorPlayProjectionRuntimeConfig();
   if (!runtime.enabled) return blocked("feature_disabled");
   if (!runtime.dailyXpCap) return blocked("daily_cap_required");
@@ -101,6 +109,9 @@ export async function projectTutorLearningToPlay(input: {
   if (reservation.ledger.status === "capped") {
     return blocked("daily_cap_reached", decision);
   }
+  if (reservation.inProgress) {
+    return blocked("projection_in_progress", decision);
+  }
   if (reservation.ledger.status !== "reserved") {
     return blocked("projection_write_failed", decision);
   }
@@ -113,7 +124,7 @@ export async function projectTutorLearningToPlay(input: {
       action: { type: "answer_evaluated", beatId: id(input.beatId), passed: true },
     });
     if (!beatOutcome) throw new Error("TUTOR_PLAY_BEAT_OUTCOME_FAILED");
-    const beatResult = await applyNarrativeOutcome({
+    const beatResult = await applyOutcome({
       uid: input.uid,
       universeId: input.universeId,
       narrativeProfileId: input.narrativeProfileId,
@@ -137,7 +148,7 @@ export async function projectTutorLearningToPlay(input: {
         },
       });
       if (!relationOutcome) throw new Error("TUTOR_PLAY_RELATION_OUTCOME_FAILED");
-      const relationResult = await applyNarrativeOutcome({
+      const relationResult = await applyOutcome({
         uid: input.uid,
         universeId: input.universeId,
         narrativeProfileId: input.narrativeProfileId,
@@ -154,7 +165,7 @@ export async function projectTutorLearningToPlay(input: {
         },
       });
       if (!affinityOutcome) throw new Error("TUTOR_PLAY_AFFINITY_OUTCOME_FAILED");
-      const affinityResult = await applyNarrativeOutcome({
+      const affinityResult = await applyOutcome({
         uid: input.uid,
         universeId: input.universeId,
         narrativeProfileId: input.narrativeProfileId,
@@ -173,16 +184,24 @@ export async function projectTutorLearningToPlay(input: {
     });
     return { ...decision, duplicate: false, beatApplied, relationApplied, projectionId: reservation.ledger.projectionId };
   } catch {
+    let reconciliationRequired = false;
     try {
-      await releaseTutorPlayProjection({
+      await releaseProjection({
         projectionId: reservation.ledger.projectionId,
         uid: input.uid,
         dailyBucket: decision.dailyBucket,
         xp: decision.xp,
       });
     } catch {
-      // reservation reconciliation worker must surface this before production enablement.
+      reconciliationRequired = true;
+      console.error("[tutorPlayProjection] reservation release failed; reconciliation required", { projectionId: reservation.ledger.projectionId });
     }
-    return { ...blocked("projection_write_failed", decision), beatApplied, relationApplied, projectionId: reservation.ledger.projectionId };
+    return {
+      ...blocked("projection_write_failed", decision),
+      beatApplied,
+      relationApplied,
+      projectionId: reservation.ledger.projectionId,
+      ...(reconciliationRequired ? { reconciliationRequired: true } : {}),
+    };
   }
 }

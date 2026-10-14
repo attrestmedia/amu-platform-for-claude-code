@@ -5,6 +5,8 @@ import {
   SPEECH_BUDGET_OWNERS,
   SPEECH_PROVIDER_ROUTABLE,
   SPEECH_RUNTIME_CONTROLS_SETTING_KEY,
+  applySpeechRuntimeManifest,
+  normalizeStoredSpeechRuntimeControls,
   normalizeSpeechRuntimeControls,
   resolveSpeechProviderBlock,
   type SpeechRuntimeControls,
@@ -25,6 +27,7 @@ import { logger } from "utils/log";
  * 조용히 풀리는 것**을 막는다. 프로세스 로컬이므로 컨테이너별로 각자 보유한다.
  */
 let lastKnownGoodControls: SpeechRuntimeControls | null = null;
+let lastKnownGoodStoredControls: SpeechRuntimeControls | null = null;
 
 /**
  * 조회 실패 시 폴백 방향.
@@ -47,9 +50,11 @@ export async function getSpeechRuntimeControls(): Promise<SpeechRuntimeControls>
       // 손상 값은 LKG를 갱신하지 않고 조회 실패와 같은 폴백을 적용한다.
       return fallbackSpeechRuntimeControls("invalid", { valueType: read.valueType });
     }
-    const resolved = normalizeSpeechRuntimeControls(
+    const storedControls = normalizeStoredSpeechRuntimeControls(
       read.status === "ok" ? (read.value as Partial<SpeechRuntimeControls>) : null,
     );
+    const resolved = applySpeechRuntimeManifest(storedControls);
+    lastKnownGoodStoredControls = storedControls;
     lastKnownGoodControls = resolved;
     return resolved;
   } catch (error) {
@@ -78,22 +83,47 @@ function fallbackSpeechRuntimeControls(reason: "invalid" | "error", detail: unkn
   return normalizeSpeechRuntimeControls(DEFAULT_SPEECH_RUNTIME_CONTROLS);
 }
 
+/**
+ * 원본 저장값을 manifest 적용 전 형태로 반환한다.
+ * 역할 범위 예산은 최상위 provider 상한과 분리해야 하므로 runtime 판정에서만 사용한다.
+ */
+export async function getStoredSpeechRuntimeControls(): Promise<SpeechRuntimeControls> {
+  try {
+    const read = await readSystemSetting(SPEECH_RUNTIME_CONTROLS_SETTING_KEY);
+    if (read.status === "invalid") {
+      fallbackSpeechRuntimeControls("invalid", { valueType: read.valueType });
+      return lastKnownGoodStoredControls ?? normalizeStoredSpeechRuntimeControls(DEFAULT_SPEECH_RUNTIME_CONTROLS);
+    }
+    const storedControls = normalizeStoredSpeechRuntimeControls(
+      read.status === "ok" ? (read.value as Partial<SpeechRuntimeControls>) : null,
+    );
+    lastKnownGoodStoredControls = storedControls;
+    lastKnownGoodControls = applySpeechRuntimeManifest(storedControls);
+    return storedControls;
+  } catch (error) {
+    fallbackSpeechRuntimeControls("error", error);
+    return lastKnownGoodStoredControls ?? normalizeStoredSpeechRuntimeControls(DEFAULT_SPEECH_RUNTIME_CONTROLS);
+  }
+}
+
 /** 테스트 전용 — 프로세스 로컬 캐시를 비운다. */
 export function __resetSpeechRuntimeControlsCache() {
   lastKnownGoodControls = null;
+  lastKnownGoodStoredControls = null;
 }
 
 export async function setSpeechRuntimeControls(args: {
   patch: Partial<SpeechRuntimeControls>;
   updatedBy: string;
 }): Promise<SpeechRuntimeControls> {
-  const current = await getSpeechRuntimeControls();
+  await getSpeechRuntimeControls();
+  const current = lastKnownGoodStoredControls ?? normalizeStoredSpeechRuntimeControls(DEFAULT_SPEECH_RUNTIME_CONTROLS);
   // undefined 값을 가진 키를 스프레드하면 소유 프로퍼티로 복사되어 current 값을 지운다.
   // 부분 PATCH가 kill switch·preset·voiceAllowlist를 조용히 초기화하던 결함을 막는다.
   const patch = Object.fromEntries(
     Object.entries(args.patch).filter(([, value]) => value !== undefined),
   ) as Partial<SpeechRuntimeControls>;
-  const merged = normalizeSpeechRuntimeControls({
+  const mergedStored = normalizeStoredSpeechRuntimeControls({
     ...current,
     ...patch,
     providerEnabled: { ...current.providerEnabled, ...(patch.providerEnabled || {}) },
@@ -107,16 +137,18 @@ export async function setSpeechRuntimeControls(args: {
       ]),
     ) as SpeechRuntimeControls["budgetByOwner"],
     concurrency: { ...current.concurrency, ...(patch.concurrency || {}) },
-    tutorsStt: { ...current.tutorsStt, ...(patch.tutorsStt || {}) },
   });
+  const merged = applySpeechRuntimeManifest(mergedStored);
 
   await setSystemSetting({
     key: SPEECH_RUNTIME_CONTROLS_SETTING_KEY,
-    value: merged,
+    value: mergedStored,
     description: "통합 어드민에서 관리하는 speech(TTS/STT) 런타임 제어",
     updatedBy: args.updatedBy,
   });
 
+  lastKnownGoodStoredControls = mergedStored;
+  lastKnownGoodControls = merged;
   return merged;
 }
 

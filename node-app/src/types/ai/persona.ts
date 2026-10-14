@@ -100,13 +100,6 @@ export interface IPersonaProfileMap {
   [variant: string]: string[];
 }
 
-/** Tutors 공개 랜딩 갤러리에 노출하는 최소 읽기 전용 데이터. */
-export interface PublicTutorGalleryItemType {
-  pid: string;
-  name: string;
-  imageUrl: string;
-}
-
 export interface IPersonaAuthorProfile {
   displayName?: string;
 }

@@ -27,7 +27,7 @@ export interface MagazineEmbedAllowedProps {
   allowlistedInitialValueKeys: string[];
 }
 
-export const MAGAZINE_DYNAMIC_MODULES = ["image_embed", "content_embed", "tutors_embed"] as const;
+export const MAGAZINE_DYNAMIC_MODULES = ["image_embed", "content_embed"] as const;
 export type MagazineDynamicModule = (typeof MAGAZINE_DYNAMIC_MODULES)[number];
 
 export const MAGAZINE_FALLBACK_VISIBILITIES = ["show", "omit"] as const;
@@ -48,7 +48,6 @@ export const MAGAZINE_REASON_CODES = [
   "allowlist_mismatch",
   "capability_not_allowed",
   "template_not_allowed",
-  "persona_not_allowed",
   "not_started",
   "expired",
   "auth_required",
@@ -294,12 +293,11 @@ export function validateSlot(value: unknown): { ok: true; slot: MagazineArticleS
   const common = ["slotId", "sectionId", "interactionRole", "intent", "moduleType", "staticFallback", "fallbackVisibility"];
   if (value.fallbackVisibility !== undefined && !stringIn(value.fallbackVisibility, MAGAZINE_FALLBACK_VISIBILITIES)) return { ok: false, reasonCode: "manifest_invalid" };
   if (value.fallbackVisibility === "omit" && !MAGAZINE_DYNAMIC_MODULES.includes(moduleType as MagazineDynamicModule)) return { ok: false, reasonCode: "manifest_invalid" };
-  if (moduleType === "image_embed" || moduleType === "content_embed" || moduleType === "tutors_embed") {
+  if (moduleType === "image_embed" || moduleType === "content_embed") {
     const allowed = [...common, "serviceKey", "templateKey", "contextKey", "allowedProps"];
     if (!validateCommonSlot(value, allowed) || !validIdentifier(value.contextKey) || !isValidMagazineEmbedAllowedProps(value.allowedProps)) return { ok: false, reasonCode: "manifest_invalid" };
-    const expected = moduleType === "tutors_embed" ? "tutors" : "gen-studio";
-    if (value.serviceKey !== expected) return { ok: false, reasonCode: "unknown_service" };
-    if (moduleType !== "tutors_embed" && !validSlug(value.templateKey)) return { ok: false, reasonCode: "manifest_invalid" };
+    if (value.serviceKey !== "gen-studio") return { ok: false, reasonCode: "unknown_service" };
+    if (!validSlug(value.templateKey)) return { ok: false, reasonCode: "manifest_invalid" };
     return { ok: true, slot: value as unknown as MagazineArticleSlot };
   }
 
@@ -412,7 +410,6 @@ export function evaluateMagazineEmbedRegistry(args: {
   if (entry.productMaturity === "pilot" && (!expiresAt || expiresAt.getTime() <= now)) return { enabled: false, reasonCode: "expired" };
   if (!refMatched(entry, declaration.contentRef)) return { enabled: false, reasonCode: "allowlist_mismatch" };
   if (!includesString(entry.allowedTemplateKeys, slot.templateKey || "")) return { enabled: false, reasonCode: "template_not_allowed" };
-  if (slot.moduleType === "tutors_embed" && !includesString(entry.allowedTutorPersonaIds, slot.contextKey || "")) return { enabled: false, reasonCode: "persona_not_allowed" };
   if (!entry.capabilities.length) return { enabled: false, reasonCode: "capability_not_allowed" };
   return { enabled: true, entry };
 }
@@ -440,7 +437,6 @@ export function validateMagazineLaunchClaims(args: {
   if ((expiresAt && expiresAt.getTime() <= now) || (entry.productMaturity === "pilot" && !expiresAt)) return { ok: false as const, reasonCode: "expired" as const };
   if (!refMatched(entry, claims.contentRef)) return { ok: false as const, reasonCode: "allowlist_mismatch" as const };
   if (!includesString(entry.allowedTemplateKeys, claims.templateKey || "")) return { ok: false as const, reasonCode: "template_not_allowed" as const };
-  if (claims.serviceKey === "tutors" && !includesString(entry.allowedTutorPersonaIds, claims.contextKey || "")) return { ok: false as const, reasonCode: "persona_not_allowed" as const };
   return { ok: true as const };
 }
 

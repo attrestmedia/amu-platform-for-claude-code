@@ -20,6 +20,7 @@ export const RELATIONSHIP_PROPOSAL_POLICY = {
   maxOpenLoops: 12,
   maxPromptChars: 24_000,
   maxOutputTokens: 900,
+  thinkingBudgetTokens: 0,
   maxCallsPerSession: 2,
   cacheTtlSeconds: 300,
   sessionTtlSeconds: 900,

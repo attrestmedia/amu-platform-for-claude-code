@@ -59,11 +59,11 @@ type VoiceInputErrorCode =
   | "AUTH_REQUIRED"
   | "COIN_INSUFFICIENT"
   | "VOICE_DISABLED"
-  | "TUTORS_PERSONA_NOT_SELECTED"
   | "SPEECH_CONTEXT_MISSING"
   | "SPEECH_TIMEOUT"
   | "UNSUPPORTED_AUDIO_FORMAT"
   | "SPEECH_BILLING_FAILED"
+  | "SPEECH_AUDIENCE_RESTRICTED"
   | "SPEECH_MODEL_UNAVAILABLE";
 
 export type VoiceResolvedInputMeta = {
@@ -108,8 +108,6 @@ type UseVoiceInputArgs = {
   language?: string;
   assessmentContext?: string;
   provider?: SpeechProviderType;
-  disclosureAcknowledged?: boolean;
-  disclosureVersion?: string;
   onResolvedInput: (nextInput: string, transcript: string, meta: VoiceResolvedInputMeta) => Promise<void> | void;
 };
 
@@ -180,7 +178,7 @@ function resolveServerVoiceErrorCode(error: unknown): VoiceInputErrorCode {
   if (errorCode === "AUTH_REQUIRED") return "AUTH_REQUIRED";
   if (errorCode === "COIN_INSUFFICIENT") return "COIN_INSUFFICIENT";
   if (errorCode === "VOICE_DISABLED") return "VOICE_DISABLED";
-  if (errorCode === "TUTORS_PERSONA_NOT_SELECTED") return "TUTORS_PERSONA_NOT_SELECTED";
+  if (errorCode === "SPEECH_AUDIENCE_RESTRICTED") return "SPEECH_AUDIENCE_RESTRICTED";
   if (errorCode === "UNSUPPORTED_AUDIO_FORMAT") return "UNSUPPORTED_AUDIO_FORMAT";
   if (errorCode === "PRICING_PREFLIGHT_FAILED" || errorCode === "SPEECH_BILLING_CONTEXT_REQUIRED") {
     return "SPEECH_BILLING_FAILED";
@@ -228,11 +226,6 @@ function resolveVoiceErrorMessage(errorCode: VoiceInputErrorCode | null) {
       return lang({ ko: "음성 전사를 위한 코인이 부족합니다.", en: "Not enough coins for voice transcription." });
     case "VOICE_DISABLED":
       return lang({ ko: "이 튜터에서는 음성 기능을 사용할 수 없습니다.", en: "Voice is disabled for this tutor." });
-    case "TUTORS_PERSONA_NOT_SELECTED":
-      return lang({
-        ko: "선택된 선생님 상태가 동기화되지 않았습니다. 선생님을 다시 선택해 주세요.",
-        en: "The selected tutor state is out of sync. Please select the tutor again.",
-      });
     case "SPEECH_CONTEXT_MISSING":
       return lang({
         ko: "음성 대화 준비 정보가 누락되었습니다. 화면을 새로고침하거나 선생님을 다시 선택해 주세요.",
@@ -249,6 +242,11 @@ function resolveVoiceErrorMessage(errorCode: VoiceInputErrorCode | null) {
       return lang({
         ko: "음성 전사 과금 설정을 확인해야 합니다.",
         en: "Voice transcription billing settings need to be checked.",
+      });
+    case "SPEECH_AUDIENCE_RESTRICTED":
+      return lang({
+        ko: "성인 확인 전에는 음성 기능을 사용할 수 없습니다. 텍스트로 계속해 주세요.",
+        en: "Voice is unavailable before adult verification. Continue with text instead.",
       });
     case "SPEECH_MODEL_UNAVAILABLE":
       return lang({
@@ -274,8 +272,6 @@ export function useVoiceInput(args: UseVoiceInputArgs) {
     language,
     assessmentContext,
     provider,
-    disclosureAcknowledged,
-    disclosureVersion,
     onResolvedInput,
   } = args;
 
@@ -308,7 +304,6 @@ export function useVoiceInput(args: UseVoiceInputArgs) {
   // 녹음 시작 시점의 baseInput 스냅샷 — ref가 아닌 state로 보관해
   // displayInput useMemo에서 render 중 ref 접근 경고(react-hooks/refs)를 피한다.
   const [baseInputSnapshot, setBaseInputSnapshot] = useState("");
-
   const isBrowserRecordingSupported = useMemo(() => {
     if (typeof window === "undefined") return false;
     return (
@@ -489,12 +484,7 @@ export function useVoiceInput(args: UseVoiceInputArgs) {
         logger.warn("[useVoiceInput] WAV 변환 실패, STT 전용 경로로 fallback:", error);
       }
       const userClientId = createChatMessageMeta("user", { seed: `voice-user:${npcId}` }).clientId;
-      // TUTORS-192: Tutors 경로는 OpenAI STT + chat_transcript로 고정한다. 클라이언트 provider/원음 분석
-      // 요청은 서버 판정 근거가 아니며, ElevenLabs/발음 분석 경로로 새지 않게 한다.
-      const isTutorsRoute = routeHint === "tutors";
-      const effectiveProvider = isTutorsRoute ? "openai" : provider || "openai";
-      const effectiveAudioAnalysisEnabled = isTutorsRoute ? false : directAudioAnalysisEnabled;
-      const response = await requestSpeechTranscription({
+      const requestArgs: Parameters<typeof requestSpeechTranscription>[0] = {
         file: uploadBlob,
         fileName,
         mimeType,
@@ -503,94 +493,97 @@ export function useVoiceInput(args: UseVoiceInputArgs) {
         npcId,
         sessionId,
         userClientId,
-        provider: effectiveProvider,
+        provider: provider || "elevenlabs",
         language,
         durationMs,
-        voiceIntent: effectiveAudioAnalysisEnabled ? "pronunciation_assessment" : "chat_transcript",
+        voiceIntent: directAudioAnalysisEnabled ? "pronunciation_assessment" : "chat_transcript",
         audioRetention: "transient",
-        assessmentConsent: effectiveAudioAnalysisEnabled,
+        assessmentConsent: directAudioAnalysisEnabled,
         analysisContext: assessmentContext,
-        disclosureAcknowledged,
-        disclosureVersion,
-      });
-
-      const transcript = String(response?.transcript || "").trim();
-      if (!transcript) {
-        setErrorCode("EMPTY_TRANSCRIPT");
-        cleanupRecorder();
-        return;
-      }
-
-      const nextInput = clampVoiceChatInput(mergeVoiceChatInput(baseInputSnapshot, transcript), maxChars);
-      const responseMeta = toUnknownRecord(response?.meta);
-      const acousticEvidence = toUnknownRecord(responseMeta.acousticEvidence);
-      const audioAnalysis = toUnknownRecord(responseMeta.audioAnalysis);
-      const unclearTokens = Array.isArray(acousticEvidence.unclearTokens)
-        ? acousticEvidence.unclearTokens
-            .map((item) => {
-              const record = toUnknownRecord(item);
-              return {
-                text: String(record.text || "").trim().slice(0, 40),
-                confidence: Number(record.confidence),
-              };
-            })
-            .filter((item) => item.text && Number.isFinite(item.confidence))
-            .slice(0, 8)
-        : [];
-      const voiceMeta: VoiceResolvedInputMeta = {
-        source: "microphone_transcript",
-        transcriptSource: "speech_transcribe",
-        audioRetention: "transient",
-        audioForwarding: audioAnalysis.basis === "gpt_audio_direct" ? "gpt_audio_direct" : "derived_acoustic_evidence",
-        durationMs,
-        transcriptLanguage: String(response?.language || language || "").trim() || undefined,
-        pronunciationAssessment: {
-          enabled:
-            audioAnalysis.basis === "gpt_audio_direct" ||
-            (typeof response?.confidence === "number" && Number.isFinite(response.confidence)) ||
-            unclearTokens.length > 0,
-          basis: audioAnalysis.basis === "gpt_audio_direct" ? "gpt_audio_direct" : "transcription_logprobs",
-          provider: audioAnalysis.provider === "openai" ? "openai" : undefined,
-          modelName: String(audioAnalysis.modelName || "").trim().slice(0, 80) || undefined,
-          heardText: String(audioAnalysis.heardText || "").trim().slice(0, 1000) || undefined,
-          summary: String(audioAnalysis.summary || "").trim().slice(0, 600) || undefined,
-          overallConfidence:
-            typeof response?.confidence === "number" && Number.isFinite(response.confidence)
-              ? response.confidence
-              : undefined,
-          overallScore: Number.isFinite(Number(audioAnalysis.overallScore)) ? Number(audioAnalysis.overallScore) : undefined,
-          clarityScore: Number.isFinite(Number(audioAnalysis.clarityScore)) ? Number(audioAnalysis.clarityScore) : undefined,
-          fluencyScore: Number.isFinite(Number(audioAnalysis.fluencyScore)) ? Number(audioAnalysis.fluencyScore) : undefined,
-          paceScore: Number.isFinite(Number(audioAnalysis.paceScore)) ? Number(audioAnalysis.paceScore) : undefined,
-          intonationScore: Number.isFinite(Number(audioAnalysis.intonationScore))
-            ? Number(audioAnalysis.intonationScore)
-            : undefined,
-          strengths: Array.isArray(audioAnalysis.strengths)
-            ? audioAnalysis.strengths.map((item) => String(item).slice(0, 240)).slice(0, 5)
-            : undefined,
-          improvements: Array.isArray(audioAnalysis.improvements)
-            ? audioAnalysis.improvements.map((item) => String(item).slice(0, 240)).slice(0, 5)
-            : undefined,
-          uncertainWords: Array.isArray(audioAnalysis.uncertainWords)
-            ? audioAnalysis.uncertainWords
-                .map((item) => {
-                  const word = toUnknownRecord(item);
-                  return {
-                    word: String(word.word || "").trim().slice(0, 40),
-                    issue: String(word.issue || "").trim().slice(0, 160) || undefined,
-                    suggestion: String(word.suggestion || "").trim().slice(0, 160) || undefined,
-                  };
-                })
-                .filter((item) => item.word)
-                .slice(0, 8)
-            : undefined,
-          unclearTokens,
-        },
       };
-      setInterimTranscript(transcript);
-      await onResolvedInput(nextInput, transcript, voiceMeta);
-      setInterimTranscript("");
-      setErrorCode(null);
+
+      const applyTranscriptionResponse = async (response: Awaited<ReturnType<typeof requestSpeechTranscription>>) => {
+        const transcript = String(response?.transcript || "").trim();
+        if (!transcript) {
+          setErrorCode("EMPTY_TRANSCRIPT");
+          cleanupRecorder();
+          return;
+        }
+
+        const nextInput = clampVoiceChatInput(mergeVoiceChatInput(baseInputSnapshot, transcript), maxChars);
+        const responseMeta = toUnknownRecord(response?.meta);
+        const acousticEvidence = toUnknownRecord(responseMeta.acousticEvidence);
+        const audioAnalysis = toUnknownRecord(responseMeta.audioAnalysis);
+        const unclearTokens = Array.isArray(acousticEvidence.unclearTokens)
+          ? acousticEvidence.unclearTokens
+              .map((item) => {
+                const record = toUnknownRecord(item);
+                return {
+                  text: String(record.text || "").trim().slice(0, 40),
+                  confidence: Number(record.confidence),
+                };
+              })
+              .filter((item) => item.text && Number.isFinite(item.confidence))
+              .slice(0, 8)
+          : [];
+        const voiceMeta: VoiceResolvedInputMeta = {
+          source: "microphone_transcript",
+          transcriptSource: "speech_transcribe",
+          audioRetention: "transient",
+          audioForwarding: audioAnalysis.basis === "gpt_audio_direct" ? "gpt_audio_direct" : "derived_acoustic_evidence",
+          durationMs,
+          transcriptLanguage: String(response?.language || language || "").trim() || undefined,
+          pronunciationAssessment: {
+            enabled:
+              audioAnalysis.basis === "gpt_audio_direct" ||
+              (typeof response?.confidence === "number" && Number.isFinite(response.confidence)) ||
+              unclearTokens.length > 0,
+            basis: audioAnalysis.basis === "gpt_audio_direct" ? "gpt_audio_direct" : "transcription_logprobs",
+            provider: audioAnalysis.provider === "openai" ? "openai" : undefined,
+            modelName: String(audioAnalysis.modelName || "").trim().slice(0, 80) || undefined,
+            heardText: String(audioAnalysis.heardText || "").trim().slice(0, 1000) || undefined,
+            summary: String(audioAnalysis.summary || "").trim().slice(0, 600) || undefined,
+            overallConfidence:
+              typeof response?.confidence === "number" && Number.isFinite(response.confidence)
+                ? response.confidence
+                : undefined,
+            overallScore: Number.isFinite(Number(audioAnalysis.overallScore)) ? Number(audioAnalysis.overallScore) : undefined,
+            clarityScore: Number.isFinite(Number(audioAnalysis.clarityScore)) ? Number(audioAnalysis.clarityScore) : undefined,
+            fluencyScore: Number.isFinite(Number(audioAnalysis.fluencyScore)) ? Number(audioAnalysis.fluencyScore) : undefined,
+            paceScore: Number.isFinite(Number(audioAnalysis.paceScore)) ? Number(audioAnalysis.paceScore) : undefined,
+            intonationScore: Number.isFinite(Number(audioAnalysis.intonationScore))
+              ? Number(audioAnalysis.intonationScore)
+              : undefined,
+            strengths: Array.isArray(audioAnalysis.strengths)
+              ? audioAnalysis.strengths.map((item) => String(item).slice(0, 240)).slice(0, 5)
+              : undefined,
+            improvements: Array.isArray(audioAnalysis.improvements)
+              ? audioAnalysis.improvements.map((item) => String(item).slice(0, 240)).slice(0, 5)
+              : undefined,
+            uncertainWords: Array.isArray(audioAnalysis.uncertainWords)
+              ? audioAnalysis.uncertainWords
+                  .map((item) => {
+                    const word = toUnknownRecord(item);
+                    return {
+                      word: String(word.word || "").trim().slice(0, 40),
+                      issue: String(word.issue || "").trim().slice(0, 160) || undefined,
+                      suggestion: String(word.suggestion || "").trim().slice(0, 160) || undefined,
+                    };
+                  })
+                  .filter((item) => item.word)
+                  .slice(0, 8)
+              : undefined,
+            unclearTokens,
+          },
+        };
+        setInterimTranscript(transcript);
+        await onResolvedInput(nextInput, transcript, voiceMeta);
+        setInterimTranscript("");
+        setErrorCode(null);
+      };
+
+      const response = await requestSpeechTranscription(requestArgs);
+      await applyTranscriptionResponse(response);
     } catch (error: unknown) {
       logger.error("[useVoiceInput] 음성 전사 실패:", error);
       setErrorCode(resolveServerVoiceErrorCode(error));
@@ -604,8 +597,6 @@ export function useVoiceInput(args: UseVoiceInputArgs) {
     language,
     assessmentContext,
     provider,
-    disclosureAcknowledged,
-    disclosureVersion,
     maxChars,
     npcId,
     onResolvedInput,

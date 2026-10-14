@@ -27,8 +27,16 @@ export interface IUserIndexDocument extends mongoose.Document {
     agreedAt: Date;
     method: PolicyConsentMethod;
     provider?: string;
+    displayedReleaseId?: string;
+    displayedContentSha256?: string;
   }>;
   purposeConsents?: VoicePurposeConsentRecord[];
+  overseasTransferRefusalEvents?: Array<{
+    processorKey: string;
+    action: "refusal_recorded" | "refusal_withdrawn";
+    occurredAt: Date;
+    disclosureVersion?: string;
+  }>;
   providers?: Array<{
     provider: string;
     providerAccountId: string;
@@ -78,6 +86,8 @@ export const UserIndexSchema = new Schema<IUserIndexDocument>(
             required: true,
           },
           provider: { type: String },
+          displayedReleaseId: { type: String },
+          displayedContentSha256: { type: String },
         },
         { _id: false },
       ),
@@ -99,6 +109,20 @@ export const UserIndexSchema = new Schema<IUserIndexDocument>(
         { _id: false },
       ),
     ],
+    overseasTransferRefusalEvents: {
+      type: [
+        new Schema(
+          {
+            processorKey: { type: String, required: true },
+            action: { type: String, enum: ["refusal_recorded", "refusal_withdrawn"], required: true },
+            occurredAt: { type: Date, required: true },
+            disclosureVersion: { type: String },
+          },
+          { _id: false },
+        ),
+      ],
+      default: undefined,
+    },
     providers: [
       new Schema(
         {

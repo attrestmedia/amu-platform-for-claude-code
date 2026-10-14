@@ -5,6 +5,11 @@ import { getUniverseById } from "libs/database/universe";
 import { canEditUniverse, getUserRole } from "libs/server-utils/auth/userRoleUtils";
 import { USER_ROLES } from "consts/auth";
 import { resolveImageAssetDisplayUrl } from "libs/server-utils/lab/imageAssetDisplay";
+import {
+  CHARACTER_ANCHOR_EXCLUDED_MODEL_NAME_PREFIX,
+  CHARACTER_ANCHOR_EXCLUDED_TEMPLATE_KEYS,
+  CHARACTER_ANCHOR_PURPOSE,
+} from "consts/game/characterSourcePolicy";
 import type { UserExtendedScopeType } from "types/ai";
 import type {
   LibraryImageKindType,
@@ -150,6 +155,7 @@ async function handler(_data: unknown, user: AuthenticatedUserType, request?: Ne
   const skip = toSkip(searchParams?.get("skip"));
   const includeDeleted = toBool(searchParams?.get("includeDeleted"));
   const includeMeta = toBool(searchParams?.get("includeMeta"));
+  const purpose = toSafeString(searchParams?.get("purpose"));
   const visibilityRaw = toSafeString(searchParams?.get("visibility")).toLowerCase();
   const visibility: PromptVisibilityExtendedType =
     visibilityRaw === "private" || visibilityRaw === "public" ? visibilityRaw : "all";
@@ -187,6 +193,12 @@ async function handler(_data: unknown, user: AuthenticatedUserType, request?: Ne
     generationMode,
     sourceService: libraryKind === "uploaded" ? "upload" : sourceService,
     excludeSourceService: libraryKind === "generated" ? "upload" : undefined,
+    ...(purpose === CHARACTER_ANCHOR_PURPOSE
+      ? {
+          excludeTemplateKeys: CHARACTER_ANCHOR_EXCLUDED_TEMPLATE_KEYS,
+          excludeModelNamePrefix: CHARACTER_ANCHOR_EXCLUDED_MODEL_NAME_PREFIX,
+        }
+      : {}),
     sourceSurface,
     createdFrom,
     createdBefore,

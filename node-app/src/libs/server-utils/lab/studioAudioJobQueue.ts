@@ -25,16 +25,27 @@ import {
   toAudioJobTransport,
   updateAudioGenJobBilling,
 } from "libs/database/lab";
+import { markFailedAudioGenJobUnknown } from "libs/database/lab/audioGenRepo";
 import { assertAIUsageBalanceOrThrow, billAIUsageOrThrow, refundAIUsageOrThrow } from "libs/services/aiUsageBilling";
-import { createSystemPricingSnapshotRevision, getSystemPricingMaps, previewSystemPricingQuote } from "libs/server-utils/api/systemPricingControl";
+import { previewSystemPricingQuote } from "libs/server-utils/api/systemPricingControl";
+import { AI_MODEL_CATALOG_REVISIONS } from "consts/ai/generated/modelCatalog.generated";
+import {
+  buildJobPricingSnapshot,
+  decodeJobPricingSnapshot,
+  quoteJobPricingSnapshot,
+  type JobPricingSnapshotV1,
+  type ReservedUsageV1,
+} from "libs/server-utils/ai/jobPricingSnapshot";
 import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
 import { claimProviderOperationOrThrow } from "libs/server-utils/api/providerOperationGuard";
 import { synthesizeSpeech } from "libs/server-utils/audio/synthesizeSpeech";
 import {
   buildStudioAudioRequestHash,
   resolveStudioAudioMetadata,
+  resolveStudioAudioPricingParity,
   resolveStudioAudioProgressIncrement,
   resolveStudioAudioRecoveryTransition,
+  resolveStudioAudioReservedCoins,
   resolveStudioAudioReservationCharacters,
   buildStudioAudioCloneStorageKey,
   isTerminalStudioAudioJobStatus,
@@ -355,12 +366,15 @@ async function refundReservation(job: IAudioGenJobDocument, reason: string) {
       meta: { operationId: settlementOperationId, sourceOperationId: reserveOperationId, reason },
     });
     const totalRefundedCoins = previousRefundedCoins + reservedCoins;
-    await updateAudioGenJobBilling({
+    const persistedBilling = await updateAudioGenJobBilling({
       jobId: job.jobId,
       refundedCoins: totalRefundedCoins,
       settlementOperationId,
       settlementOperationIds: appendOperationId(billing.settlementOperationIds, settlementOperationId),
     });
+    if (!persistedBilling) {
+      throw unknownOutcomeError("AUDIO_RESERVATION_REFUND_STATE_PERSIST_FAILED", "audio refund succeeded but billing state was not persisted");
+    }
     return { ...record(result), coins: reservedCoins, refundedCoins: totalRefundedCoins, settlementOperationId };
   } catch (error) {
     await updateAudioGenJobBilling({ jobId: job.jobId, reconciliationRequired: true }).catch(() => undefined);
@@ -377,55 +391,68 @@ function unknownOutcomeError(code: string, message: string) {
 
 async function settleReservation(job: IAudioGenJobDocument) {
   const billing = record(job.billing);
-  const reservedCoins = billingAmount(billing.reservedCoins, billing.estimatedCoins);
-  const reservedCharacters = positiveInteger(billing.reservedCharacters);
   const generatedCharacters = positiveInteger(billing.generatedCharacters);
   const previousSettledCharacters = Math.min(generatedCharacters, positiveInteger(billing.settledCharacters));
   const pendingCharacters = Math.max(0, generatedCharacters - previousSettledCharacters);
   const previousActualCoins = nonNegativeNumber(billing.actualCoins);
   const previousRefundedCoins = nonNegativeNumber(billing.refundedCoins);
   const reservationCycle = Math.max(1, positiveInteger(billing.reservationCycle) || 1);
-  let settlement: ReturnType<typeof resolveStudioAudioSettlement>;
-  if (!pendingCharacters) {
-    settlement = {
-      kind: "settle",
-      actualCoins: 0,
-      refundCoins: reservedCoins,
-      cumulativeActualCoins: previousActualCoins,
-      cumulativeRefundedCoins: previousRefundedCoins + reservedCoins,
-      settledCharacters: previousSettledCharacters,
-    };
-  } else {
-    const reservedPricingRevision = safe(billing.pricingRevision);
-    const currentPricing = await getSystemPricingMaps();
-    const currentPricingRevision = createSystemPricingSnapshotRevision(currentPricing);
-    const quote = await previewSystemPricingQuote({
-      provider: job.provider as never,
-      modelName: job.modelName,
-      modality: "audio",
-      fixed: { characters: pendingCharacters },
-    });
-    const actualCoins = Math.ceil(nonNegativeNumber(quote.coins));
-    settlement = resolveStudioAudioSettlement({
-      reservedCoins,
-      actualCoins,
-      reservedPricingRevision,
-      currentPricingRevision,
-      previousActualCoins,
-      previousRefundedCoins,
-      previousSettledCharacters,
-      pendingCharacters,
-    });
+  const decodedSnapshot = decodeJobPricingSnapshot(job.pricingSnapshot, billing.pricingRevision);
+  if (!decodedSnapshot.ok) {
+    const errorCode = decodedSnapshot.reason === "missing"
+      ? "AUDIO_PRICING_SNAPSHOT_MISSING"
+      : "AUDIO_PRICING_SNAPSHOT_INVALID";
+    throw unknownOutcomeError(errorCode, "audio pricing snapshot is unavailable or invalid");
   }
+  const reservedUsage = billing.reservedUsage as ReservedUsageV1 | undefined;
+  if (!reservedUsage || reservedUsage.unit !== "characters" || !Number.isSafeInteger(reservedUsage.quantity) || reservedUsage.quantity <= 0) {
+    throw unknownOutcomeError("AUDIO_PRICING_SNAPSHOT_INVALID", "audio reserved usage is missing or invalid");
+  }
+  let expectedReservedCoins: number;
+  try {
+    expectedReservedCoins = quoteJobPricingSnapshot(decodedSnapshot.snapshot, reservedUsage);
+  } catch {
+    throw unknownOutcomeError("AUDIO_PRICING_SNAPSHOT_INVALID", "audio snapshot cannot quote reserved characters");
+  }
+  const reservationQuote = resolveStudioAudioReservedCoins({
+    expectedCoins: expectedReservedCoins,
+    reservedCoins: billing.reservedCoins,
+    estimatedCoins: billing.estimatedCoins,
+  });
+  if (!reservationQuote.ok) {
+    throw unknownOutcomeError("AUDIO_PRICING_SNAPSHOT_INVALID", "audio reserved coin mirrors do not match the snapshot quote");
+  }
+  const reservedCoins = reservationQuote.reservedCoins;
+  let actualCoins = 0;
+  if (pendingCharacters > 0) {
+    try {
+      actualCoins = quoteJobPricingSnapshot(decodedSnapshot.snapshot, {
+        unit: "characters",
+        quantity: pendingCharacters,
+      });
+    } catch {
+      throw unknownOutcomeError("AUDIO_PRICING_SNAPSHOT_INVALID", "audio snapshot cannot quote pending characters");
+    }
+  }
+  const settlement = resolveStudioAudioSettlement({
+    jobId: job.jobId,
+    reservationCycle,
+    reservedCoins,
+    actualCoins,
+    reservedUsageCharacters: reservedUsage.quantity,
+    previousActualCoins,
+    previousRefundedCoins,
+    previousSettledCharacters,
+    pendingCharacters,
+    previousSettlementOperationIds: billing.settlementOperationIds as string[] | undefined,
+  });
   if (settlement.kind === "unknown_outcome") {
-    throw unknownOutcomeError(settlement.errorCode, settlement.errorCode === "AUDIO_PRICING_REVISION_CHANGED"
-      ? "audio pricing revision changed after reservation"
-      : "audio reservation cap would be exceeded");
+    throw unknownOutcomeError(settlement.errorCode, "audio reservation cap would be exceeded");
   }
   const reserveOperationId = safe(billing.reserveOperationId);
+  const reservedCharacters = reservedUsage.quantity;
   if (settlement.refundCoins > 0) {
     if (!reserveOperationId) throw new Error("AUDIO_RESERVE_OPERATION_MISSING");
-    const settlementOperationId = `audio:${job.jobId}:settlement:${reservationCycle}:refund`;
     await refundAIUsageOrThrow({
       uid: job.uid,
       app: BILLING_APP,
@@ -434,25 +461,24 @@ async function settleReservation(job: IAudioGenJobDocument) {
       modality: "audio",
       fixed: { characters: reservedCharacters },
       coins: settlement.refundCoins,
-      meta: { operationId: settlementOperationId, sourceOperationId: reserveOperationId, reason: "segment_cache" },
+      meta: { operationId: settlement.settlementOperationId, sourceOperationId: reserveOperationId, reason: "segment_cache" },
     });
     return {
       actualCoins: settlement.cumulativeActualCoins,
       refundedCoins: settlement.cumulativeRefundedCoins,
       generatedCharacters,
       settledCharacters: settlement.settledCharacters,
-      settlementOperationId,
-      settlementOperationIds: appendOperationId(billing.settlementOperationIds, settlementOperationId),
+      settlementOperationId: settlement.settlementOperationId,
+      settlementOperationIds: settlement.settlementOperationIds,
     };
   }
-  const settlementOperationId = `audio:${job.jobId}:settlement:${reservationCycle}:exact`;
   return {
     actualCoins: settlement.cumulativeActualCoins,
     refundedCoins: settlement.cumulativeRefundedCoins,
     generatedCharacters,
     settledCharacters: settlement.settledCharacters,
-    settlementOperationId,
-    settlementOperationIds: appendOperationId(billing.settlementOperationIds, settlementOperationId),
+    settlementOperationId: settlement.settlementOperationId,
+    settlementOperationIds: settlement.settlementOperationIds,
   };
 }
 
@@ -471,23 +497,49 @@ export async function enqueueStudioAudioJob(args: {
     const err = toErrorLike(error);
     return { ok: false as const, error: safe(err.message) || "AUDIO_MODEL_NOT_AVAILABLE", errorCode: safe(err.errorCode || err.code) || "AUDIO_MODEL_NOT_AVAILABLE" };
   }
-  const pricing = await getSystemPricingMaps();
-  const pricingRevision = createSystemPricingSnapshotRevision(pricing);
-  const request: StudioAudioRequest = { ...initial.request, pricingRevision };
-  const requestHash = buildStudioAudioRequestHash({
+  const totalCharacters = fixedCharacters(initial.manifest);
+  const scope = initial.request.scope;
+  const existing = await getAudioGenJobByClientRequestId({
+    uid,
+    clientRequestId: initial.request.clientRequestId,
+    scope,
+    universeId: initial.request.universeId,
+  });
+  const existingBilling = record(existing?.billing);
+  const existingSnapshot = existing
+    ? decodeJobPricingSnapshot(existing.pricingSnapshot, existingBilling.pricingRevision)
+    : null;
+  const storedRequestRevision = safe(record(existing?.request).pricingRevision)
+    || safe(existingBilling.pricingRevision)
+    || AI_MODEL_CATALOG_REVISIONS.pricingRevision;
+  let request: StudioAudioRequest = {
+    ...initial.request,
+    pricingRevision: existingSnapshot?.ok
+      ? existingSnapshot.snapshot.pricingRevision
+      : existing ? storedRequestRevision : AI_MODEL_CATALOG_REVISIONS.pricingRevision,
+  };
+  let requestHash = buildStudioAudioRequestHash({
     ...request,
     sourceHash: initial.manifest.sourceHash,
     manifestHash: initial.manifest.manifestHash,
   });
-  const totalCharacters = fixedCharacters(initial.manifest);
-  const scope = request.scope;
-  const existing = await getAudioGenJobByClientRequestId({ uid, clientRequestId: request.clientRequestId, scope, universeId: request.universeId });
   if (existing) {
     if (existing.requestHash !== requestHash) {
       return { ok: false as const, error: "AUDIO_REQUEST_HASH_CONFLICT", errorCode: "IDEMPOTENCY_CONFLICT" };
     }
     if (existing.status !== "failed") {
       return { ok: true as const, job: await toAudioJobTransport(existing), reused: true };
+    }
+    if (!existingSnapshot?.ok) {
+      const errorCode = existingSnapshot?.reason === "invalid"
+        ? "AUDIO_PRICING_SNAPSHOT_INVALID"
+        : "AUDIO_PRICING_SNAPSHOT_MISSING";
+      await markFailedAudioGenJobUnknown({
+        jobId: existing.jobId,
+        code: errorCode,
+        message: "failed audio job cannot be retried without its original pricing snapshot",
+      });
+      return { ok: false as const, error: errorCode, errorCode };
     }
     // provider 실패는 같은 clientRequestId로 재시도할 수 있지만, unknown_outcome은 위에서 terminal 재사용한다.
   }
@@ -497,9 +549,17 @@ export async function enqueueStudioAudioJob(args: {
   const reservationCharacters = existing?.status === "failed"
     ? resolveStudioAudioReservationCharacters({ manifest: initial.manifest, completedSegmentIndexes: [...completedSegmentIndexes] })
     : totalCharacters;
+  if (!Number.isSafeInteger(reservationCharacters) || reservationCharacters <= 0) {
+    return { ok: false as const, error: "AUDIO_TEXT_REQUIRED", errorCode: "AUDIO_REQUEST_INVALID" };
+  }
+  const reservedUsage: ReservedUsageV1 = { unit: "characters", quantity: reservationCharacters };
   const reservationCycle = Math.max(1, Math.floor(Number(existing?.billing?.reservationCycle || 0)) + 1);
 
-  const billingMeta = { operationId: `audio:${request.clientRequestId}:preflight:${reservationCycle}`, pricingRevision, source: "gen-studio" };
+  const billingMeta = {
+    operationId: `audio:${request.clientRequestId}:preflight:${reservationCycle}`,
+    pricingRevision: AI_MODEL_CATALOG_REVISIONS.pricingRevision,
+    source: "gen-studio",
+  };
   const preview = await assertAIUsageBalanceOrThrow({
     uid,
     app: BILLING_APP,
@@ -509,15 +569,92 @@ export async function enqueueStudioAudioJob(args: {
     fixed: { characters: reservationCharacters },
     meta: billingMeta,
   });
+
+  let pricingSnapshot: JobPricingSnapshotV1;
+  let snapshotReservedCoins: number;
+  if (existing?.status === "failed" && existingSnapshot?.ok) {
+    pricingSnapshot = existingSnapshot.snapshot;
+    try {
+      snapshotReservedCoins = quoteJobPricingSnapshot(pricingSnapshot, reservedUsage);
+    } catch {
+      await markFailedAudioGenJobUnknown({
+        jobId: existing.jobId,
+        code: "AUDIO_PRICING_SNAPSHOT_INVALID",
+        message: "stored audio pricing snapshot cannot quote the retry reservation",
+      });
+      return { ok: false as const, error: "AUDIO_PRICING_SNAPSHOT_INVALID", errorCode: "AUDIO_PRICING_SNAPSHOT_INVALID" };
+    }
+  } else {
+    const built = buildJobPricingSnapshot({
+      provider: request.provider,
+      modelName: request.modelName,
+      modality: "audio",
+      reservedUsage,
+    });
+    if (!built.ok) {
+      return { ok: false as const, error: built.reason, errorCode: built.errorCode };
+    }
+    pricingSnapshot = built.snapshot;
+    snapshotReservedCoins = built.reservedCoins;
+  }
+  request = { ...request, pricingRevision: pricingSnapshot.pricingRevision };
+  requestHash = buildStudioAudioRequestHash({
+    ...request,
+    sourceHash: initial.manifest.sourceHash,
+    manifestHash: initial.manifest.manifestHash,
+  });
+
+  const liveQuote = await previewSystemPricingQuote({
+    provider: request.provider,
+    modelName: request.modelName,
+    modality: "audio",
+    fixed: { characters: reservationCharacters },
+  });
+  const liveCoins = Math.ceil(nonNegativeNumber(liveQuote.coins));
+  const preflightCoins = Math.ceil(nonNegativeNumber(record(preview).coins));
+  const parityMatches = resolveStudioAudioPricingParity({
+    snapshotBillingKey: pricingSnapshot.billingKey,
+    snapshotCoins: snapshotReservedCoins,
+    liveBillingKey: safe(liveQuote.billingKey),
+    liveCoins,
+    preflightCoins,
+  });
+  if (!parityMatches) {
+    if (existing?.status === "failed") {
+      await markFailedAudioGenJobUnknown({
+        jobId: existing.jobId,
+        code: "AUDIO_PRICING_SNAPSHOT_MISMATCH",
+        message: "runtime audio pricing differs from the reserved snapshot before retry",
+      });
+    }
+    return { ok: false as const, error: "PRICING_SNAPSHOT_MISMATCH", errorCode: "PRICING_SNAPSHOT_MISMATCH" };
+  }
+
   let job: IAudioGenJobDocument;
+  const billing = {
+    pricingRevision: pricingSnapshot.pricingRevision,
+    reservedUsage,
+    estimatedCoins: snapshotReservedCoins,
+    reservedCharacters: reservationCharacters,
+    reservationCycle,
+  };
   try {
-    job = existing?.status === "failed"
-      ? (await requeueFailedAudioGenJob({
+    if (existing?.status === "failed") {
+      const requeued = await requeueFailedAudioGenJob({
           uid,
           jobId: existing.jobId,
-          billing: { pricingRevision, estimatedCoins: preview.coins, reservedCharacters: reservationCharacters, reservationCycle },
-        }) || existing)
-      : await createAudioGenJob({
+          billing,
+          request: { ...request, manifest: initial.manifest } as unknown as Record<string, unknown>,
+          pricingSnapshot,
+        });
+      if (!requeued) {
+        const raced = await getAudioGenJobByJobId(existing.jobId);
+        if (raced && raced.status !== "failed") return { ok: true as const, job: await toAudioJobTransport(raced), reused: true };
+        return { ok: false as const, error: "AUDIO_JOB_REQUEUE_CONFLICT", errorCode: "AUDIO_JOB_REQUEUE_CONFLICT" };
+      }
+      job = requeued;
+    } else {
+      job = await createAudioGenJob({
           scope,
           uid,
           universeId: request.universeId,
@@ -531,8 +668,10 @@ export async function enqueueStudioAudioJob(args: {
           sourceHash: initial.manifest.sourceHash,
           manifestHash: initial.manifest.manifestHash,
           segmentCount: initial.manifest.segmentCount,
-          billing: { pricingRevision, estimatedCoins: preview.coins, reservedCharacters: reservationCharacters, reservationCycle },
+          pricingSnapshot,
+          billing,
         });
+    }
   } catch (error) {
     if (isDuplicateKeyError(error)) {
       const raced = await getAudioGenJobByClientRequestId({ uid, clientRequestId: request.clientRequestId, scope, universeId: request.universeId });
@@ -542,6 +681,8 @@ export async function enqueueStudioAudioJob(args: {
   }
 
   const reserveOperation = `audio:${job.jobId}:reserve:${reservationCycle}`;
+  let actualReservedCoins = snapshotReservedCoins;
+  let actualReserveOperationId = reserveOperation;
   try {
     const reserved = await billAIUsageOrThrow({
       uid,
@@ -550,15 +691,56 @@ export async function enqueueStudioAudioJob(args: {
       modelName: request.modelName,
       modality: "audio",
       fixed: { characters: reservationCharacters },
-      meta: { operationId: reserveOperation, pricingRevision, jobId: job.jobId },
+      meta: { operationId: reserveOperation, pricingRevision: pricingSnapshot.pricingRevision, jobId: job.jobId },
     });
-    await updateAudioGenJobBilling({
+    actualReserveOperationId = safe(record(reserved).operationId) || reserveOperation;
+    const chargedCoins = record(reserved).coins;
+    if (typeof chargedCoins !== "number" || !Number.isSafeInteger(chargedCoins) || chargedCoins < 0) {
+      const invalidAmount = unknownOutcomeError("AUDIO_RESERVATION_RESULT_INVALID", "audio reservation returned an invalid coin amount");
+      await markUnknown(job.jobId, invalidAmount);
+      return { ok: false as const, error: invalidAmount.message, errorCode: "AUDIO_RESERVATION_RESULT_INVALID" };
+    }
+    actualReservedCoins = chargedCoins;
+    const reservationBilling = await updateAudioGenJobBilling({
       jobId: job.jobId,
-      reserveOperationId: safe(record(reserved).operationId) || reserveOperation,
-      reservedCoins: Number(record(reserved).coins || preview.coins),
+      pricingRevision: pricingSnapshot.pricingRevision,
+      reservedUsage,
+      reserveOperationId: actualReserveOperationId,
+      reservedCoins: actualReservedCoins,
       reservedCharacters: reservationCharacters,
       reservationCycle,
     });
+    if (!reservationBilling) {
+      throw unknownOutcomeError("AUDIO_RESERVATION_BILLING_SAVE_FAILED", "audio reservation succeeded but billing state was not persisted");
+    }
+    if (actualReservedCoins !== snapshotReservedCoins) {
+      const refundError = await refundReservation(Object.assign({}, job, {
+        billing: {
+          ...(job.billing || {}),
+          reserveOperationId: actualReserveOperationId,
+          reservedCoins: actualReservedCoins,
+          reservedCharacters: reservationCharacters,
+          reservedUsage,
+          reservationCycle,
+        },
+      }) as IAudioGenJobDocument, "pricing_snapshot_mismatch").then(() => null).catch((value) => value);
+      if (refundError) {
+        await markUnknown(job.jobId, refundError);
+        return { ok: false as const, error: "audio_reservation_refund_reconciliation_required", errorCode: "AUDIO_RECONCILIATION_REQUIRED" };
+      }
+      try {
+        const failed = await markAudioGenJobFailed({
+          jobId: job.jobId,
+          code: "PRICING_SNAPSHOT_MISMATCH",
+          message: "reserved audio coins differ from the manifest snapshot and were refunded",
+        });
+        if (!failed) throw unknownOutcomeError("AUDIO_PRICING_SNAPSHOT_MISMATCH", "audio refund succeeded but failed status was not persisted");
+      } catch (error) {
+        await markUnknown(job.jobId, error);
+        return { ok: false as const, error: "audio_reservation_refund_reconciliation_required", errorCode: "AUDIO_RECONCILIATION_REQUIRED" };
+      }
+      return { ok: false as const, error: "PRICING_SNAPSHOT_MISMATCH", errorCode: "PRICING_SNAPSHOT_MISMATCH" };
+    }
     const redis = await getRedisClient();
     await redis.set(payloadKey(job.jobId), JSON.stringify({ request, manifest: initial.manifest, user: snapshotUser(args.user) }), "EX", PAYLOAD_TTL_SECONDS);
     await redis.rpush(QUEUE_KEY, job.jobId);
@@ -567,7 +749,14 @@ export async function enqueueStudioAudioJob(args: {
   } catch (error) {
     const err = toErrorLike(error);
     const refundError = await refundReservation(Object.assign({}, job, {
-      billing: { ...(job.billing || {}), reserveOperationId: reserveOperation, reservedCoins: preview.coins, reservedCharacters: reservationCharacters, reservationCycle },
+      billing: {
+        ...(job.billing || {}),
+        reserveOperationId: actualReserveOperationId,
+        reservedCoins: actualReservedCoins,
+        reservedCharacters: reservationCharacters,
+        reservedUsage,
+        reservationCycle,
+      },
     }) as IAudioGenJobDocument, "enqueue_failed").then(() => null).catch((refundError) => refundError);
     if (refundError) {
       logger.error("[studioAudioJobQueue] reservation refund failed", { jobId: job.jobId, error: toErrorLike(refundError).message });
@@ -609,13 +798,26 @@ export async function cancelStudioAudioJobForUser(args: { uid: string; jobId: st
 
 async function markUnknown(jobId: string, error: unknown) {
   const err = toErrorLike(error);
+  const code = safe(err.errorCode || err.code) || "AUDIO_UNKNOWN_OUTCOME";
+  const isSettlementReconciliation = code === "AUDIO_PRICING_SNAPSHOT_MISSING"
+    || code === "AUDIO_PRICING_SNAPSHOT_INVALID"
+    || code === "AUDIO_RESERVATION_CAP_EXCEEDED"
+    || code === "AUDIO_PRICING_SNAPSHOT_MISMATCH"
+    || code === "AUDIO_RESERVATION_RESULT_INVALID"
+    || code === "AUDIO_RESERVATION_REFUND_STATE_PERSIST_FAILED";
   await markAudioGenJobFailed({
     jobId,
-    code: safe(err.errorCode || err.code) || "AUDIO_UNKNOWN_OUTCOME",
+    code,
     message: safe(err.message) || "audio_provider_outcome_unknown",
     status: "unknown_outcome",
+    billing: {
+      reconciliationRequired: true,
+      ...(isSettlementReconciliation ? {
+        settlementState: "reconciliation_required" as const,
+        reconciliationCode: code,
+      } : {}),
+    },
   }).catch(() => undefined);
-  await updateAudioGenJobBilling({ jobId, reconciliationRequired: true }).catch(() => undefined);
 }
 
 async function processClaimedJob(args: { jobId: string; workerId: string }) {
@@ -663,7 +865,6 @@ async function processClaimedJob(args: { jobId: string; workerId: string }) {
         heartbeatError = error;
       });
     }, HEARTBEAT_INTERVAL_MS);
-    await assertSystemModelEnabledOrThrow({ provider: loaded.request.provider, modelName: loaded.request.modelName, modality: "audio" });
     const existing = await listAudioAssetsByJobId(job.jobId);
     const currentJob = await getAudioGenJobByJobId(job.jobId);
     const accountedCharacters = Math.max(
@@ -763,6 +964,9 @@ async function processClaimedJob(args: { jobId: string; workerId: string }) {
       }
 
       try {
+        // Existing provider-operation replays must finish from their stored result even if the model is now disabled.
+        // Only a fresh synthesis dispatch is subject to the current emergency overlay.
+        await assertSystemModelEnabledOrThrow({ provider: loaded.request.provider, modelName: loaded.request.modelName, modality: "audio" });
         const result = await synthesizeSpeech({
           user: record(loaded.user),
           provider: loaded.request.provider,

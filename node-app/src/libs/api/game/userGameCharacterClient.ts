@@ -33,6 +33,7 @@ export type UserGameCharacterPipelineStateType = {
 
 export type CharacterGenesisOptionsType = {
   universeId: string;
+  sourceAccess?: { upload: boolean };
   rulesetVersion: number;
   species: Array<{
     id: CharacterSpeciesId;

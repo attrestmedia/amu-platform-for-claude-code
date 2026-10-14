@@ -2,18 +2,17 @@ import "server-only";
 import {
   ELEVENLABS_DEFAULT_TTS_MODEL,
   ELEVENLABS_TTS_SPEED_RANGE,
-  ELEVENLABS_APPROVED_VOICE_CATALOG,
   OPENAI_APPROVED_VOICE_CATALOG,
-  OPENAI_DEFAULT_TTS_MODEL,
   getOpenAiVoiceCatalogForGenderHint,
   getOpenAiVoiceCatalogEntry,
-  getOpenAiVoiceGenderTag,
-  resolveOpenAiVoiceGenderHint,
 } from "consts/ai/voiceCatalog";
-import type { IOpenAiVoiceCatalogEntry } from "consts/ai/voiceCatalog";
+import type { IOpenAiVoiceCatalogEntry, ElevenLabsApprovedVoiceCatalogEntry } from "consts/ai/voiceCatalog";
+import { getDefaultSpeechModelName } from "consts/ai/speechModel";
 import { buildVoiceFingerprint } from "./cacheKeys";
 import { createSpeechError } from "./guards";
+import { resolveLegacyOpenAiVoiceToElevenLabs } from "./legacyOpenAiVoiceMapping";
 import type { IResolvedVoiceProfile, ISpeechSynthesizeRequest } from "./types";
+import { AI_ELEVENLABS_APPROVED_VOICE_CATALOG } from "consts/ai/generated/modelCatalog.generated";
 
 type WeightedVoiceTag = {
   tag: string;
@@ -155,17 +154,8 @@ function collectTargetTags(args: ISpeechSynthesizeRequest) {
   const reasons: string[] = [];
   const personaText = collectPersonaText(args);
   const personaType = String(args.persona?.personaType || "").trim().toLowerCase();
-  const genderHint = args.routeHint === "tutors" ? resolveOpenAiVoiceGenderHint(args.persona?.gender) : undefined;
-  const tutorsPolicy = args.persona?.tutorsPolicy && typeof args.persona.tutorsPolicy === "object" ? args.persona.tutorsPolicy : null;
 
-  if (args.routeHint === "tutors") {
-    pushWeightedTag(weightedTags, "mentor", 5, "Tutors 기본 음성 톤");
-    pushWeightedTag(weightedTags, "clear", 4, "Tutors 기본 음성 톤");
-    pushWeightedTag(weightedTags, "scholarly", 4, "Tutors 기본 음성 톤");
-    pushWeightedTag(weightedTags, "warm", 3, "Tutors 기본 음성 톤");
-    pushWeightedTag(weightedTags, "calm", 2, "Tutors 기본 음성 톤");
-    reasons.push("Tutors 기본 음성 톤");
-  } else if (args.routeHint === "commerce") {
+  if (args.routeHint === "commerce") {
     pushWeightedTag(weightedTags, "clear", 4, "Commerce 응대 기본 톤");
     pushWeightedTag(weightedTags, "warm", 3, "Commerce 응대 기본 톤");
     pushWeightedTag(weightedTags, "authoritative", 2, "Commerce 응대 기본 톤");
@@ -176,32 +166,7 @@ function collectTargetTags(args: ISpeechSynthesizeRequest) {
     reasons.push("Play/AI 대화 기본 톤");
   }
 
-  const genderTag = getOpenAiVoiceGenderTag(genderHint);
-  if (genderTag) {
-    pushWeightedTag(weightedTags, genderTag, 8, "튜터 성별 표현");
-    reasons.push("튜터 성별 표현");
-  }
-
-  if (args.routeHint === "tutors") {
-    const policyRec = (tutorsPolicy || {}) as Record<string, unknown>;
-    const operationMode = String(policyRec.operationMode || "").trim().toLowerCase();
-    const correctionStrength = Number(policyRec.correctionStrength);
-
-    if (operationMode === "proofread") {
-      pushWeightedTag(weightedTags, "clear", 4, "교정 중심 Tutors 모드");
-      pushWeightedTag(weightedTags, "serious", 2, "교정 중심 Tutors 모드");
-    } else if (operationMode === "coach") {
-      pushWeightedTag(weightedTags, "mentor", 4, "코칭형 Tutors 모드");
-      pushWeightedTag(weightedTags, "warm", 2, "코칭형 Tutors 모드");
-    } else if (operationMode === "chat") {
-      pushWeightedTag(weightedTags, "bright", 2, "대화형 Tutors 모드");
-    }
-
-    if (Number.isFinite(correctionStrength) && correctionStrength >= 2) {
-      pushWeightedTag(weightedTags, "clear", 3, "강한 교정 강도");
-      pushWeightedTag(weightedTags, "scholarly", 2, "강한 교정 강도");
-    }
-  } else if (args.routeHint === "ai") {
+  if (args.routeHint === "ai") {
     if (personaType === "monster") {
       pushWeightedTag(weightedTags, "mysterious", 4, "몬스터 캐릭터 기본 톤");
       pushWeightedTag(weightedTags, "dramatic", 3, "몬스터 캐릭터 기본 톤");
@@ -230,7 +195,26 @@ function collectTargetTags(args: ISpeechSynthesizeRequest) {
 
 function resolveElevenLabsVoiceProfile(args: ISpeechSynthesizeRequest): IResolvedVoiceProfile {
   const requested = args.voiceProfile || args.persona?.voiceProfile || {};
-  const voiceId = String(requested.voiceId || "").trim();
+  const requestedProvider = String(requested.provider || "").trim().toLowerCase();
+  const requestedVoiceId = String(requested.voiceId || "").trim();
+  const alreadyApproved = (AI_ELEVENLABS_APPROVED_VOICE_CATALOG as readonly ElevenLabsApprovedVoiceCatalogEntry[])
+    .some((entry) => entry.voiceId === requestedVoiceId);
+  if (requestedProvider && requestedProvider !== "openai" && requestedProvider !== "elevenlabs") {
+    throw createSpeechError("voice profile provider가 승인되지 않았습니다.", "VOICE_NOT_APPROVED", 503, {
+      provider: requestedProvider,
+      voiceId: requestedVoiceId,
+    });
+  }
+  const isLegacyProfile = requestedProvider === "openai" || (!requestedProvider && !alreadyApproved);
+  const voiceId = isLegacyProfile
+    ? resolveLegacyOpenAiVoiceToElevenLabs(requestedVoiceId) || ""
+    : requestedVoiceId;
+  if (isLegacyProfile && !voiceId) {
+    throw createSpeechError("기존 voice profile을 승인된 ElevenLabs voice로 매핑할 수 없습니다.", "VOICE_NOT_APPROVED", 503, {
+      provider: "elevenlabs",
+      voiceId: requestedVoiceId,
+    });
+  }
   if (!voiceId) {
     throw createSpeechError("ElevenLabs voiceId가 필요합니다.", "VOICE_ID_REQUIRED", 400, {
       provider: "elevenlabs",
@@ -242,7 +226,9 @@ function resolveElevenLabsVoiceProfile(args: ISpeechSynthesizeRequest): IResolve
 
   // 계정 voice의 권리·소유 범위를 확인할 수 없는 동안에는 실제 승인 목록을 비워 둔다.
   // EL-201/G-EL-LEGAL-DESIGN이 해소되기 전 arbitrary upstream ID를 승인하지 않는다.
-  const approved = ELEVENLABS_APPROVED_VOICE_CATALOG.find((entry) => entry.voiceId === voiceId);
+  const approved = (AI_ELEVENLABS_APPROVED_VOICE_CATALOG as readonly ElevenLabsApprovedVoiceCatalogEntry[]).find(
+    (entry) => entry.voiceId === voiceId && entry.rightsStatus === "verified_commercial" && entry.usage === "production",
+  );
   if (!approved) {
     throw createSpeechError("아직 승인되지 않은 ElevenLabs voiceId 입니다.", "VOICE_NOT_APPROVED", 503, {
       provider: "elevenlabs",
@@ -267,7 +253,9 @@ function resolveElevenLabsVoiceProfile(args: ISpeechSynthesizeRequest): IResolve
   if (!Number.isFinite(speed) || speed < ELEVENLABS_TTS_SPEED_RANGE.min || speed > ELEVENLABS_TTS_SPEED_RANGE.max) {
     throw createSpeechError("ElevenLabs speed는 0.7에서 1.2 사이여야 합니다.", "INVALID_VOICE_SETTINGS", 400);
   }
-  const modelName = String(requested.modelName || args.modelName || ELEVENLABS_DEFAULT_TTS_MODEL).trim();
+  const modelName = isLegacyProfile
+    ? ELEVENLABS_DEFAULT_TTS_MODEL
+    : String(requested.modelName || args.modelName || ELEVENLABS_DEFAULT_TTS_MODEL).trim();
   const locale = requestedLocale;
   const profile: IResolvedVoiceProfile = {
     provider: "elevenlabs",
@@ -314,16 +302,25 @@ function resolveElevenLabsVoiceProfile(args: ISpeechSynthesizeRequest): IResolve
 }
 
 export function resolveVoiceProfile(args: ISpeechSynthesizeRequest): IResolvedVoiceProfile {
-  const provider = args.provider || "openai";
+  const provider = args.provider || "elevenlabs";
   if (provider === "elevenlabs") return resolveElevenLabsVoiceProfile(args);
   if (provider !== "openai") {
-    throw createSpeechError("현재 O1 단계에서는 OpenAI 음성만 지원합니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
+    throw createSpeechError("지원하지 않는 speech provider입니다.", "UNSUPPORTED_SPEECH_PROVIDER", 400, {
       provider,
     });
   }
 
   const locale = inferLocale(args);
-  const genderHint = args.routeHint === "tutors" ? resolveOpenAiVoiceGenderHint(args.persona?.gender) : undefined;
+  const openAiModelName = String(
+    args.voiceProfile?.modelName || args.persona?.voiceProfile?.modelName || args.modelName ||
+      getDefaultSpeechModelName("openai", "speech_tts") || "",
+  ).trim();
+  if (!openAiModelName) {
+    throw createSpeechError("승인된 OpenAI TTS 모델이 없습니다.", "UNSUPPORTED_SPEECH_MODEL", 400, {
+      provider: "openai",
+      role: "speech_tts",
+    });
+  }
   const requestedVoiceId = String(args.voiceProfile?.voiceId || "").trim().toLowerCase();
   const requestedEntry = requestedVoiceId ? getOpenAiVoiceCatalogEntry(requestedVoiceId) : undefined;
 
@@ -337,13 +334,13 @@ export function resolveVoiceProfile(args: ISpeechSynthesizeRequest): IResolvedVo
     return {
       provider: "openai",
       voiceId: requestedEntry.voiceId,
-      modelName: String(args.voiceProfile?.modelName || args.modelName || OPENAI_DEFAULT_TTS_MODEL).trim(),
+      modelName: openAiModelName,
       locale,
       instructions: String(args.voiceProfile?.instructions || requestedEntry.instructions || "").trim() || undefined,
       voiceFingerprint: buildVoiceFingerprint({
         provider: "openai",
         voiceId: requestedEntry.voiceId,
-        modelName: String(args.voiceProfile?.modelName || args.modelName || OPENAI_DEFAULT_TTS_MODEL).trim(),
+        modelName: openAiModelName,
         locale,
         instructions: String(args.voiceProfile?.instructions || requestedEntry.instructions || "").trim() || undefined,
       }),
@@ -357,9 +354,7 @@ export function resolveVoiceProfile(args: ISpeechSynthesizeRequest): IResolvedVo
   const personaVoiceId = String(args.persona?.voiceProfile?.voiceId || "").trim().toLowerCase();
   const personaVoiceEntry = personaVoiceId ? getOpenAiVoiceCatalogEntry(personaVoiceId) : undefined;
   if (personaVoiceEntry) {
-    const personaModelName =
-      String(args.persona?.voiceProfile?.modelName || args.modelName || OPENAI_DEFAULT_TTS_MODEL).trim() ||
-      OPENAI_DEFAULT_TTS_MODEL;
+    const personaModelName = openAiModelName;
     const personaInstructions =
       String(args.persona?.voiceProfile?.instructions || personaVoiceEntry.instructions || "").trim() || undefined;
 
@@ -384,14 +379,12 @@ export function resolveVoiceProfile(args: ISpeechSynthesizeRequest): IResolvedVo
   }
 
   const target = collectTargetTags(args);
-  const preferredModel =
-    String(args.modelName || args.universeMetadata?.voiceConfig?.defaultTtsModel || OPENAI_DEFAULT_TTS_MODEL).trim() ||
-    OPENAI_DEFAULT_TTS_MODEL;
+  const preferredModel = openAiModelName;
 
   let best: IOpenAiVoiceCatalogEntry = OPENAI_APPROVED_VOICE_CATALOG[0];
   let bestScore = -1;
 
-  for (const entry of getOpenAiVoiceCatalogForGenderHint(genderHint) as readonly IOpenAiVoiceCatalogEntry[]) {
+  for (const entry of getOpenAiVoiceCatalogForGenderHint() as readonly IOpenAiVoiceCatalogEntry[]) {
     let score = 0;
     if ((entry.locales as readonly string[]).includes(locale)) score += 4;
     for (const tag of target.tags) {

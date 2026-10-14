@@ -68,6 +68,8 @@ export interface ITutorPlayProjectionLedgerDoc {
   consentVersion: string;
   signals: TutorPlayDerivedSignals;
   reservedAt?: string | Date | null;
+  resumeCount?: number;
+  lastResumedAt?: string | Date | null;
   appliedAt?: string | Date | null;
   releasedAt?: string | Date | null;
   createdAt?: string | Date;
@@ -94,6 +96,7 @@ export type TutorPlayProjectionBlockReason =
   | "daily_cap_required"
   | "daily_cap_reached"
   | "daily_cap_mismatch"
+  | "projection_in_progress"
   | "xp_schedule_missing"
   | "invalid_projection_signal"
   | "projection_write_failed";

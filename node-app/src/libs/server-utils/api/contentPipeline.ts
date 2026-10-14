@@ -6,10 +6,12 @@ import { AI_GEN_CONTENT_LIMIT } from "consts/ai";
 import {
   inferTextProviderFromModelNameRaw,
   isGoogleProTextModel,
+  isClaudeLongContextTieredTextModel,
   isXaiLongContextTieredTextModel,
   isOpenAIGpt6TextModel,
   normalizeTextProvider as normalizeTextProviderShared,
   pickXaiPricingVariantByInputTokens,
+  pickClaudePricingVariantByInputTokens,
   pickOpenAIGpt6PricingVariantByInputTokens,
   resolveTextOutputBudget,
 } from "utils/ai/providerHelper";
@@ -278,7 +280,8 @@ export async function generateAndBillContent(params: {
   const needsShortLongVariants =
     (provider === "google" && isGoogleProTextModel(useModel)) ||
     (provider === "xai" && isXaiLongContextTieredTextModel(useModel)) ||
-    (provider === "openai" && isOpenAIGpt6TextModel(useModel));
+    (provider === "openai" && isOpenAIGpt6TextModel(useModel)) ||
+    (provider === "claude" && isClaudeLongContextTieredTextModel(useModel));
 
   await assertPricingPreflightOrThrow({
     provider,
@@ -438,6 +441,8 @@ export async function generateAndBillContent(params: {
           : "short"
         : provider === "xai" && isXaiLongContextTieredTextModel(useModel)
           ? "long"
+          : provider === "claude" && isClaudeLongContextTieredTextModel(useModel)
+            ? pickClaudePricingVariantByInputTokens(estimatedInputTokens)
           : provider === "openai" && isOpenAIGpt6TextModel(useModel)
             ? "long"
           : undefined;
@@ -511,6 +516,8 @@ export async function generateAndBillContent(params: {
               variant:
                 provider === "xai" && isXaiLongContextTieredTextModel(out.modelName)
                   ? pickXaiPricingVariantByInputTokens(traceUsage.input)
+                  : provider === "claude" && isClaudeLongContextTieredTextModel(out.modelName)
+                    ? pickClaudePricingVariantByInputTokens(traceUsage.input)
                   : provider === "openai" && isOpenAIGpt6TextModel(out.modelName)
                     ? pickOpenAIGpt6PricingVariantByInputTokens(traceUsage.input)
                   : undefined,
@@ -547,6 +554,8 @@ export async function generateAndBillContent(params: {
           : "short"
         : provider === "xai" && isXaiLongContextTieredTextModel(out.modelName)
           ? pickXaiPricingVariantByInputTokens(out.usageTotal.input)
+          : provider === "claude" && isClaudeLongContextTieredTextModel(out.modelName)
+            ? pickClaudePricingVariantByInputTokens(out.usageTotal.input)
           : provider === "openai" && isOpenAIGpt6TextModel(out.modelName)
             ? pickOpenAIGpt6PricingVariantByInputTokens(out.usageTotal.input)
         : undefined;
@@ -647,6 +656,8 @@ export async function generateAndBillContent(params: {
             variant:
               provider === "xai" && isXaiLongContextTieredTextModel(out.modelName)
                 ? variant
+                : provider === "claude" && isClaudeLongContextTieredTextModel(out.modelName)
+                  ? variant
                 : provider === "openai" && isOpenAIGpt6TextModel(out.modelName)
                   ? variant
                 : undefined,
@@ -710,10 +721,12 @@ export async function generateAndBillContent(params: {
             provider,
             modelName: useModel,
             variant:
-              ((provider === "xai" && isXaiLongContextTieredTextModel(useModel)) ||
-                (provider === "openai" && isOpenAIGpt6TextModel(useModel)))
-                ? "long"
-                : undefined,
+              provider === "claude" && isClaudeLongContextTieredTextModel(useModel)
+                ? pickClaudePricingVariantByInputTokens(traceUsage.input)
+                : (provider === "xai" && isXaiLongContextTieredTextModel(useModel)) ||
+                    (provider === "openai" && isOpenAIGpt6TextModel(useModel))
+                  ? "long"
+                  : undefined,
             usage: { text: { input: traceUsage.input, output: traceUsage.output } },
           }),
           coinCharged: traceCoinCharged,

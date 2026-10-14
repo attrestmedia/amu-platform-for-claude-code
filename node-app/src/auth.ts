@@ -8,7 +8,9 @@ import { logger } from "utils/log";
 import { isProduct } from "utils/common";
 import { toUnknownRecord } from "utils/common/typeUtils";
 import { cookies } from "next/headers";
-import { CURRENT_ACCOUNT_POLICY, currentPolicyConsents } from "consts/legal/accountPolicy";
+import { CURRENT_ACCOUNT_POLICY, currentPolicyConsents, type PolicyConsentRecord } from "consts/legal/accountPolicy";
+import { buildAccountConsentRecords } from "libs/server-utils/legal/accountPolicyDecision";
+import { getPolicyReleaseRuntime } from "libs/server-utils/legal/policyReleaseRuntime";
 import { consumeSignupIntent, SIGNUP_INTENT_COOKIE } from "libs/server-utils/auth/signupIntent";
 import { consumeMagazineLoginIntent, MAGAZINE_LOGIN_INTENT_COOKIE } from "libs/server-utils/auth/magazineLoginIntent";
 import {
@@ -71,6 +73,7 @@ const PUBLIC_AUTH_ERROR_CODES = new Set([
   "PROVIDER_EMAIL_REQUIRED",
   "PROVIDER_EMAIL_UNVERIFIED",
   "PROVIDER_LINK_AMBIGUOUS",
+  "POLICY_RELEASE_UNAVAILABLE",
   "SIGNUP_CONSENT_REQUIRED",
   "SIGNUP_INTENT_INVALID",
   "SOCIAL_AUTH_FAILED",
@@ -228,15 +231,77 @@ export const authOptions: NextAuthOptions = {
         }
         if (signupIntent) {
           const acceptedAt = new Date(signupIntent.acceptedAt);
-          if (
-            signupIntent.termsVersion !== CURRENT_ACCOUNT_POLICY.terms.version ||
-            signupIntent.privacyVersion !== CURRENT_ACCOUNT_POLICY.privacy.version
-          ) {
-            const policyError = Object.assign(new Error("정책 동의를 다시 확인해 주세요."), {
-              errorCode: "SIGNUP_INTENT_INVALID",
+          const policyRuntime = getPolicyReleaseRuntime();
+          if (policyRuntime.mode === "unavailable") {
+            const policyError = Object.assign(new Error("정책 정보를 일시적으로 확인할 수 없습니다."), {
+              errorCode: "POLICY_RELEASE_UNAVAILABLE",
             });
             return socialRecoveryForContext({ provider, error: policyError, signupIntent });
           }
+
+          const consentMethod = signupIntent.source === "magazine" ? "magazine_social_signup" : "platform_social_signup";
+          let policyConsents: PolicyConsentRecord[];
+          if (policyRuntime.mode === "legacy") {
+            if (
+              signupIntent.termsVersion !== CURRENT_ACCOUNT_POLICY.terms.version ||
+              signupIntent.privacyVersion !== CURRENT_ACCOUNT_POLICY.privacy.version
+            ) {
+              const policyError = Object.assign(new Error("정책 동의를 다시 확인해 주세요."), {
+                errorCode: "SIGNUP_INTENT_INVALID",
+              });
+              return socialRecoveryForContext({ provider, error: policyError, signupIntent });
+            }
+            policyConsents = currentPolicyConsents(consentMethod, provider).map((consent) => ({
+              ...consent,
+              agreedAt: acceptedAt,
+            }));
+          } else {
+            const presentedReleaseIds = Array.isArray(signupIntent.releaseIds) && signupIntent.releaseIds.length > 0
+              ? signupIntent.releaseIds
+              : [
+                  `terms-of-service@${signupIntent.termsVersion}`,
+                  `privacy-policy@${signupIntent.privacyVersion}`,
+                ];
+            const nonCancelledReleaseIds = new Set(
+              Object.values(policyRuntime.manifest.policies)
+                .flatMap((policy) => policy.releases)
+                .filter((release) => release.status !== "cancelled")
+                .map((release) => release.releaseId),
+            );
+            const acceptedReleaseIds = presentedReleaseIds.filter((releaseId) => nonCancelledReleaseIds.has(releaseId));
+            if (acceptedReleaseIds.length === 0) {
+              const policyError = Object.assign(new Error("정책 동의를 다시 확인해 주세요."), {
+                errorCode: "SIGNUP_INTENT_INVALID",
+              });
+              return socialRecoveryForContext({ provider, error: policyError, signupIntent });
+            }
+
+            try {
+              const built = buildAccountConsentRecords({
+                method: consentMethod,
+                provider,
+                agreedAt: acceptedAt,
+                releaseIds: acceptedReleaseIds,
+                manifestRevision: signupIntent.manifestRevision,
+              });
+              if (built.records.length === 0) throw Object.assign(new Error("정책 동의를 다시 확인해 주세요."), {
+                errorCode: "SIGNUP_INTENT_INVALID",
+              });
+              policyConsents = built.records;
+              if (built.warning === "MANIFEST_REVISION_MISMATCH") {
+                logger.warn("[auth] manifest revision mismatch accepted", {
+                  source: "social_signup_intent",
+                });
+              }
+            } catch (error) {
+              const errorCode = (error as { errorCode?: string }).errorCode === "POLICY_RELEASE_UNAVAILABLE"
+                ? "POLICY_RELEASE_UNAVAILABLE"
+                : "SIGNUP_INTENT_INVALID";
+              const policyError = Object.assign(new Error("정책 동의를 다시 확인해 주세요."), { errorCode });
+              return socialRecoveryForContext({ provider, error: policyError, signupIntent });
+            }
+          }
+
           const linked = await linkSocialToExistingUserByEmail({
             provider,
             providerAccountId: String(providerId),
@@ -246,10 +311,7 @@ export const authOptions: NextAuthOptions = {
             profile: profileRecord,
             allowCreate: true,
             registrationSource: signupIntent.source,
-            policyConsents: currentPolicyConsents(
-              signupIntent.source === "magazine" ? "magazine_social_signup" : "platform_social_signup",
-              provider,
-            ).map((consent) => ({ ...consent, agreedAt: acceptedAt })),
+            policyConsents,
           });
           setLinkedAuthResult(user, linked);
           return true;

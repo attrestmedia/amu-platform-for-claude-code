@@ -72,7 +72,7 @@ export const CommercePublishJobSchema = new Schema<ICommercePublishJobDocument>(
     draftRevision: { type: Number, required: true, default: 1, index: true },
     payloadHash: { type: String, required: true, index: true },
     dedupeKey: { type: String, required: true, index: true },
-    idempotencyKey: { type: String, default: undefined, index: true },
+    idempotencyKey: { type: String, default: undefined },
     attempt: { type: Number, required: true, default: 1 },
     requestSnapshot: { type: Schema.Types.Mixed, required: true, default: () => ({}) },
     responseSnapshot: { type: Schema.Types.Mixed, default: () => ({}) },

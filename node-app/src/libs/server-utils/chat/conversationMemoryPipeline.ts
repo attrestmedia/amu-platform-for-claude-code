@@ -1,4 +1,6 @@
 import "server-only";
+import { AI_MODEL_ROLE_POLICY } from "consts/ai/generated/modelPolicy.generated";
+import { roleRefToProviderModel } from "consts/ai/modelPolicy";
 import {
   getConversationArchiveModel,
   getConversationMessageModel,
@@ -12,12 +14,13 @@ import {
   assertPricingPreflightOrThrow,
   billAIUsageOrThrow,
 } from "libs/services/aiUsageBilling";
+import { assertSystemModelEnabledOrThrow } from "libs/server-utils/api/systemModelControl";
 import { claimProviderOperationOrThrow } from "libs/server-utils/api/providerOperationGuard";
 import { capHistoryByTokenBudget, estimateTokens } from "utils/ai";
 import { createTextHash } from "utils/common";
 import { logger } from "utils/log";
 import { toErrorLike, toUnknownRecord, type UnknownRecord } from "utils/common/typeUtils";
-import type { AiMessageType, IMessage } from "types/ai";
+import type { AiMessageType, IMessage, TextProviderType } from "types/ai";
 
 // 대화 컬렉션은 사용자별로 동적 생성되며 일관된 스키마가 없어 unknown 도큐먼트로 처리
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,10 +33,10 @@ const SESSION_FORCE_MESSAGE_LIMIT = 48;
 const MEMORY_INJECTION_TOKEN_BUDGET = 1200;
 const RAW_RETENTION_MONTHS = 6;
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const LITE_MODEL_CANDIDATES = [
-  { provider: "google" as const, model: "gemini-3.5-flash-lite" },
-  { provider: "openai" as const, model: "gpt-5.6-luna" },
-];
+const LITE_MODEL_CANDIDATES = AI_MODEL_ROLE_POLICY.chat.memory.liteCandidates.map((ref) => {
+  const { provider, modelName } = roleRefToProviderModel(ref);
+  return { provider: provider as TextProviderType, model: modelName };
+});
 const FACT_CATEGORY_VALUES = ["profile", "goal", "preference", "taboo", "relationship", "learning"] as const;
 
 type IdentityArgs = {
@@ -266,6 +269,11 @@ async function runLiteStructuredPrompt<T>(prompt: string, fallback: T, billing: 
             route: "conversation-memory/lite-preflight",
             operationId,
           },
+        });
+        await assertSystemModelEnabledOrThrow({
+          provider: candidate.provider,
+          modelName: candidate.model,
+          modality: "text",
         });
         providerDispatchStarted = true;
         result = await callTextByProvider(candidate.provider, candidate.model, prompt, {

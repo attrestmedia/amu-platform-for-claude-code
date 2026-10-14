@@ -1,7 +1,7 @@
-import { IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai";
 import type { ImageProviderType } from "types/ai";
 import type { BaseImageType, ImagePromptInputPolicyType, PromptItemType } from "types/app";
 import { toUnknownRecord } from "utils/common/typeUtils";
+import { AI_IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 
 export type ResolvedImageReferencePolicyType = {
   required: boolean;
@@ -21,7 +21,7 @@ export function resolveImageReferencePolicy(
   inputPolicy?: ImagePromptInputPolicyType,
   provider: ImageProviderType = "google",
 ): ResolvedImageReferencePolicyType {
-  const limit = Math.max(1, Number(IMAGE_REF_LIMIT_BY_PROVIDER[provider] || 1));
+  const limit = Math.max(1, Number((AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[provider] || 1));
   const raw = inputPolicy?.referenceImage || {};
   const required = raw.required === true;
   const minBase = required ? 1 : 0;

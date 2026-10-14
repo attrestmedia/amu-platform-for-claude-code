@@ -154,7 +154,7 @@ export function MarketingGrowthMissionPanel({ universeId, initialCampaignId = ""
 
   const strategy = analysis.strategy;
   const diagnosis = analysis.diagnosis;
-  const strategyHref = `/marketing-oops/workspace?universeId=${encodeURIComponent(scopedUniverseId)}&tab=keyword`;
+  const strategyHref = `/marketing-oops/workspace/keyword?universeId=${encodeURIComponent(scopedUniverseId)}`;
 
   return (
     <section className="flex flex-col gap-4 text-primary-text" aria-labelledby="growth-mission-title">

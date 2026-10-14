@@ -37,7 +37,21 @@ import { logger } from "utils/log";
 import { toUnknownRecord } from "utils/common/typeUtils";
 import { listSelectableUserGameCharacters } from "libs/server-utils/game/userGameCharacterRuntime";
 import { createUserCharacterWithGenesis } from "libs/server-utils/game/characterCreationSaga";
+import { CharacterGenesisError } from "libs/server-utils/game/characterGenesisService";
+import {
+  assertCharacterSpeciesAllowed,
+  CharacterUniversePolicyError,
+  resolveDefaultCharacterSpecies,
+} from "libs/server-utils/game/characterUniversePolicy";
+import { resolveCharacterUniverseAccess } from "libs/server-utils/game/characterUniverseAccess";
 import { resolveTutorPersonaReadAccess } from "libs/services/tutors/tutorGiftGrants";
+import { CHARACTER_FEATURE_KEYS } from "consts/system/featureRollout";
+import { resolveFeatureAccess } from "libs/server-utils/auth/featureAccessPolicy";
+import {
+  isCharacterSourceTypeCompatible,
+  isCharacterUploadSourceOwner,
+  resolveCharacterSourceAssetOrigin,
+} from "libs/server-utils/game/characterSourcePolicy";
 
 export const runtime = "nodejs";
 
@@ -53,7 +67,14 @@ const TEMPLATE_VERSION = 2;
 const SOURCE_TYPE_SET = new Set<string>(USER_GAME_CHARACTER_SOURCE_TYPES);
 const STATUS_SET = new Set<string>(USER_GAME_CHARACTER_STATUSES);
 
-function buildIdempotencyKey(uid: string, sourceImageRef: string) {
+function buildIdempotencyKey(uid: string, sourceImageRef: string, universeId: string) {
+  return crypto
+    .createHash("sha256")
+    .update(`user-game-character|${uid}|${sourceImageRef.toLowerCase()}|${universeId}|v${TEMPLATE_VERSION}`)
+    .digest("hex");
+}
+
+function buildLegacyIdempotencyKey(uid: string, sourceImageRef: string) {
   return crypto
     .createHash("sha256")
     .update(`user-game-character|${uid}|${sourceImageRef.toLowerCase()}|v${TEMPLATE_VERSION}`)
@@ -96,6 +117,8 @@ export const POST = withAuth(
           { status: 400 },
         );
       }
+
+      const { speciesPolicy } = await resolveCharacterUniverseAccess(user as AuthenticatedUserType, universeId);
 
       let sourceReferenceKit: Awaited<ReturnType<typeof getCharacterReferenceKitByKitId>> = null;
       if (sourceTypeRaw === "reference-kit") {
@@ -209,7 +232,32 @@ export const POST = withAuth(
         );
       }
 
-      const speciesId = sourcePersonaType || (requestedSpeciesId === "monster" ? "monster" : "human");
+      const sourceOrigin = resolveCharacterSourceAssetOrigin(asset);
+      if (!isCharacterSourceTypeCompatible(sourceTypeRaw, sourceOrigin)) {
+        return NextResponse.json(
+          { ok: false, error: "character_source_type_mismatch", errorCode: "CHARACTER_SOURCE_TYPE_MISMATCH" },
+          { status: 400 },
+        );
+      }
+      if (sourceOrigin === "upload") {
+        const sourceAccess = await resolveFeatureAccess({
+          featureKey: CHARACTER_FEATURE_KEYS.uploadSource,
+          user,
+        });
+        if (!sourceAccess.allowed) {
+          return NextResponse.json(
+            { ok: false, error: "feature_access_denied", errorCode: "FEATURE_ACCESS_DENIED" },
+            { status: 403 },
+          );
+        }
+        if (!isCharacterUploadSourceOwner(asset, uid)) {
+          return NextResponse.json(
+            { ok: false, error: "source_image_forbidden", errorCode: "SOURCE_IMAGE_FORBIDDEN" },
+            { status: 403 },
+          );
+        }
+      }
+
       if (requestedSpeciesId && requestedSpeciesId !== "human" && requestedSpeciesId !== "monster") {
         return NextResponse.json(
           { ok: false, error: "character_species_invalid", errorCode: "CHARACTER_SPECIES_INVALID" },
@@ -222,6 +270,8 @@ export const POST = withAuth(
           { status: 409 },
         );
       }
+      const speciesId = sourcePersonaType || requestedSpeciesId || resolveDefaultCharacterSpecies(speciesPolicy);
+      assertCharacterSpeciesAllowed(speciesPolicy, speciesId);
 
       const sourceImageRef =
         normalizeString(toUnknownRecord(asset.storage).sha256) || normalizeString(asset.assetId);
@@ -233,11 +283,24 @@ export const POST = withAuth(
       }
 
       const userKey = resolveUserNameKey(user);
-      const idempotencyKey = buildIdempotencyKey(uid, sourceImageRef);
+      const idempotencyKey = buildIdempotencyKey(uid, sourceImageRef, universeId);
+      let effectiveKey = idempotencyKey;
 
-      // 멱등 재시도/재활성화 여부를 먼저 확인한다. 같은 idempotencyKey의 캐릭터가 이미 있으면
-      // 이름은 최초 생성 시 이미 예약되어 있으므로 새로 예약하지 않고 기존 결과를 반환한다.
-      const existingByIdempotency = await getUserGameCharacterByIdempotencyKey({ uid, idempotencyKey });
+      // 새 키로 먼저 조회하고, 이전 버전 문서는 같은 유니버스일 때만 읽기 전용으로 승계한다.
+      let existingByIdempotency = await getUserGameCharacterByIdempotencyKey({
+        uid,
+        idempotencyKey: effectiveKey,
+      });
+      if (!existingByIdempotency) {
+        const legacyKey = buildLegacyIdempotencyKey(uid, sourceImageRef);
+        const legacyDoc = await getUserGameCharacterByIdempotencyKey({ uid, idempotencyKey: legacyKey });
+        if (legacyDoc?.universeId === universeId) {
+          existingByIdempotency = legacyDoc;
+          effectiveKey = legacyKey;
+        }
+      }
+
+      // 멱등 재시도/재활성화 여부를 먼저 확인한다. 기존 캐릭터는 새 이름을 예약하지 않고 반환한다.
 
       let reservedCharacterId = "";
       if (!existingByIdempotency) {
@@ -292,13 +355,13 @@ export const POST = withAuth(
           primaryAttributeId: primaryAttributeId || undefined,
           archetypeId: archetypeId || undefined,
           templateVersion: TEMPLATE_VERSION,
-          idempotencyKey,
+          idempotencyKey: effectiveKey,
           ...(reservedCharacterId ? { characterId: reservedCharacterId } : {}),
         });
       } catch (error) {
         // saga가 논리 캐릭터를 만든 뒤 실패한 경우에는 이름을 유지해야 재시도가 같은 소유권을 갖는다.
         const existingAfterFailure = reservedCharacterId
-          ? await getUserGameCharacterByIdempotencyKey({ uid, idempotencyKey }).catch(() => null)
+          ? await getUserGameCharacterByIdempotencyKey({ uid, idempotencyKey: effectiveKey }).catch(() => null)
           : null;
         if (reservedCharacterId && !existingAfterFailure) {
           await releasePersonaName({ userKey, personaId: reservedCharacterId }).catch(() => null);
@@ -308,12 +371,18 @@ export const POST = withAuth(
 
       if (sourceReferenceKit) {
         const personaPid = String(result.character.personaId || result.character.characterId).trim();
-        await markCharacterReferenceKitUsedByPlayPersona({
+        const linkedCount = await markCharacterReferenceKitUsedByPlayPersona({
           kitId: sourceReferenceKit.kitId,
-          universeId,
           personaPid,
           updatedBy: uid,
         });
+        if (!linkedCount) {
+          logger.warn("[UserGameCharacter][POST] 레퍼런스 킷 pid 역링크 미기록", {
+            kitId: sourceReferenceKit.kitId,
+            characterId: result.character.characterId,
+            universeId,
+          });
+        }
       }
 
       // race로 다른 요청이 같은 idempotencyKey를 선점해 우리가 예약한 characterId가
@@ -325,6 +394,18 @@ export const POST = withAuth(
       return NextResponse.json({ ok: true, data: result }, { status: result.created ? 201 : 200 });
     } catch (error) {
       logger.error("[UserGameCharacter][POST] failed:", error);
+      if (error instanceof CharacterUniversePolicyError) {
+        return NextResponse.json(
+          { ok: false, error: error.code.toLowerCase(), errorCode: error.code },
+          { status: error.status },
+        );
+      }
+      if (error instanceof CharacterGenesisError) {
+        return NextResponse.json(
+          { ok: false, error: error.code.toLowerCase(), errorCode: error.code },
+          { status: error.status },
+        );
+      }
       return NextResponse.json(
         { ok: false, error: "character_create_failed", errorCode: "CHARACTER_CREATE_FAILED" },
         { status: 500 },

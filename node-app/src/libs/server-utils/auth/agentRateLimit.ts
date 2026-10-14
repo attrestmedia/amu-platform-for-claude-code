@@ -1,7 +1,17 @@
 import "server-only";
+import { AI_IMAGE_SELECTABLE_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
+import { AI_MODEL_ROLE_POLICY } from "consts/ai/generated/modelPolicy.generated";
+import { roleRefToProviderModel } from "consts/ai/modelPolicy";
+import type { ImageProviderType } from "types/ai";
 import { getRedisClient } from "libs/cache/redisClient";
 import { logger } from "utils/log";
 import { toErrorLike } from "utils/common/typeUtils";
+
+type RoleModelName<Ref extends string> = Ref extends `${string}:${infer ModelName}/${string}` ? ModelName : never;
+
+function roleModelName<const Ref extends string>(ref: Ref): RoleModelName<Ref> {
+  return roleRefToProviderModel(ref).modelName as RoleModelName<Ref>;
+}
 
 function codedError(message: string, errorCode: string, status = 400) {
   const err = new Error(message) as Error & { errorCode: string; status: number };
@@ -62,20 +72,15 @@ async function getCounterValue(key: string) {
 }
 
 export const AGENT_IMAGE_POLICY = {
-  defaultProvider: "zai",
-  allowedProviders: ["google", "openai", "xai", "zai"] as const,
+  defaultProvider: AI_MODEL_ROLE_POLICY.agent.image.defaultProvider,
+  allowedProviders: Object.keys(AI_IMAGE_SELECTABLE_MODEL_MAP) as (keyof typeof AI_IMAGE_SELECTABLE_MODEL_MAP)[],
   defaultModelByProvider: {
-    google: "gemini-2.5-flash-image",
-    openai: "gpt-image-2.5-flare",
-    xai: "grok-imagine-image",
-    zai: "glm-image",
+    google: roleModelName(AI_MODEL_ROLE_POLICY.agent.image.defaultByProvider.google),
+    openai: roleModelName(AI_MODEL_ROLE_POLICY.agent.image.defaultByProvider.openai),
+    xai: roleModelName(AI_MODEL_ROLE_POLICY.agent.image.defaultByProvider.xai),
+    zai: roleModelName(AI_MODEL_ROLE_POLICY.agent.image.defaultByProvider.zai),
   } as const,
-  allowedModelsByProvider: {
-    google: ["gemini-2.5-flash-image", "gemini-3.1-flash-image-preview", "gemini-3-pro-image-preview"] as const,
-    openai: ["gpt-image-2.5-flare", "gpt-image-2.5-sunburst"] as const,
-    xai: ["grok-imagine-image", "grok-imagine-image-2.0"] as const,
-    zai: ["glm-image"] as const,
-  } as const,
+  allowedModelsByProvider: AI_IMAGE_SELECTABLE_MODEL_MAP as Readonly<Record<ImageProviderType, readonly string[]>>,
   maxPromptCharsByProvider: {
     zai: 1000,
   } as const,
@@ -89,14 +94,14 @@ export const AGENT_IMAGE_POLICY = {
 } as const;
 
 export const AGENT_CONTENT_POLICY = {
-  defaultProvider: "openai",
+  defaultProvider: AI_MODEL_ROLE_POLICY.agent.content.defaultProvider,
   defaultModelByProvider: {
-    google: "gemini-3.8-flash",
-    openai: "gpt-5.6-terra",
-    claude: "claude-sonnet-5",
-    deepseek: "deepseek-v4-pro",
-    xai: "grok-4.7",
-    zai: "glm-5.3-flash",
+    google: roleModelName(AI_MODEL_ROLE_POLICY.agent.content.defaultByProvider.google),
+    openai: roleModelName(AI_MODEL_ROLE_POLICY.agent.content.defaultByProvider.openai),
+    claude: roleModelName(AI_MODEL_ROLE_POLICY.agent.content.defaultByProvider.claude),
+    deepseek: roleModelName(AI_MODEL_ROLE_POLICY.agent.content.defaultByProvider.deepseek),
+    xai: roleModelName(AI_MODEL_ROLE_POLICY.agent.content.defaultByProvider.xai),
+    zai: roleModelName(AI_MODEL_ROLE_POLICY.agent.content.defaultByProvider.zai),
   } as const,
   defaultVisibility: "public" as const,
   maxRequestsPerMinute: toPositiveInt(process.env.AGENT_CONTENT_MAX_REQUESTS_PER_MINUTE, 10),

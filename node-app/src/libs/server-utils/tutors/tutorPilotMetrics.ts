@@ -7,15 +7,6 @@ import {
   NarrativePilotMetricSchema,
   type INarrativePilotMetricDocument,
 } from "models/game";
-import {
-  TUTORS_VOICE_PILOT_METRIC_KEYS,
-  TUTORS_VOICE_PILOT_RECORDING_ENABLED,
-  evaluateTutorsVoicePilotBaseline,
-  isTutorsVoicePilotMetricsRecordingEnabled,
-  loadTutorsVoicePilotConfig,
-  type TutorsVoicePilotConfig,
-  type TutorsVoicePilotMetricKey,
-} from "libs/server-utils/tutors/tutorsVoicePilotContract";
 import { TUTORS_MEASUREMENT_SAFE_DETAIL_KEYS, TUTORS_NEW_MEASUREMENT_EVENTS } from "consts/tutorsMeasurement";
 import type { Model } from "mongoose";
 
@@ -33,8 +24,11 @@ export const TUTOR_PILOT_METRIC_VALUES = [
   "narrative_continuation",
   "opt_out",
   "magazine_return",
-  // EL-603 Voice 파일럿 key 가산 — 기록은 default-off(TUTORS_VOICE_PILOT_RECORDING_ENABLED=false).
-  ...TUTORS_VOICE_PILOT_METRIC_KEYS,
+  // 저장 enum 호환 — 기존 Voice 파일럿 metric 값은 데이터 읽기·검증을 위해 유지한다.
+  "voice_playback_start",
+  "voice_playback_failure",
+  "voice_text_only_fallback",
+  "voice_latency_bucket",
   // TUTORS-200-D3 — 서버 원장 allowlist만 확장하며 발화 배선은 만들지 않는다.
   ...TUTORS_NEW_MEASUREMENT_EVENTS,
 ] as const;
@@ -60,9 +54,6 @@ const ALLOWED_DETAIL_KEYS = new Set([
   "beatId",
   "reason",
   "attemptIndex",
-  // EL-603 Voice 파일럿 detail — bucket(지연 구간), voiceId(승인 카탈로그 ID). PII 아님.
-  "bucket",
-  "voiceId",
   ...TUTORS_MEASUREMENT_SAFE_DETAIL_KEYS,
 ]);
 
@@ -123,50 +114,6 @@ export async function recordTutorPilotMetric(input: {
     // 계측 실패는 본래 학습 흐름을 막지 않는다 (fail-open)
     return { recorded: false };
   }
-}
-
-/**
- * EL-603 Voice 파일럿 계측 — R1에서는 default-off다. 스위치가 켜지기 전에는 저장하지 않는다.
- * 기록이 열려도 기존 recordTutorPilotMetric의 PII 화이트리스트를 그대로 통과해야 한다.
- */
-export async function recordTutorVoicePilotMetric(
-  input: {
-    uid: string;
-    universeId: string;
-    metric: TutorsVoicePilotMetricKey;
-    idempotencyKey: string;
-    detail?: Record<string, unknown>;
-  },
-  options?: { config?: TutorsVoicePilotConfig | null },
-) {
-  // 설정이 주어지면 runtime-config 스위치를, 없으면 코드 기본값(off)을 따른다.
-  const enabled =
-    options && "config" in options
-      ? isTutorsVoicePilotMetricsRecordingEnabled(options.config)
-      : TUTORS_VOICE_PILOT_RECORDING_ENABLED;
-  if (!enabled) return { recorded: false, defaultOff: true };
-  return await recordTutorPilotMetric({
-    uid: input.uid,
-    universeId: input.universeId,
-    metric: input.metric,
-    idempotencyKey: input.idempotencyKey,
-    detail: input.detail,
-  });
-}
-
-/**
- * Stream B 계측 call site — 서버 설정(runtime-config)을 읽어 스위치를 판정한 뒤 기록한다.
- * 기본 off이며, 설정 미비/장애 시에도 기록하지 않는다.
- */
-export async function recordTutorVoicePilotMetricFromConfig(input: {
-  uid: string;
-  universeId: string;
-  metric: TutorsVoicePilotMetricKey;
-  idempotencyKey: string;
-  detail?: Record<string, unknown>;
-}) {
-  const config = await loadTutorsVoicePilotConfig();
-  return await recordTutorVoicePilotMetric(input, { config });
 }
 
 /** 학습 guardrail 기본 임계값 — narrative-on cohort가 off cohort보다 완료율이 threshold 이상 낮으면 서사 자동 중단을 권고한다. */
@@ -252,25 +199,13 @@ export type TutorPilotDashboard = {
   };
   correction: { corrections: number; qualityRate: number };
   narrative: { continuations: number; optOuts: number };
-  // EL-603 — Voice 파일럿 지표(가산). recordingEnabled=false면 값은 항상 0이다.
-  voice: {
-    playbackStarts: number;
-    playbackFailures: number;
-    textOnlyFallbacks: number;
-    latencyBuckets: Array<{ bucket: string; count: number }>;
-  };
-  voicePilot: {
-    keys: readonly TutorsVoicePilotMetricKey[];
-    recordingEnabled: boolean;
-    baseline: ReturnType<typeof evaluateTutorsVoicePilotBaseline>;
-  };
   guardrail: TutorLearningGuardrail;
 };
 
 /** 관리자 대시보드 집계 — 개인 식별 필드는 반환하지 않는다 (uid 목록 미포함). */
 export async function aggregateTutorPilotDashboard(universeId: string): Promise<TutorPilotDashboard> {
   const model = await getTutorPilotMetricModel();
-  const [counts, window, learningRows, correctionRows, voiceLatencyRows] = await Promise.all([
+  const [counts, window, learningRows, correctionRows] = await Promise.all([
     model.aggregate([{ $match: { universeId } }, { $group: { _id: "$metric", count: { $sum: 1 } } }]),
     model.aggregate([
       { $match: { universeId } },
@@ -295,11 +230,6 @@ export async function aggregateTutorPilotDashboard(universeId: string): Promise<
           corrected: { $sum: { $cond: [{ $eq: ["$detail.corrected", true] }, 1, 0] } },
         },
       },
-    ]),
-    // EL-603 Voice 지연 bucket 분포 — 기록 default-off에서는 0건이다.
-    model.aggregate([
-      { $match: { universeId, metric: "voice_latency_bucket" } },
-      { $group: { _id: "$detail.bucket", count: { $sum: 1 } } },
     ]),
   ]);
 
@@ -331,21 +261,6 @@ export async function aggregateTutorPilotDashboard(universeId: string): Promise<
     narrative: {
       continuations: metricMap.get("narrative_continuation") || 0,
       optOuts: metricMap.get("opt_out") || 0,
-    },
-    voice: {
-      playbackStarts: metricMap.get("voice_playback_start") || 0,
-      playbackFailures: metricMap.get("voice_playback_failure") || 0,
-      textOnlyFallbacks: metricMap.get("voice_text_only_fallback") || 0,
-      latencyBuckets: voiceLatencyRows.map((row) => ({
-        bucket: String(row._id ?? "unknown"),
-        count: Number(row.count) || 0,
-      })),
-    },
-    voicePilot: {
-      keys: TUTORS_VOICE_PILOT_METRIC_KEYS,
-      recordingEnabled: TUTORS_VOICE_PILOT_RECORDING_ENABLED,
-      // 사용자가 사전 등록한 primary metric·분모·MDE·관측 창·guardrail 값이 없으면 incomplete(fail-closed)다.
-      baseline: evaluateTutorsVoicePilotBaseline(),
     },
     guardrail: await evaluateTutorLearningGuardrail(universeId),
   };

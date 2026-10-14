@@ -12,6 +12,7 @@ import {
   stripLegacyImagePromptNegativeSection,
 } from "utils/lab";
 import { isPlainObject, type UnknownRecord } from "utils/common";
+import { isReservedInternalPromptKey, PROMPT_KEY_RESERVED_PREFIX_ERROR_CODE } from "utils/app/promptAccess";
 
 export const runtime = "nodejs";
 
@@ -105,6 +106,13 @@ export const POST = withAuth(
     const key = String(body.key).trim();
     const originalKey = String(body.originalKey || key).trim();
     const categories = Array.isArray(body.categories) && body.categories.length ? body.categories : ["general"];
+
+    if (isReservedInternalPromptKey(key)) {
+      return NextResponse.json(
+        { ok: false, error: "reserved_key_prefix", errorCode: PROMPT_KEY_RESERVED_PREFIX_ERROR_CODE },
+        { status: 400 },
+      );
+    }
 
     if (body.strictNew === true) {
       if (await existsImagePromptKey(key)) {

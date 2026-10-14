@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { CONTENT_STUDIO_NAMESPACE_KEY } from "consts/app/services";
-import { TEXT_MODEL_MAP, TEXT_PROVIDER_TYPES } from "consts/ai";
+import { TEXT_PROVIDER_TYPES } from "consts/ai";
 import { getContentPromptByKey } from "libs/database/lab";
 import { handleUserContentBasic, type ContentBasicBody } from "libs/server-utils/api/contentBasicHandler";
 import { assertSystemModelSelectableOrThrow } from "libs/server-utils/api/systemModelControl";
@@ -11,6 +11,7 @@ import type { TextProviderType } from "types/ai";
 import type { PromptVisibilityType } from "types/app";
 import { extractCodedError, isUnknownRecord, toUnknownRecord } from "utils/common";
 import { logger } from "utils/log";
+import { AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,7 @@ function resolveProvider(raw: unknown): TextProviderType {
 
 function resolveModelName(provider: TextProviderType, raw: unknown) {
   const defaults = AGENT_CONTENT_POLICY.defaultModelByProvider as Record<string, string>;
-  const models = TEXT_MODEL_MAP as Record<string, readonly string[]>;
+  const models = AI_TEXT_MODEL_MAP as Record<string, readonly string[]>;
   const modelName = toSafeString(raw || defaults[provider]);
   if (!modelName || !(models[provider] || []).includes(modelName)) {
     throw codedError("agent_model_not_allowed", "INVALID_MODEL");

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button, Sheet, SheetContent, SheetHeader, SheetTitle, Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Preloader } from "@amu-labs/ui";
 import {
   UniverseDetailManager,
+  UniverseGameOwnersPanel,
   UniverseForm,
   UniverseWalletPanel,
   UniverseUsageList,
@@ -12,7 +13,6 @@ import {
 import { ImageStudioEditor } from "components/template/gen-studio/ImageStudioEditor";
 import { TossPaymentDialog } from "components/module/payments";
 import { CoinChargeWidget } from "components/module/commerce";
-import { Logout } from "components/module/auth";
 import { Lang, lang } from "components/module/i18n";
 import { MarketingCredentialPanelGroup, MarketingOperationsPanel } from "components/module/admin/third-party";
 import fetchClient from "libs/api/fetchClient";
@@ -25,7 +25,7 @@ import { Pencil, CreditCard, Coins, LayoutGrid, Database, Settings, Store, Exter
 import { MARKETING_FEATURE_ENABLED } from "consts/marketing/public";
 import { PersonaManager } from "components/module/admin/persona";
 import { StageList } from "components/module/admin/stage";
-import { PAGE_LAYOUT_CLASS, SHEET_CLASS, SHEET_HEADER_CLASS, STAT_CARD_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
+import { SHEET_CLASS, SHEET_HEADER_CLASS, STAT_CARD_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
 import { cn, toUnknownRecord } from "utils/common";
 import { useQuery } from "@tanstack/react-query";
 import { fetchUniverseWallet } from "libs/api/payment";
@@ -152,7 +152,7 @@ export default function UniverseScopedAdminPage() {
   }
 
   return (
-    <div className={cn(PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS, "p-4 md:p-6")}>
+    <div className={cn(THEME_OVERRIDE_CLASS, "mx-auto w-full max-w-7xl")}>
       {/* 헤더 카드 */}
       <div className={cn(STAT_CARD_CLASS, "mb-6 p-4 md:p-6")}>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -234,7 +234,6 @@ export default function UniverseScopedAdminPage() {
               </Button>
             )}
 
-            <Logout className="text-sm text-secondary-text" />
           </div>
         </div>
       </div>
@@ -281,6 +280,10 @@ export default function UniverseScopedAdminPage() {
           }
         />
       </div>
+
+      {targetUniverse.type === "game" ? (
+        <UniverseGameOwnersPanel key={targetUniverse.id} universeId={targetUniverse.id} />
+      ) : null}
 
       {/* 편집 다이얼로그 */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>

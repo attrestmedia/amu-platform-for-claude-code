@@ -71,8 +71,8 @@ export const APP_CONTENT_ARCHETYPES = [
 export type AppContentArchetype = (typeof APP_CONTENT_ARCHETYPES)[number];
 
 /**
- * moduleType 8종 — Manifest v1 slot 계약의 실제 enum 그대로
- * (static 읽기 모듈 5종 + 동적 서비스 모듈 3종. timeline은 계약에 존재하지 않는다)
+ * moduleType 7종 — Manifest v1 slot 계약의 실제 enum 그대로
+ * (static 읽기 모듈 5종 + 동적 서비스 모듈 2종. timeline은 계약에 존재하지 않는다)
  */
 export const APP_CONTENT_MODULE_TYPES = [
   "static",
@@ -82,7 +82,6 @@ export const APP_CONTENT_MODULE_TYPES = [
   "quiz",
   "image_embed",
   "content_embed",
-  "tutors_embed",
 ] as const;
 export type AppContentModuleType = (typeof APP_CONTENT_MODULE_TYPES)[number];
 

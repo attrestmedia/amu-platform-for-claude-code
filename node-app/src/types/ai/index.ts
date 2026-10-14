@@ -10,9 +10,10 @@ export {
   AI_COST_TRACE_ROLES,
 } from "./costTrace";
 export type * from "./costTrace";
+export { AI_COST_MONITOR_WINDOWS } from "./costMonitor";
+export type * from "./costMonitor";
 export type * from "./videoGeneration";
 export {
-  VIDEO_CAPABILITY_MATRIX,
   VIDEO_GENERATION_MODES,
   VIDEO_GENERATION_REJECTION_REASONS,
   VIDEO_JOB_STATUSES,

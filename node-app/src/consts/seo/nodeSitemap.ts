@@ -13,7 +13,6 @@
 export const NODE_PUBLIC_INDEXABLE_PAGES = [
   "/",
   "/gen-studio",
-  "/tutors",
   "/play",
   "/store",
   "/apps",

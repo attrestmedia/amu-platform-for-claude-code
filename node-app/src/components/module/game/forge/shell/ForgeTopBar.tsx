@@ -14,9 +14,10 @@ type ForgeTopBarProps = {
   onToggleSidebar: () => void;
   sidebarExpanded: boolean;
   sidebarControlsId?: string;
+  sidebarToggleId: string;
 };
 
-export function ForgeTopBar({ onToggleSidebar, sidebarExpanded, sidebarControlsId }: ForgeTopBarProps) {
+export function ForgeTopBar({ onToggleSidebar, sidebarExpanded, sidebarControlsId, sidebarToggleId }: ForgeTopBarProps) {
   const router = useRouter();
   const isLoggedIn = useAuthStore((state) => state.isLogged());
   const { userData, isAdministrator } = useUserData();
@@ -30,6 +31,7 @@ export function ForgeTopBar({ onToggleSidebar, sidebarExpanded, sidebarControlsI
       onAdminClick={() => router.push("/admin")}
       leading={
         <WorkspaceSidebarToggle
+          id={sidebarToggleId}
           expanded={sidebarExpanded}
           controlsId={sidebarControlsId}
           onToggle={onToggleSidebar}

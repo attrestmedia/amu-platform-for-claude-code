@@ -29,11 +29,7 @@ export type QwenPurposeConsentContract = {
   transferAllowed: boolean;
 };
 
-/**
- * Qwen purpose consent stays blocked until the matching Node privacy policy is
- * publicly effective and its WordPress rendering has been parity-checked.
- * Populate these values only with evidence for the exact CURRENT_ACCOUNT_POLICY version.
- */
+/** Legacy-mode Qwen release gate. Manifest mode uses POLICY_FEATURE_REQUIREMENTS and release evidence. */
 export const QWEN_MODEL_STUDIO_PRIVACY_RELEASE_GATE = {
   privacyVersion: "1.10.0",
   noticeDate: "2026-09-29T00:00:00+09:00",
@@ -99,6 +95,7 @@ export const QWEN_MODEL_STUDIO_CONSENT_CONTRACTS: Record<
 };
 
 export const VOICE_DATA_CONSENT_VERSION = "1.1.0" as const;
+/** Legacy-mode adapter value. Manifest writes and decisions resolve this at request time. */
 export const VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION = CURRENT_ACCOUNT_POLICY.privacy.version;
 export const VOICE_DATA_CONSENT_PROVIDER = "openai" as const;
 export const VOICE_DATA_CONSENT_PROVIDERS = ["openai", "alibaba_cloud_model_studio"] as const;

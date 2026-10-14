@@ -1,4 +1,5 @@
 import { Schema, type Document } from "mongoose";
+import type { JobPricingSnapshotV1, ReservedUsageV1 } from "libs/server-utils/ai/jobPricingSnapshot";
 
 export const AUDIO_GEN_JOB_STATUS_TYPES = [
   "queued",
@@ -29,6 +30,7 @@ export interface IAudioGenJobDocument extends Document {
   status: AudioGenJobStatusType;
   billing: {
     pricingRevision?: string;
+    reservedUsage?: ReservedUsageV1;
     estimatedCoins?: number;
     reservedCoins?: number;
     reservedCharacters?: number;
@@ -42,7 +44,10 @@ export interface IAudioGenJobDocument extends Document {
     settlementOperationIds?: string[];
     reservationCycle?: number;
     reconciliationRequired?: boolean;
+    settlementState?: "settled" | "reconciliation_required";
+    reconciliationCode?: string;
   };
+  pricingSnapshot?: JobPricingSnapshotV1;
   assets: string[];
   completedSegments: number[];
   error?: { code?: string; message?: string };
@@ -69,6 +74,7 @@ export const AudioGenJobSchema = new Schema<IAudioGenJobDocument>(
     manifestHash: { type: String, required: true, index: true },
     segmentCount: { type: Number, required: true, min: 1 },
     status: { type: String, enum: AUDIO_GEN_JOB_STATUS_TYPES, required: true, default: "queued", index: true },
+    pricingSnapshot: { type: Schema.Types.Mixed, required: false, default: undefined },
     billing: { type: Schema.Types.Mixed, required: true, default: {} },
     assets: { type: [String], default: [] },
     completedSegments: { type: [Number], default: [] },

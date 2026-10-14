@@ -11,6 +11,7 @@ import {
   type WorldAssetPresetType,
 } from "consts/game/worldAssetCatalog";
 import { WORLD_ASSET_IMAGE_PROMPT_TEMPLATES } from "consts/game/worldAssetTemplates";
+import { AI_MODEL_CATALOG_REVISIONS } from "consts/ai/generated/modelCatalog.generated";
 import { IMAGE_STUDIO_NAMESPACE_KEY } from "consts/app";
 import { getGameAssetByWorldAssetClientRequestId, createGameAsset, listGameAssets } from "libs/database/game";
 import {
@@ -21,7 +22,6 @@ import {
 import { resolveImageAssetDisplayUrl } from "libs/server-utils/lab/imageAssetDisplay";
 import { generateSaveAndBillImages, resolveImageProvider } from "libs/server-utils/api/imagePipeline";
 import {
-  createSystemPricingSnapshotRevision,
   getSystemPricingMaps,
   previewSystemPricingQuote,
 } from "libs/server-utils/api/systemPricingControl";
@@ -196,7 +196,7 @@ export async function getWorldAssetGenerationQuote(args: {
     provider: input.provider,
     modelName: input.modelName,
     billingStrategy,
-    pricingRevision: createSystemPricingSnapshotRevision(pricing),
+    pricingRevision: AI_MODEL_CATALOG_REVISIONS.pricingRevision,
     source: "system-pricing",
   };
 }

@@ -17,10 +17,11 @@ import {
 } from "libs/database/lab/videoGenRepo";
 import { assertAIUsageBalanceOrThrow, billAIUsageOrThrow, refundAIUsageOrThrow } from "libs/services/aiUsageBilling";
 import { getSystemPricingMaps } from "libs/server-utils/api/systemPricingControl";
+import { toLegacyFixedUsage, type ReservedUsageV1 } from "libs/server-utils/ai/jobPricingSnapshot";
 import { assertSystemModelEnabledOrThrow, assertSystemModelSelectableOrThrow } from "libs/server-utils/api/systemModelControl";
 import { getVideoProviderAdapter } from "libs/server-utils/video/videoProviderAdapters";
 import { storeVideoFromProvider } from "libs/server-utils/video/videoAssetStorage";
-import { buildVideoBillingPlan, resolveActualVideoCoins, resolveVideoBillingProvider, type VideoBillingPlan } from "libs/server-utils/video/videoGenerationBilling";
+import { buildVideoBillingPlan, resolveVideoBillingProvider, resolveVideoSettlementQuote, type VideoBillingPlan } from "libs/server-utils/video/videoGenerationBilling";
 import type { AuthenticatedUserType } from "libs/server-utils/api/_helpers";
 import type { VideoGenerationRequest } from "types/ai";
 import { validateVideoGenerationRequest } from "types/ai";
@@ -62,6 +63,15 @@ async function refundReserved(job: { jobId: string; uid: string; provider: strin
   const reserveOperationId = safe(toUnknownRecord(job.billing).reserveOperationId);
   const coins = Math.max(0, Number(job.estimatedCoins || 0));
   if (!reserveOperationId || !coins) return { ok: true, coins: 0 };
+  const plan = queuePlan(job);
+  const reservedUsageValue = toUnknownRecord(job.billing).reservedUsage;
+  const reservedUsageRecord = toUnknownRecord(reservedUsageValue);
+  const reservedUsage = (reservedUsageRecord.unit === "seconds" || reservedUsageRecord.unit === "videos")
+    && typeof reservedUsageRecord.quantity === "number"
+    && Number.isFinite(reservedUsageRecord.quantity)
+    && reservedUsageRecord.quantity > 0
+    ? reservedUsageRecord as unknown as ReservedUsageV1
+    : undefined;
   try {
     const result = await refundAIUsageOrThrow({
       uid: job.uid,
@@ -69,7 +79,7 @@ async function refundReserved(job: { jobId: string; uid: string; provider: strin
       provider: resolveVideoBillingProvider(job.provider),
       modelName: job.modelName,
       modality: "video",
-      fixed: queuePlan(job)?.fixedUsage,
+      fixed: reservedUsage ? toLegacyFixedUsage(reservedUsage) : plan?.fixedUsage,
       coins,
       meta: {
         operationId: operationId(job.jobId, `refund:${reason}:${coins}`),
@@ -80,60 +90,88 @@ async function refundReserved(job: { jobId: string; uid: string; provider: strin
     await updateVideoGenJobBilling({ jobId: job.jobId, refundedCoins: coins });
     return result;
   } catch (error) {
-    await updateVideoGenJobBilling({ jobId: job.jobId, reconciliationRequired: true }).catch(() => undefined);
+    await updateVideoGenJobBilling({
+      jobId: job.jobId,
+      reconciliationRequired: true,
+      settlementState: "reconciliation_required",
+      reconciliationCode: "VIDEO_REFUND_FAILED",
+    }).catch(() => undefined);
     throw error;
   }
 }
 
-async function settleReserved(job: { jobId: string; uid: string; provider: string; modelName: string; estimatedCoins: number; billing?: Record<string, unknown> }, actualCoins: number) {
-  const reserved = Math.max(0, Number(job.estimatedCoins || 0));
-  const actual = Math.max(0, Math.ceil(Number(actualCoins || 0)));
-  const plan = queuePlan(job);
-  if (!plan || actual === reserved) {
-    await updateVideoGenJobBilling({ jobId: job.jobId, settledCoins: actual, settlementOperationId: operationId(job.jobId, "settlement:exact") });
-    return { actualCoins: actual };
-  }
-
-  if (actual < reserved) {
-    const reserveOperationId = safe(toUnknownRecord(job.billing).reserveOperationId);
-    if (!reserveOperationId) throw Object.assign(new Error("video_reserve_operation_missing"), { errorCode: "VIDEO_RECONCILIATION_REQUIRED" });
-    const refundCoins = reserved - actual;
-    await refundAIUsageOrThrow({
-      uid: job.uid,
-      app: BILLING_APP,
-      provider: resolveVideoBillingProvider(job.provider),
-      modelName: job.modelName,
-      modality: "video",
-      fixed: plan.fixedUsage,
-      coins: refundCoins,
-      meta: {
-        operationId: operationId(job.jobId, `settlement:refund:${refundCoins}`),
-        sourceOperationId: reserveOperationId,
-        reason: "actual_duration_shorter",
-      },
-    });
-    await updateVideoGenJobBilling({
-      jobId: job.jobId,
-      settledCoins: actual,
-      refundedCoins: refundCoins,
-      settlementOperationId: operationId(job.jobId, `settlement:refund:${refundCoins}`),
-    });
-    return { actualCoins: actual, refundedCoins: refundCoins };
-  }
-
-  const extra = actual - reserved;
-  const fixed = plan.pricingBasis === "per-second" ? { seconds: extra } : { videos: 1 };
-  const charged = await billAIUsageOrThrow({
-    uid: job.uid,
-    app: BILLING_APP,
-    provider: resolveVideoBillingProvider(job.provider),
-    modelName: job.modelName,
-    modality: "video",
-    fixed,
-    meta: { operationId: operationId(job.jobId, `settlement:extra:${extra}`), sourceOperationId: safe(toUnknownRecord(job.billing).reserveOperationId) },
+async function markVideoReconciliation(jobId: string, reconciliationCode: string) {
+  await updateVideoGenJobBilling({
+    jobId,
+    reconciliationRequired: true,
+    settlementState: "reconciliation_required",
+    reconciliationCode,
   });
-  await updateVideoGenJobBilling({ jobId: job.jobId, settledCoins: actual, settlementOperationId: safe(toUnknownRecord(charged).operationId) || operationId(job.jobId, `settlement:extra:${extra}`) });
-  return { actualCoins: actual, extraCoins: extra };
+}
+
+async function settleReserved(
+  job: {
+    jobId: string;
+    uid: string;
+    provider: string;
+    modelName: string;
+    estimatedCoins: number;
+    pricingRevision?: string;
+    pricingSnapshot?: unknown;
+    billing?: Record<string, unknown>;
+  },
+  actualDurationSeconds: number,
+) {
+  const billing = toUnknownRecord(job.billing);
+  const quote = resolveVideoSettlementQuote({
+    jobPricingSnapshot: job.pricingSnapshot,
+    pricingRevision: job.pricingRevision,
+    reservedUsage: billing.reservedUsage,
+    reservedCoins: billing.reservedCoins,
+    estimatedCoins: job.estimatedCoins,
+    reserveOperationId: billing.reserveOperationId,
+    actualDurationSeconds,
+  });
+  if (!quote.ok) {
+    await markVideoReconciliation(job.jobId, quote.reconciliationCode);
+    return { reconciliationRequired: true as const, reconciliationCode: quote.reconciliationCode };
+  }
+
+  const settlementOperationId = quote.refundCoins > 0
+    ? operationId(job.jobId, `settlement:refund:${quote.refundCoins}`)
+    : operationId(job.jobId, "settlement:exact");
+  if (quote.refundCoins > 0) {
+    try {
+      await refundAIUsageOrThrow({
+        uid: job.uid,
+        app: BILLING_APP,
+        provider: resolveVideoBillingProvider(job.provider),
+        modelName: job.modelName,
+        modality: "video",
+        fixed: toLegacyFixedUsage(quote.reservedUsage),
+        coins: quote.refundCoins,
+        meta: {
+          operationId: settlementOperationId,
+          sourceOperationId: quote.reserveOperationId,
+          reason: "actual_duration_shorter",
+        },
+      });
+    } catch {
+      await markVideoReconciliation(job.jobId, "VIDEO_SETTLEMENT_REFUND_FAILED").catch(() => undefined);
+      return { reconciliationRequired: true as const, reconciliationCode: "VIDEO_SETTLEMENT_REFUND_FAILED" };
+    }
+  }
+
+  await updateVideoGenJobBilling({
+    jobId: job.jobId,
+    settledCoins: quote.actualCoins,
+    refundedCoins: quote.refundCoins,
+    settlementOperationId,
+    settlementOperationIds: [settlementOperationId],
+    reconciliationRequired: false,
+    settlementState: "settled",
+  });
+  return { reconciliationRequired: false as const, actualCoins: quote.actualCoins, settlementOperationId };
 }
 
 export async function enqueueStudioVideoJob(args: { request: VideoGenerationRequest; user: AuthenticatedUserType }) {
@@ -160,7 +198,12 @@ export async function enqueueStudioVideoJob(args: { request: VideoGenerationRequ
     resolution: safe(request.resolution),
     pricing,
   });
-  if (!billingPlan) return { ok: false as const, error: "video_pricing_unavailable", errorCode: "PRICING_NOT_FOUND" };
+  if (!billingPlan) {
+    return { ok: false as const, error: "video_pricing_snapshot_unavailable", errorCode: "PRICING_SNAPSHOT_UNAVAILABLE" };
+  }
+  if (!billingPlan.parityMatches) {
+    return { ok: false as const, error: "video_pricing_snapshot_mismatch", errorCode: "PRICING_SNAPSHOT_MISMATCH" };
+  }
 
   const preflightMeta = { operationId: "video:preflight:" + request.clientRequestId, pricingRevision: billingPlan.pricingRevision };
   await assertAIUsageBalanceOrThrow({
@@ -174,9 +217,33 @@ export async function enqueueStudioVideoJob(args: { request: VideoGenerationRequ
     meta: preflightMeta,
   });
 
-  const job = await createVideoGenJob({ uid, request: { ...request, provider, modelName, pricingRevision: billingPlan.pricingRevision }, estimatedCoins: billingPlan.estimatedCoins, pricingRevision: billingPlan.pricingRevision, billingPlan: billingPlan as unknown as Record<string, unknown> });
+  let job = await createVideoGenJob({
+    uid,
+    request: { ...request, provider, modelName, pricingRevision: billingPlan.pricingRevision },
+    estimatedCoins: billingPlan.estimatedCoins,
+    pricingRevision: billingPlan.pricingRevision,
+    pricingSnapshot: billingPlan.snapshot,
+    reservedUsage: billingPlan.reservedUsage,
+    billingPlan: billingPlan as unknown as Record<string, unknown>,
+  });
   const reserveOperationId = operationId(job.jobId);
+  const reserveReady = await updateVideoGenJobBilling({
+    jobId: job.jobId,
+    reserveOperationId,
+    reservedCoins: billingPlan.estimatedCoins,
+  });
+  if (!reserveReady) {
+    await markVideoGenJobFailed({ jobId: job.jobId, code: "VIDEO_RESERVE_SNAPSHOT_SAVE_FAILED", message: "video_reserve_snapshot_save_failed" });
+    return { ok: false as const, error: "video_reserve_snapshot_save_failed", errorCode: "VIDEO_RESERVE_SNAPSHOT_SAVE_FAILED" };
+  }
+  job = reserveReady;
+  let reserveAttempted = false;
+  let reservationConfirmed = false;
+  let reservationMismatchDetected = false;
+  let reservationMismatchRefundAttempted = false;
+  let reservationMismatchRefundSucceeded = false;
   try {
+    reserveAttempted = true;
     const reserved = await billAIUsageOrThrow({
       uid,
       app: BILLING_APP,
@@ -187,11 +254,85 @@ export async function enqueueStudioVideoJob(args: { request: VideoGenerationRequ
       variant: safe(request.resolution),
       meta: { operationId: reserveOperationId, pricingRevision: billingPlan.pricingRevision, jobId: job.jobId },
     });
-    const updated = await updateVideoGenJobBilling({ jobId: job.jobId, reserveOperationId: safe(toUnknownRecord(reserved).operationId) || reserveOperationId, reservedCoins: reserved.coins });
+    reservationConfirmed = true;
+    const chargedCoins = Number(reserved.coins);
+    if (!Number.isSafeInteger(chargedCoins) || chargedCoins !== billingPlan.estimatedCoins) {
+      reservationMismatchDetected = true;
+      let refunded = false;
+      try {
+        if (chargedCoins > 0 && Number.isSafeInteger(chargedCoins)) {
+          reservationMismatchRefundAttempted = true;
+          await refundAIUsageOrThrow({
+            uid,
+            app: BILLING_APP,
+            provider,
+            modelName,
+            modality: "video",
+            fixed: billingPlan.fixedUsage,
+            coins: chargedCoins,
+            meta: {
+              operationId: operationId(job.jobId, `reserve-mismatch-refund:${chargedCoins}`),
+              sourceOperationId: reserveOperationId,
+              reason: "pricing_snapshot_mismatch",
+            },
+          });
+          reservationMismatchRefundSucceeded = true;
+          refunded = true;
+        }
+      } catch {
+        refunded = false;
+      }
+      const mismatchBilling = await updateVideoGenJobBilling({
+        jobId: job.jobId,
+        ...(refunded ? { refundedCoins: chargedCoins } : {
+          reconciliationRequired: true,
+          settlementState: "reconciliation_required",
+          reconciliationCode: "PRICING_SNAPSHOT_MISMATCH_REFUND_FAILED",
+        }),
+      });
+      if (!mismatchBilling) {
+        await markVideoReconciliation(
+          job.jobId,
+          refunded ? "PRICING_SNAPSHOT_MISMATCH_REFUND_STATE_PERSIST_FAILED" : "PRICING_SNAPSHOT_MISMATCH_STATE_PERSIST_FAILED",
+        ).catch(() => undefined);
+        await markVideoGenJobFailed({
+          jobId: job.jobId,
+          code: "PRICING_SNAPSHOT_MISMATCH",
+          message: "pricing_snapshot_mismatch_reconciliation_required",
+        });
+        return {
+          ok: false as const,
+          error: "pricing_snapshot_mismatch_reconciliation_required",
+          errorCode: "PRICING_SNAPSHOT_MISMATCH",
+        };
+      }
+      await markVideoGenJobFailed({ jobId: job.jobId, code: "PRICING_SNAPSHOT_MISMATCH", message: "pricing_snapshot_mismatch" });
+      return { ok: false as const, error: "pricing_snapshot_mismatch", errorCode: "PRICING_SNAPSHOT_MISMATCH" };
+    }
+    const updated = await updateVideoGenJobBilling({ jobId: job.jobId, reserveOperationId, reservedCoins: billingPlan.estimatedCoins });
+    job = updated || job;
     const client = await getRedisClient();
     await client.rpush(QUEUE_KEY, job.jobId);
     return { ok: true as const, job: await toVideoJobTransport(updated || job), reused: false };
   } catch (error) {
+    if (reserveAttempted && !reservationConfirmed) {
+      await markVideoReconciliation(job.jobId, "VIDEO_RESERVATION_RESULT_UNKNOWN").catch(() => undefined);
+    } else if (reservationMismatchDetected) {
+      const reconciliationCode = reservationMismatchRefundSucceeded
+        ? "PRICING_SNAPSHOT_MISMATCH_REFUND_STATE_PERSIST_FAILED"
+        : reservationMismatchRefundAttempted
+          ? "PRICING_SNAPSHOT_MISMATCH_REFUND_RESULT_UNKNOWN"
+          : "PRICING_SNAPSHOT_MISMATCH_STATE_PERSIST_FAILED";
+      await markVideoReconciliation(job.jobId, reconciliationCode).catch(() => undefined);
+      await markVideoGenJobFailed({
+        jobId: job.jobId,
+        code: "PRICING_SNAPSHOT_MISMATCH",
+        message: "pricing_snapshot_mismatch_reconciliation_required",
+      }).catch(() => undefined);
+      return { ok: false as const, error: "pricing_snapshot_mismatch_reconciliation_required", errorCode: "PRICING_SNAPSHOT_MISMATCH" };
+    } else if (reservationConfirmed) {
+      await refundReserved(job, "queue_enqueue_failed").catch(() => undefined);
+    }
     await markVideoGenJobFailed({ jobId: job.jobId, code: safe(toUnknownRecord(error).errorCode) || "VIDEO_RESERVE_FAILED", message: safe(toUnknownRecord(error).message) || "video_reserve_failed" }).catch(() => undefined);
     return { ok: false as const, error: safe(toUnknownRecord(error).message) || "video_reserve_failed", errorCode: safe(toUnknownRecord(error).errorCode) || "VIDEO_RESERVE_FAILED" };
   }
@@ -272,12 +413,14 @@ async function processClaimedVideoJob(args: { jobId: string; workerId: string })
     return { ok: false, status: "failed", jobId: job.jobId };
   }
 
+  let providerSucceeded = false;
   try {
     const provider = resolveVideoBillingProvider(job.provider);
-    await assertSystemModelEnabledOrThrow({ provider, modelName: job.modelName, modality: "video" });
     const adapter = getVideoProviderAdapter(provider);
     let providerRequestId = safe(job.providerRequestId);
     if (!providerRequestId) {
+      // Emergency disable and storage failures block new provider starts; issued requests keep polling and settle from their snapshot.
+      await assertSystemModelEnabledOrThrow({ provider, modelName: job.modelName, modality: "video" });
       const started = await adapter.start(request);
       providerRequestId = started.providerRequestId;
       await markVideoGenJobProviderRequestId({ jobId: job.jobId, providerRequestId });
@@ -302,6 +445,7 @@ async function processClaimedVideoJob(args: { jobId: string; workerId: string })
       await markVideoGenJobFailed({ jobId: job.jobId, code: "VIDEO_MODERATION_REJECTED", message: "video_moderation_rejected" });
       return { ok: false, status: "failed", jobId: job.jobId };
     }
+    providerSucceeded = true;
 
     const existingAssets = await listVideoAssetsByJobId(job.jobId);
     let asset = existingAssets[0];
@@ -329,13 +473,21 @@ async function processClaimedVideoJob(args: { jobId: string; workerId: string })
       });
     }
     const actualDuration = Math.max(1, Number(result.actualDurationSeconds || job.requestedDurationSeconds));
-    const plan = queuePlan(job);
-    const actualCoins = plan ? resolveActualVideoCoins({ plan, actualDurationSeconds: actualDuration }) : job.estimatedCoins;
-    await settleReserved(job, actualCoins);
-    await markVideoGenJobCompleted({ jobId: job.jobId, status: "success", actualDurationSeconds: actualDuration, actualCoins, assetIds: [asset.assetId] });
+    const settlement = await settleReserved(job, actualDuration);
+    await markVideoGenJobCompleted({
+      jobId: job.jobId,
+      status: "success",
+      actualDurationSeconds: actualDuration,
+      actualCoins: settlement.reconciliationRequired ? undefined : settlement.actualCoins,
+      assetIds: [asset.assetId],
+    });
     return { ok: true, status: "processed", jobId: job.jobId };
   } catch (error) {
     const err = toErrorLike(error);
+    if (providerSucceeded) {
+      logger.error("[video-job] settlement persistence failed", { jobId: job.jobId, error: safe(err.message) || "video_settlement_failed" });
+      return { ok: false, status: "settlement_pending", jobId: job.jobId, error: safe(err.message) };
+    }
     await refundReserved(job, "provider_or_storage_failed").catch((refundError) => logger.error("[video-job] refund failed", { jobId: job.jobId, error: toErrorLike(refundError).message }));
     await markVideoGenJobFailed({ jobId: job.jobId, code: safe(err.errorCode || err.code) || "VIDEO_JOB_FAILED", message: safe(err.message) || "video_job_failed" }).catch(() => undefined);
     return { ok: false, status: "failed", jobId: job.jobId, error: safe(err.message) };

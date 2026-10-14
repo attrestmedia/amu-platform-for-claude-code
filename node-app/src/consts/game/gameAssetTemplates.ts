@@ -1,8 +1,13 @@
 import type { ImageProviderType } from "types/ai";
 import type { PromptItemExtendedType } from "types/app";
 import { OPENAI_GPT_IMAGE_FLARE_MODEL, OPENAI_GPT_IMAGE_SUNBURST_MODEL } from "consts/ai";
+import { AI_MODEL_ROLE_POLICY } from "consts/ai/generated/modelPolicy.generated";
+import { roleRefToProviderModel } from "consts/ai/modelPolicy";
 
-export const AMU_GAME_SPRITE_GOOGLE_MODEL = "gemini-3.1-flash-image-preview";
+const worldAssetModel = roleRefToProviderModel(AI_MODEL_ROLE_POLICY.gameAssets.worldAssetModel);
+const spriteSheetDefaultModel = roleRefToProviderModel(AI_MODEL_ROLE_POLICY.gameAssets.spriteSheet.defaultModel);
+
+export const AMU_GAME_SPRITE_GOOGLE_MODEL = worldAssetModel.modelName;
 
 export const GAME_ASSET_TEMPLATE_KEYS = {
   characterSprite: "amu-game-character-sprite-v1",
@@ -254,10 +259,10 @@ export function resolveSpriteModelSelection(args: {
 
 const SPRITE_MODEL_LOCK: GameAssetPromptModelLockType = {
   enabled: true,
-  provider: "openai",
-  modelName: OPENAI_GPT_IMAGE_SUNBURST_MODEL,
+  provider: spriteSheetDefaultModel.provider as ImageProviderType,
+  modelName: spriteSheetDefaultModel.modelName,
   allowedAlternates: SPRITE_MODEL_OPTIONS.filter(
-    (option) => option.modelName !== OPENAI_GPT_IMAGE_SUNBURST_MODEL,
+    (option) => option.modelName !== spriteSheetDefaultModel.modelName,
   ),
   reason:
     "Sprite sheets require consistent frame grids, camera angle, and character identity across poses. " +

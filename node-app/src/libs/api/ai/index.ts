@@ -3,12 +3,10 @@ export { getConversations, saveConversationMessage, saveAssistantAudioMeta } fro
 export {
   deleteVoicePreview,
   generateVoicePreview,
-  getTutorsSttStatus,
   listVoicePreviews,
   requestSpeechSynthesis,
   requestSpeechTranscription,
   setVoicePreviewVisibility,
-  type TutorsSttStatus,
   type VoicePreviewAsset,
 } from "./speechClient";
 export { studioRequest, studioRequestOrThrow } from "./studioClient";

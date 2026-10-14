@@ -1,8 +1,5 @@
-import {
-  SPEECH_BUDGET_REQUIRED_PROVIDERS,
-  isSpeechBudgetOwner,
-  type SpeechBudgetOwnerType,
-} from "consts/system/speechRuntimeControls";
+import { isSpeechBudgetOwner, type SpeechBudgetOwnerType } from "consts/system/speechRuntimeControls";
+export { isRetiredSpeechBudgetOwner, isSpeechBudgetEnforced } from "consts/system/speechRuntimeControls";
 import type { ISpeechBillingContext } from "./types";
 
 /**
@@ -12,16 +9,10 @@ import type { ISpeechBillingContext } from "./types";
  * @domain speech
  * @scope shared
  *
- * DB·env를 건드리는 speechBudgetGuard와 파일을 나눈 이유는 elevenlabsCredential과 같다 —
+ * DB·env를 건드리는 speechBudgetReservation과 파일을 나눈 이유는 elevenlabsCredential과 같다 —
  * 규칙만 담은 모듈은 DB 환경변수 없이 테스트되어야 한다. 실제로 합쳐 두었다가
  * 계약 테스트가 MONGODB_URL 누락으로 깨졌다.
  */
-
-export function isBudgetEnforcedProvider(provider: string) {
-  return (SPEECH_BUDGET_REQUIRED_PROVIDERS as readonly string[]).includes(
-    String(provider || "").trim().toLowerCase(),
-  );
-}
 
 /**
  * 지출을 달 owner를 서버가 판정한다.
@@ -34,7 +25,6 @@ export function resolveSpeechBudgetOwner(billing?: ISpeechBillingContext): Speec
   if (isSpeechBudgetOwner(declared)) {
     return String(declared).trim().toLowerCase() as SpeechBudgetOwnerType;
   }
-  if (billing?.routeHint === "tutors") return "tutors";
   return undefined;
 }
 

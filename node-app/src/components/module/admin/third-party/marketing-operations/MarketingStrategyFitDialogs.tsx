@@ -2,10 +2,10 @@ import type { Dispatch, SetStateAction } from "react";
 import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@amu-labs/ui";
 import { Lang, lang } from "components/module/i18n";
 import {
-  MARKETING_PROOFREAD_DEFAULT_MODEL,
-  MARKETING_PROOFREAD_DEFAULT_MODEL_BY_PROVIDER,
-  MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-} from "consts/marketing/proofread";
+  AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
+  AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+  AI_MARKETING_PROOFREAD_MODEL_BY_PROVIDER,
+} from "consts/ai/generated/modelCatalog.generated";
 import { TEXT_PROVIDER_TYPES } from "consts/ai";
 import { cn } from "utils/common";
 import { toUnknownRecord, type UnknownRecord } from "utils/common/typeUtils";
@@ -52,8 +52,8 @@ export const INITIAL_STRATEGY_FIT_DIALOG: StrategyFitDialogState = {
   kind: "marketing",
   loading: false,
   agreed: false,
-  modelProvider: MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-  modelName: MARKETING_PROOFREAD_DEFAULT_MODEL,
+  modelProvider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+  modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
   ready: false,
   version: 0,
   updatedAt: "",
@@ -368,7 +368,7 @@ export function MarketingStrategyFitDialog({
                       ...prev,
                       modelProvider: provider,
                       modelName:
-                        (MARKETING_PROOFREAD_DEFAULT_MODEL_BY_PROVIDER as Record<string, string>)[provider] || "",
+                        (AI_MARKETING_PROOFREAD_MODEL_BY_PROVIDER as Record<string, string>)[provider] || "",
                     }));
                   }}
                 >

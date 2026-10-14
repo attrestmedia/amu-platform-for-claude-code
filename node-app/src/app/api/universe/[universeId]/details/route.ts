@@ -8,6 +8,8 @@ import { withApiTimeout } from "libs/server-utils/api/withApiTimeout";
 import { invalidateUniverseDetailPromptCache } from "libs/server-utils/system-prompt/commercePromptData";
 import { sanitizeStoreKnowledge } from "utils/commerce/storeKnowledgeUtils";
 import type { UnknownRecord } from "utils/common";
+import { CHARACTER_SPECIES_MODES, type CharacterSpeciesMode } from "consts/game/characterGenesisPolicy";
+import { toUnknownRecord } from "utils/common/typeUtils";
 
 /**
  * @docHint
@@ -65,6 +67,16 @@ export const POST = withAuth(
     return withApiTimeout(async () => {
       try {
         const { universeId } = context.params;
+        const gameSettings = toUnknownRecord(toUnknownRecord(data?.settings).game);
+        if (
+          Object.prototype.hasOwnProperty.call(gameSettings, "characterSpeciesMode") &&
+          !CHARACTER_SPECIES_MODES.includes(gameSettings.characterSpeciesMode as CharacterSpeciesMode)
+        ) {
+          return NextResponse.json(
+            { success: false, message: "캐릭터 종족 설정이 올바르지 않습니다." },
+            { status: 400 },
+          );
+        }
 
         // storeKnowledge는 구조화 필드만 저장한다. 빈 항목/미완성 FAQ를 저장 전에 제거한다.
         if (data?.metadata?.storeKnowledge) {

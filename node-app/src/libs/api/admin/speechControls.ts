@@ -1,5 +1,5 @@
 import fetchClient from "libs/api/fetchClient";
-import type { SpeechCatalogProviderType } from "consts/ai";
+import type { SpeechCatalogProviderType, SpeechRuntimeManifest } from "consts/ai";
 import {
   normalizeSpeechRuntimeControls,
   type SpeechRuntimeControls,
@@ -15,6 +15,7 @@ import {
 
 export type SpeechControlsSnapshot = {
   controls: SpeechRuntimeControls;
+  manifest: SpeechRuntimeManifest;
   /** 코드 정책 상한. DB는 이 값을 끌 수만 있고 켤 수 없다. */
   providerRoutable: Record<SpeechCatalogProviderType, boolean>;
 };
@@ -22,13 +23,22 @@ export type SpeechControlsSnapshot = {
 type SpeechControlsResponse = {
   ok: boolean;
   controls: unknown;
+  manifest?: SpeechRuntimeManifest;
   providerRoutable?: Record<SpeechCatalogProviderType, boolean>;
 };
 
-function toSnapshot(body: SpeechControlsResponse, fallbackRoutable?: SpeechControlsSnapshot["providerRoutable"]) {
+function toSnapshot(
+  body: SpeechControlsResponse,
+  fallbackRoutable?: SpeechControlsSnapshot["providerRoutable"],
+  fallbackManifest?: SpeechRuntimeManifest,
+): SpeechControlsSnapshot {
+  const manifest = body.manifest || fallbackManifest;
+  if (!manifest) throw new Error("Speech runtime manifest is unavailable.");
+
   return {
     // 서버 응답도 신뢰하지 않고 같은 정규화를 통과시킨다 — 화면이 코드 정책 밖의 값을 보여주지 않는다.
     controls: normalizeSpeechRuntimeControls(body.controls as Partial<SpeechRuntimeControls>),
+    manifest,
     providerRoutable: body.providerRoutable || fallbackRoutable || ({} as SpeechControlsSnapshot["providerRoutable"]),
   };
 }
@@ -43,11 +53,12 @@ export async function patchSpeechControls(args: {
   patch: Partial<SpeechRuntimeControls>;
   reason: string;
   fallbackRoutable?: SpeechControlsSnapshot["providerRoutable"];
+  fallbackManifest?: SpeechRuntimeManifest;
 }): Promise<SpeechControlsSnapshot> {
   const response = await fetchClient.patch<SpeechControlsResponse>(
     "/admin/speech-controls",
     { ...args.patch, reason: args.reason },
     { responseType: "json" },
   );
-  return toSnapshot(response.data, args.fallbackRoutable);
+  return toSnapshot(response.data, args.fallbackRoutable, args.fallbackManifest);
 }

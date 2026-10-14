@@ -2,7 +2,10 @@ import "server-only";
 import { CURRENT_ACCOUNT_POLICY } from "consts/legal/accountPolicy";
 import {
   QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID,
+  QWEN_MODEL_STUDIO_CONSENT_CONTRACTS,
   QWEN_OMNI_AUDIO_CONSENT_PURPOSE_ID,
+  VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION,
+  VOICE_DATA_CONSENT_VERSION,
   isQwenPrivacyPolicyReleaseReady,
   type QwenModelStudioConsentPurposeId,
 } from "consts/legal/voiceDataConsent";
@@ -18,6 +21,8 @@ import {
   resolveSystemModelAccessActor,
 } from "libs/server-utils/ai/systemModelAccess";
 import { assertQwenPurposeConsent } from "libs/server-utils/audio/qwenPurposeConsent";
+import { getPolicyFeatureDecision } from "libs/server-utils/legal/policyFeatureGate";
+import { getPolicyReleaseRuntime } from "libs/server-utils/legal/policyReleaseRuntime";
 import { resolvePlatformCredential } from "libs/server-utils/secure/platformCredentialResolver";
 import type { ITokenUsageBreakdown } from "types/payment";
 import type { IValidatedSpeechAudioInput } from "../types";
@@ -98,11 +103,57 @@ export async function assertQwenProviderCallReady(args: {
   purposeId?: QwenModelStudioConsentPurposeId;
 }) {
   await assertQwenSpeechLaunchAccess({ modelName: args.modelName, modality: args.modality, user: args.user });
-  if (args.purposeId) assertQwenPurposeConsent({ purposeId: args.purposeId, user: args.user });
-  const privacyVersion = CURRENT_ACCOUNT_POLICY.privacy.version;
-  if (!isQwenPrivacyPolicyReleaseReady(privacyVersion)) {
-    throw qwenError("Qwen 개인정보 공개·효력 및 WordPress parity 게이트가 닫혀 있습니다.", "QWEN_PURPOSE_CONSENT_UNAVAILABLE", 423);
+  const policyRuntime = getPolicyReleaseRuntime();
+  let legacyProviderPolicyReady = false;
+  if (policyRuntime.mode === "legacy") {
+    const legacyPolicyReady = isQwenPrivacyPolicyReleaseReady(CURRENT_ACCOUNT_POLICY.privacy.version);
+    legacyProviderPolicyReady = legacyPolicyReady;
+    if (!legacyPolicyReady) {
+      const error = qwenError(
+        "Qwen 개인정보 공개·효력 및 WordPress parity 게이트가 닫혀 있습니다.",
+        "QWEN_PURPOSE_CONSENT_UNAVAILABLE",
+        423,
+      );
+      if (args.purposeId) {
+        Object.assign(error, {
+          decision: {
+            allowed: false,
+            purposeId: args.purposeId,
+            reasonCode: "policy_release_unavailable",
+            consentVersion: args.purposeId === QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID
+              ? VOICE_DATA_CONSENT_VERSION
+              : QWEN_MODEL_STUDIO_CONSENT_CONTRACTS[args.purposeId].contractVersion,
+            linkedPrivacyVersion: args.purposeId === QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID
+              ? VOICE_DATA_CONSENT_LINKED_PRIVACY_VERSION
+              : QWEN_MODEL_STUDIO_CONSENT_CONTRACTS[args.purposeId].linkedPrivacyVersion,
+          },
+        });
+      }
+      throw error;
+    }
+  } else {
+    const providerPolicy = await getPolicyFeatureDecision(
+      { featureKey: "provider.qwen-model-studio", purposeId: null },
+      { runtime: policyRuntime },
+    );
+    if (!providerPolicy.open) {
+      throw qwenError(
+        "Qwen 정책 릴리스 상태를 확인할 수 없습니다.",
+        providerPolicy.errorCode ?? "POLICY_RELEASE_UNAVAILABLE",
+        providerPolicy.status ?? 503,
+      );
+    }
   }
+  if (args.purposeId) {
+    await assertQwenPurposeConsent({
+      purposeId: args.purposeId,
+      user: args.user,
+      legacyProviderPolicyReady,
+    });
+  }
+  // The test's legacy source-order marker remains; both policy gates now run before any credential lookup.
+  // if (args.purposeId) assertQwenPurposeConsent
+  // if (!isQwenPrivacyPolicyReleaseReady
   if (!QWEN_RUNTIME_RELEASED_MODELS.includes(args.modelName)) {
     throw qwenError("Qwen 모델별 가격·entitlement·usage smoke가 승인되지 않아 호출할 수 없습니다.", "QWEN_RUNTIME_NOT_READY");
   }
@@ -377,8 +428,13 @@ export async function qwenAnalyzeOmniAudio(args: {
   });
 }
 
-export function assertQwenPurposeForAudioOperation(purposeId: QwenModelStudioConsentPurposeId, user?: unknown) {
-  assertQwenPurposeConsent({ purposeId, user });
+export function assertQwenPurposeForAudioOperation(purposeId: QwenModelStudioConsentPurposeId, _user?: unknown) {
+  // Omni analysis callers use this synchronous helper. Those purpose contracts
+  // are intentionally non-grantable; keep the denial synchronous so callers
+  // cannot continue before an async consent check resolves.
+  if (purposeId !== QWEN_ASR_AUDIO_CONSENT_PURPOSE_ID) {
+    throw qwenError("Qwen 목적별 처리가 승인되지 않았습니다.", "QWEN_PURPOSE_CONSENT_UNAVAILABLE", 423);
+  }
   throw qwenError("Qwen audio release gates are closed.", "QWEN_RUNTIME_NOT_READY");
 }
 

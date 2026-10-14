@@ -2,6 +2,7 @@ import { getModel } from "libs/database/modelCache";
 import type { IUniverseDetailDocument } from "models/universe";
 import { UniverseDetailSchema } from "models/universe";
 import type { IUniverseDetail } from "types/game";
+import type { CharacterSpeciesMode } from "consts/game/characterGenesisPolicy";
 import { MONGODB_AMU_URL } from "consts/env/server";
 import { logger } from "utils/log";
 
@@ -81,6 +82,29 @@ export async function upsertUniverseDetail(
     return documentToUniverseDetail(result);
   } catch (error) {
     logger.error(`유니버스 상세 데이터 업데이트 오류 (${universeId}):`, error);
+    throw error;
+  }
+}
+
+export async function setUniverseCharacterSpeciesMode(
+  universeId: string,
+  mode: CharacterSpeciesMode,
+): Promise<IUniverseDetail> {
+  try {
+    const UniverseDetailModel = await getUniverseDetailModel(universeId);
+    const result = await UniverseDetailModel.findOneAndUpdate(
+      { universeId },
+      {
+        $set: { "settings.game.characterSpeciesMode": mode },
+        $setOnInsert: { universeId },
+      },
+      { upsert: true, new: true, lean: true, runValidators: true, context: "query" },
+    );
+
+    if (!result) throw new Error("유니버스 캐릭터 종족 설정 저장 실패");
+    return documentToUniverseDetail(result);
+  } catch (error) {
+    logger.error(`유니버스 캐릭터 종족 설정 업데이트 오류 (${universeId}):`, error);
     throw error;
   }
 }

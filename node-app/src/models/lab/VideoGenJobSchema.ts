@@ -1,4 +1,5 @@
 import { Schema, type Document } from "mongoose";
+import type { JobPricingSnapshotV1, ReservedUsageV1 } from "libs/server-utils/ai/jobPricingSnapshot";
 
 export type VideoGenJobStatusType = "queued" | "running" | "success" | "partial" | "failed" | "expired" | "cancelled";
 
@@ -19,13 +20,18 @@ export interface IVideoGenJobDocument extends Document {
   estimatedCoins: number;
   actualCoins?: number;
   pricingRevision: string;
+  pricingSnapshot?: JobPricingSnapshotV1;
   billing: {
     reserveOperationId?: string;
     settlementOperationId?: string;
+    reservedUsage?: ReservedUsageV1;
     reservedCoins?: number;
     settledCoins?: number;
     refundedCoins?: number;
     reconciliationRequired?: boolean;
+    settlementOperationIds?: string[];
+    settlementState?: "settled" | "reconciliation_required";
+    reconciliationCode?: string;
   };
   assets?: string[];
   error?: { code?: string; message?: string };
@@ -59,6 +65,7 @@ export const VideoGenJobSchema = new Schema<IVideoGenJobDocument>(
     estimatedCoins: { type: Number, required: true, min: 0 },
     actualCoins: { type: Number, min: 0, default: null },
     pricingRevision: { type: String, required: true, index: true },
+    pricingSnapshot: { type: Schema.Types.Mixed, required: false, default: undefined },
     billing: { type: Schema.Types.Mixed, required: true, default: {} },
     assets: { type: [String], default: [] },
     error: { type: Schema.Types.Mixed, default: null },

@@ -36,10 +36,10 @@ import {
 } from "utils/lab";
 import {
   AI_GEN_IMAGE_LIMIT,
-  DEFAULT_IMAGE_MODEL_BY_PROVIDER,
   type ImageModelNameType,
   type SupportedAspectRatio,
 } from "consts/ai";
+import { AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 import { normalizeSelectedModelNames, toggleSelectedModelName, type PromptModelLockResolution } from "utils/app";
 import { getPerImageCost, resolveMediaBillingStrategy } from "utils/payment";
 import type { SettingDialogType, VarSpec } from "./types";
@@ -353,7 +353,7 @@ export function PresetModeContent({
         ? ([modelLock.modelName] as ImageModelNameType[])
         : normalizeSelectedModelNames(
             modelNames as string[],
-            String(fallbackModelName || DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
+            String(fallbackModelName || AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
           ),
     [fallbackModelName, modelLock, modelNames],
   );
@@ -847,7 +847,7 @@ export function PresetModeContent({
               toggleSelectedModelName(
                 prev as string[],
                 modelName,
-                String(fallbackModelName || DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
+                String(fallbackModelName || AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google),
               ),
             );
           }}

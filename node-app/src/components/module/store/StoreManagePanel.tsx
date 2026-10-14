@@ -94,7 +94,6 @@ import type {
 } from "types/commerce";
 import type { ICharacterReferenceKit } from "types/character";
 import { runAfterCurrentRender, toErrorMessage, toUnknownRecord, type UnknownRecord } from "utils/common/typeUtils";
-import { PAGE_LAYOUT_CLASS } from "utils/theme";
 import {
   DRAFT_STATUS_LABEL,
   DRAFT_STATUS_VARIANT,
@@ -1222,9 +1221,9 @@ export function StoreManagePanel({ universeId, universe }: StoreManagePanelProps
   }
 
   return (
-    <main className={PAGE_LAYOUT_CLASS}>
+    <div>
       <div
-        className={`mx-auto flex w-full max-w-[88rem] flex-col gap-4 px-4 py-6 sm:px-6 lg:px-8 ${
+        className={`mx-auto flex w-full max-w-[88rem] flex-col gap-4 ${
           viewParam === "edit" ? "pb-[7rem] sm:pb-6" : ""
         }`}
       >
@@ -1233,7 +1232,7 @@ export function StoreManagePanel({ universeId, universe }: StoreManagePanelProps
             {/* 서브 헤더 — 공통 컴포넌트: 뒤로가기 + 문맥 타이틀 + 데스크톱 액션 + 모바일 더보기 */}
             <SubHeader
               sticky
-              className="w-auto -mx-4 -mt-6 sm:mx-0 sm:mt-0 sm:h-auto sm:min-h-16 sm:flex-wrap sm:py-2 sm:px-6 lg:px-8"
+              className="w-auto top-14 -mx-4 -mt-4 sm:mx-0 sm:mt-0 sm:h-auto sm:min-h-16 sm:flex-wrap sm:py-2 sm:px-6 lg:px-8"
               backAction={{ onClick: navigateToList, label: lang({ ko: "목록", en: "List" }) }}
               title={lang({ ko: "상품 편집", en: "Edit Product" })}
               right={
@@ -1546,7 +1545,7 @@ export function StoreManagePanel({ universeId, universe }: StoreManagePanelProps
           <div className="space-y-4">
             <SubHeader
               sticky
-              className="w-auto -mx-4 -mt-6 sm:mx-0 sm:mt-0 sm:h-auto sm:min-h-16 sm:flex-wrap sm:py-2 sm:px-6 lg:px-8"
+              className="w-auto top-14 -mx-4 -mt-4 sm:mx-0 sm:mt-0 sm:h-auto sm:min-h-16 sm:flex-wrap sm:py-2 sm:px-6 lg:px-8"
               backAction={{ onClick: navigateToList, label: lang({ ko: "목록", en: "List" }) }}
               title={lang({ ko: "새 상품 등록", en: "New Product" })}
               right={
@@ -2744,7 +2743,7 @@ export function StoreManagePanel({ universeId, universe }: StoreManagePanelProps
           onDraftReady={(draftId) => navigateToEdit(draftId)}
         />
       </div>
-    </main>
+    </div>
   );
 }
 

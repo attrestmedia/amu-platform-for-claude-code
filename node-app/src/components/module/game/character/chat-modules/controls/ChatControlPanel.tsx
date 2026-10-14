@@ -15,7 +15,6 @@ import {
   Target,
   TrendingUp,
   Clock,
-  Lightbulb,
   Lock,
   Unlock,
   Crown,
@@ -42,17 +41,8 @@ import {
   DEFAULT_CHAT_HELPER_MODEL,
 } from "store/chat/translationStore";
 import { useGenStudioModelCatalog } from "hooks/app/useGenStudioModelCatalog";
-import TutorLanguageCombobox from "components/module/persona/TutorLanguageCombobox";
 import { cn } from "utils/common";
 import { OPENAI_DEFAULT_TTS_SPEED, OPENAI_TTS_SPEED_RANGE } from "consts/ai";
-import { getElevenLabsVoiceCatalogEntry } from "consts/ai/voiceCatalog";
-import { getTutorsVoicePilotSurface } from "libs/api/ai/speechClient";
-import {
-  TUTOR_CONVERSATION_LEVEL_OPTIONS,
-  getTutorConversationLevelOption,
-  normalizeTutorConversationLevel,
-  type TutorConversationLevel,
-} from "consts/tutors";
 import { personaMoodTypeHelper, PERSONA_MOOD_COLOR_MAP, intimacyLevelHelper, INTIMACY_LEVEL_MAP } from "consts/game";
 import { getCapitalized } from "utils/common";
 import type { IChatModelPolicyResult, TextProviderType } from "types/ai";
@@ -79,13 +69,6 @@ interface ChatControlPanelProps {
     saving: boolean;
     onSelect: (provider: TextProviderType, modelName: string) => void | Promise<void>;
   };
-  tutorTargetLanguage?: string;
-  onTutorTargetLanguageChange?: (language: string) => void;
-  tutorConversationLevel?: string;
-  onTutorConversationLevelChange?: (conversationLevel: TutorConversationLevel) => void;
-  conversationHintsAvailable?: boolean;
-  conversationHintsEnabled?: boolean;
-  onConversationHintsEnabledChange?: (enabled: boolean) => void;
 }
 
 const ChatControlPanel = ({
@@ -102,13 +85,6 @@ const ChatControlPanel = ({
   chatViewMode = "visual",
   onToggleViewMode,
   modelSelection,
-  tutorTargetLanguage = "",
-  onTutorTargetLanguageChange,
-  tutorConversationLevel = "",
-  onTutorConversationLevelChange,
-  conversationHintsAvailable = false,
-  conversationHintsEnabled = true,
-  onConversationHintsEnabledChange,
 }: ChatControlPanelProps) => {
   const {
     assistantVoiceEnabled,
@@ -130,23 +106,6 @@ const ChatControlPanel = ({
 
   // 마운트 시점의 now 고정값: render purity 유지를 위해 state lazy initializer 사용
   const [nowMs] = useState(() => Date.now());
-  // EL-603 Stream B: 서버 설정 기반 파일럿 승인 Voice. 미노출이면 빈 배열.
-  const [pilotVoices, setPilotVoices] = useState<string[]>([]);
-
-  useEffect(() => {
-    let disposed = false;
-    void (async () => {
-      try {
-        const surface = await getTutorsVoicePilotSurface();
-        if (!disposed) setPilotVoices(surface?.data?.exposableVoices || []);
-      } catch {
-        // default deny
-      }
-    })();
-    return () => {
-      disposed = true;
-    };
-  }, []);
 
   // 관계 정보 계산
   const relationshipInfo = useMemo(() => {
@@ -186,9 +145,6 @@ const ChatControlPanel = ({
   };
   const dragStartYRef = useRef<number | null>(null);
   const dragClosedRef = useRef(false);
-  const isConversationHintsEnabled = conversationHintsEnabled !== false;
-  const normalizedTutorConversationLevel = normalizeTutorConversationLevel(tutorConversationLevel);
-  const selectedConversationLevelOption = getTutorConversationLevelOption(normalizedTutorConversationLevel);
 
   const handleSheetHandlePointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     dragStartYRef.current = e.clientY;
@@ -387,55 +343,6 @@ const ChatControlPanel = ({
 
             {modelSelection ? <ChatModelSelector {...modelSelection} /> : null}
 
-            {onTutorTargetLanguageChange ? (
-              <div className="mb-1 rounded-lg border border-white/5 bg-black/30 p-2">
-                <h4 className="mb-2 flex items-center gap-1 text-xs font-medium text-white">
-                  <Languages className="h-3 w-3" />
-                  <Lang text={{ ko: "캐릭터 대화 언어", en: "Character language" }} />
-                </h4>
-                <TutorLanguageCombobox
-                  value={tutorTargetLanguage}
-                  onChange={onTutorTargetLanguageChange}
-                  triggerClassName="h-9 min-h-9 border-white/20 bg-black/40 px-3 py-2 text-xs text-white shadow-none hover:border-white/30 [&_span]:text-white"
-                />
-                <p className="mt-1.5 text-xxs leading-relaxed text-white/50">
-                  <Lang
-                    text={{
-                      ko: "선택한 언어로만 캐릭터가 답변하도록 서버 정책에 반영됩니다.",
-                      en: "The server policy forces the character to reply only in the selected language.",
-                    }}
-                  />
-                </p>
-              </div>
-            ) : null}
-
-            {onTutorConversationLevelChange ? (
-              <div className="mb-1 rounded-lg border border-white/5 bg-black/30 p-2">
-                <h4 className="mb-2 flex items-center gap-1 text-xs font-medium text-white">
-                  <Target className="h-3 w-3" />
-                  <Lang text={{ ko: "대화 수준", en: "Conversation level" }} />
-                </h4>
-                <Select
-                  value={normalizedTutorConversationLevel}
-                  onValueChange={(value) => onTutorConversationLevelChange(value as TutorConversationLevel)}
-                >
-                  <SelectTrigger className="h-9 border-white/20 bg-black/40 px-3 py-2 text-xs text-white shadow-none hover:border-white/30 [&_span]:text-white">
-                    <SelectValue placeholder={lang({ ko: "수준", en: "Level" })} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {TUTOR_CONVERSATION_LEVEL_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.level}. <Lang text={option.label} />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-1.5 text-xxs leading-relaxed text-white/50">
-                  <Lang text={selectedConversationLevelOption.description} />
-                </p>
-              </div>
-            ) : null}
-
             {voicePlaybackAvailable && (
               <div className="voice-playback-controls mb-1 p-2 bg-black/30 rounded-lg border border-white/5">
                 <div className="flex items-center justify-between gap-2">
@@ -525,26 +432,6 @@ const ChatControlPanel = ({
                 )}
               </div>
             )}
-
-            {/* EL-603 파일럿 승인 Voice — 노출이 열린 경우에만 읽기 전용 목록을 보여준다. */}
-            {voicePlaybackAvailable && pilotVoices.length > 0 ? (
-              <div className="voice-pilot-voices mb-1 rounded-lg border border-white/5 bg-black/30 p-2">
-                <h4 className="mb-2 flex items-center gap-1 text-xs font-medium text-white">
-                  <Volume2 className="h-3 w-3" />
-                  <Lang text={{ ko: "파일럿 승인 Voice", en: "Pilot approved voices" }} />
-                </h4>
-                <ul className="flex flex-wrap gap-1.5" aria-label={lang({ ko: "파일럿 승인 Voice 목록", en: "Pilot approved voice list" })}>
-                  {pilotVoices.map((voiceId) => (
-                    <li
-                      key={voiceId}
-                      className="rounded border border-white/10 bg-black/20 px-2 py-1 text-xxs text-white/80"
-                    >
-                      {getElevenLabsVoiceCatalogEntry(voiceId)?.label || voiceId}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
 
             {/* 음성 대화하기(마이크 입력 분석 모드) 설정 */}
             {voiceInputAvailable && (
@@ -689,37 +576,6 @@ const ChatControlPanel = ({
                     />
                   </p>
                 </div>
-              </div>
-            )}
-
-            {conversationHintsAvailable && (
-              <div className="conversation-hint-controls mb-1 p-2 bg-black/30 rounded-lg border border-white/5">
-                <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-white font-medium text-xs flex items-center gap-1">
-                    <Lightbulb className="w-3 h-3" />
-                    <Lang text={{ ko: "대화 힌트", en: "Conversation hints" }} />
-                  </h4>
-                  <Button
-                    onClick={() => onConversationHintsEnabledChange?.(!isConversationHintsEnabled)}
-                    className={cn(
-                      "flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors",
-                      isConversationHintsEnabled
-                        ? "bg-yellow-500/20 text-yellow-200 border border-yellow-500/30"
-                        : "bg-gray-500/20 text-gray-400 border border-gray-500/30",
-                    )}
-                    aria-pressed={isConversationHintsEnabled}
-                  >
-                    {isConversationHintsEnabled ? "ON" : "OFF"}
-                  </Button>
-                </div>
-                <p className="mt-1.5 text-xxs leading-relaxed text-white/50">
-                  <Lang
-                    text={{
-                      ko: "캐릭터 응답에 맞는 다음 문장 예시를 입력창 위에 표시합니다.",
-                      en: "Shows learner reply suggestions above the input.",
-                    }}
-                  />
-                </p>
               </div>
             )}
 

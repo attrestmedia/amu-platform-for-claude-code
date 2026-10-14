@@ -80,7 +80,7 @@ export async function listTutorPersonaEvidence(args: {
     TUTORS_SHARED_TEMPLATE_COLLECTION,
   );
 
-  // 공개 판정 조건은 api/(app)/tutors/public-gallery/route.ts와 동일하게 유지한다.
+  // 공개 evidence는 활성 공개 템플릿만 포함한다.
   const filter: Record<string, unknown> =
     args.scope === "mine"
       ? { ownerId: args.uid, status: "active" }

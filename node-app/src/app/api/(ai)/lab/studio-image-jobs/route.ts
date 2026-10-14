@@ -93,7 +93,7 @@ async function handlePOST(data: unknown, user: AuthenticatedUserType, request: N
   const payload = {
     ...toUnknownRecord(body.payload),
     // 클라이언트 입력은 신뢰하지 않고 same-origin Referer를 서버에서 고정 출처로 변환한다.
-    source: await resolveStudioGenerationSource(request, toUnknownRecord(body.payload).embedSessionId),
+    source: await resolveStudioGenerationSource(request),
   } as ImagePromptBodyType | ImagePromptCustomType;
   const clientRequestId = String(body.clientRequestId || "").trim();
   const universeId = String(payload.universeId || "").trim();

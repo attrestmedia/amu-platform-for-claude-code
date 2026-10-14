@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { MONGODB_AI_URL } from "consts/env/server";
 import { getModel } from "libs/database/modelCache";
 import { getR2SignedGetUrl } from "libs/server-utils/storage/r2Storage";
+import type { JobPricingSnapshotV1, ReservedUsageV1 } from "libs/server-utils/ai/jobPricingSnapshot";
 import {
   VideoAssetSchema,
   VideoGenJobSchema,
@@ -37,6 +38,8 @@ export async function createVideoGenJob(args: {
   request: VideoGenerationRequest;
   estimatedCoins: number;
   pricingRevision: string;
+  pricingSnapshot: JobPricingSnapshotV1;
+  reservedUsage: ReservedUsageV1;
   billingPlan: Record<string, unknown>;
 }) {
   const model = await getJobModel();
@@ -53,7 +56,13 @@ export async function createVideoGenJob(args: {
     requestedDurationSeconds: Math.max(1, Number(args.request.durationSeconds || 0)),
     estimatedCoins: Math.max(0, Number(args.estimatedCoins || 0)),
     pricingRevision: safe(args.pricingRevision),
-    billing: { pricingPlan: args.billingPlan },
+    pricingSnapshot: args.pricingSnapshot,
+    billing: {
+      pricingPlan: args.billingPlan,
+      reservedUsage: args.reservedUsage,
+      reservedCoins: Math.max(0, Number(args.estimatedCoins || 0)),
+      settlementOperationIds: [],
+    },
   });
   return (doc.toObject?.() ?? doc) as IVideoGenJobDocument;
 }
@@ -110,36 +119,46 @@ export async function updateVideoGenJobBilling(args: {
   settledCoins?: number;
   refundedCoins?: number;
   reconciliationRequired?: boolean;
+  settlementOperationIds?: string[];
+  settlementState?: "settled" | "reconciliation_required";
+  reconciliationCode?: string;
 }) {
   const model = await getJobModel();
   const $set: Record<string, unknown> = { updatedAt: new Date() };
+  const $addToSet: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(args)) {
     if (key === "jobId" || value === undefined) continue;
+    if (key === "settlementOperationIds") {
+      const operationIds = Array.from(new Set((value as string[]).map(safe).filter(Boolean)));
+      if (operationIds.length) $addToSet["billing.settlementOperationIds"] = { $each: operationIds };
+      continue;
+    }
     $set[`billing.${key}`] = value;
   }
-  return await model.findOneAndUpdate({ jobId: safe(args.jobId) }, { $set }, { new: true }).lean<IVideoGenJobDocument>();
+  const update: Record<string, unknown> = { $set };
+  if (Object.keys($addToSet).length) update.$addToSet = $addToSet;
+  return await model.findOneAndUpdate({ jobId: safe(args.jobId) }, update, { new: true }).lean<IVideoGenJobDocument>();
 }
 
 export async function markVideoGenJobCompleted(args: {
   jobId: string;
   status: Extract<VideoGenJobStatusType, "success" | "partial">;
   actualDurationSeconds: number;
-  actualCoins: number;
+  actualCoins?: number;
   assetIds: string[];
 }) {
   const model = await getJobModel();
+  const $set: Record<string, unknown> = {
+    status: args.status,
+    actualDurationSeconds: Math.max(0, Number(args.actualDurationSeconds || 0)),
+    assets: Array.from(new Set(args.assetIds.map(safe).filter(Boolean))),
+    completedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  if (args.actualCoins !== undefined) $set.actualCoins = Math.max(0, Number(args.actualCoins || 0));
   return await model.findOneAndUpdate(
     { jobId: safe(args.jobId), status: { $in: ["queued", "running"] } },
-    {
-      $set: {
-        status: args.status,
-        actualDurationSeconds: Math.max(0, Number(args.actualDurationSeconds || 0)),
-        actualCoins: Math.max(0, Number(args.actualCoins || 0)),
-        assets: Array.from(new Set(args.assetIds.map(safe).filter(Boolean))),
-        completedAt: new Date(),
-        updatedAt: new Date(),
-      },
-    },
+    { $set },
     { new: true },
   ).lean<IVideoGenJobDocument>();
 }

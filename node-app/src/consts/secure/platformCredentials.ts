@@ -147,6 +147,20 @@ export const PLATFORM_CREDENTIAL_DEFINITIONS = [
     ],
   },
   {
+    key: "integration.toss.cert",
+    provider: "toss_cert",
+    category: "integration",
+    label: { ko: "토스 인증(본인확인)", en: "Toss Cert (identity verification)" },
+    description: {
+      ko: "성인 확인 step-up 전용 — 현재 test_ 자격증명만 허용",
+      en: "Age step-up only — test_ credentials only for now",
+    },
+    fields: [
+      { key: "clientId", label: { ko: "Client ID", en: "Client ID" }, secret: true },
+      { key: "clientSecret", label: { ko: "Client Secret", en: "Client secret" }, secret: true },
+    ],
+  },
+  {
     key: "infra.aws.ses",
     provider: "aws_ses",
     category: "messaging",

@@ -9,6 +9,11 @@ import {
   getUserStoryState,
 } from "libs/database/game";
 import { type NarrativeOutcome, type NarrativeStatValues } from "types/game";
+import {
+  PLAY_DISCOVERY_ACTIVITY_ID,
+  PLAY_ACTIVITY_CAPABILITY,
+  resolvePlayActivityCapability,
+} from "consts/play/playActivityCapability";
 import { recordPilotMetric } from "./playPilotMetrics";
 
 /**
@@ -34,10 +39,8 @@ export const PLAY_PILOT = {
 } as const;
 
 /** ruleset the-universe v1: attribute → 판정에 사용하는 stat 매핑 */
-export const ATTRIBUTE_STAT_MAP: Record<string, keyof NarrativeStatValues> = {
-  resolve: "focus",
-  wonder: "insight",
-};
+export const ATTRIBUTE_STAT_MAP: Record<string, keyof NarrativeStatValues> =
+  PLAY_ACTIVITY_CAPABILITY[PLAY_DISCOVERY_ACTIVITY_ID].attributeStatMap;
 
 export type DiscoveryJudgment = {
   passed: boolean;
@@ -56,14 +59,14 @@ export function judgeDiscoveryEvent(input: {
   playerAttributeId: string;
   playerStats: NarrativeStatValues;
   relationAffinity: number;
-  difficulty: number;
 }): DiscoveryJudgment {
-  const statId = ATTRIBUTE_STAT_MAP[input.playerAttributeId] || "adaptability";
+  const capability = resolvePlayActivityCapability(PLAY_DISCOVERY_ACTIVITY_ID);
+  const statId = capability.attributeStatMap[input.playerAttributeId] || capability.fallbackStatId;
   const statValue = Math.max(0, Math.min(100, Math.round(Number(input.playerStats[statId] || 0))));
   const rawAffinity = Number.isFinite(input.relationAffinity) ? Number(input.relationAffinity) : 0;
   const affinityBonus = Math.max(-10, Math.min(10, rawAffinity * 0.1));
   const score = Math.round(statValue + affinityBonus);
-  const difficulty = Math.max(0, Math.min(100, Math.round(Number(input.difficulty || 0))));
+  const difficulty = capability.difficulty;
   return { passed: score >= difficulty, score, difficulty, statId, statValue, affinityBonus };
 }
 
@@ -135,7 +138,6 @@ export async function resolvePlayDiscoveryEvent(input: {
   uid: string;
   playerCharacterId: string;
   idempotencyKey: string;
-  difficulty?: number;
 }) {
   await assertNarrativeCollectionAllowed(input.uid);
   const playerCharacterId = clampBeatPayloadId(input.playerCharacterId);
@@ -159,14 +161,14 @@ export async function resolvePlayDiscoveryEvent(input: {
     playerAttributeId: genesis.primaryAttributeId,
     playerStats: genesis.stats,
     relationAffinity: Number(state.relationAffinity[PLAY_PILOT.targetCharacterId] || 0),
-    difficulty: input.difficulty ?? 45,
   });
+  const difficulty = resolvePlayActivityCapability(PLAY_DISCOVERY_ACTIVITY_ID).difficulty;
   void recordPilotMetric({
     uid: input.uid,
     universeId: PLAY_PILOT.universeId,
     metric: "discovery_attempt",
     idempotencyKey: `${input.idempotencyKey}:attempt`,
-    detail: { difficulty: input.difficulty ?? 45 },
+    detail: { difficulty },
   });
   const outcome: NarrativeOutcome = judgment.passed
     ? {

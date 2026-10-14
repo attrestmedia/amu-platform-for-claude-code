@@ -33,37 +33,12 @@ export {
   resolveAdultEligibility,
   resolveVoiceDataConsent,
 } from "./voiceDataConsent";
-export {
-  TUTORS_STT_SAFETY_OUTCOMES,
-  evaluateTutorsSttSafety,
-  getDefaultTutorsSttSafetyPolicy,
-} from "./tutorsSttSafety";
-export type {
-  TutorsSttSafetyDecision,
-  TutorsSttSafetyOutcome,
-  TutorsSttSafetyPolicy,
-  TutorsSttSafetyRequest,
-  TutorsTrustedAudienceEligibility,
-} from "./tutorsSttSafety";
 export type {
   AdultEligibility,
   VoiceAudioRetention,
+  VoiceDataAudienceEligibility,
   VoiceDataConsentDecision,
   VoiceDataConsentReasonCode,
   VoiceProcessingIntent,
 } from "./voiceDataConsent";
-export {
-  TUTORS_AUDIO_TURN_OUTCOMES,
-  evaluateTutorsAudioTurn,
-  getDefaultTutorsAudioTurnPolicy,
-  isAudioCapableChatModel,
-  normalizeChatInputModality,
-  resolveTutorsAudioTurnPolicy,
-} from "./tutorsAudioTurnPolicy";
-export type {
-  TutorsAudioTurnDecision,
-  TutorsAudioTurnOutcome,
-  TutorsAudioTurnPolicy,
-  TutorsAudioTurnRequest,
-} from "./tutorsAudioTurnPolicy";
 export type * from "./types";

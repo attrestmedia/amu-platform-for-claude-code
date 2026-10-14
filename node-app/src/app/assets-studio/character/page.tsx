@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import { CharacterRegisterView } from "components/module/game/forge/steps/character/CharacterRegisterView";
-import { DEFAULT_PLAY_UNIVERSE } from "consts/app/universe";
 import { Lang } from "components/module/i18n";
 import { OperatorCharacterStage } from "components/module/game/forge/operator/OperatorForgeStages";
 import { OperatorForgeRoute } from "components/module/game/forge/operator/OperatorForgeRoute";
+import { CharacterUniverseEntry } from "components/module/game/character-studio/universe/CharacterUniverseEntry";
 
 export const metadata: Metadata = {
   title: "캐릭터 등록 | Assets Studio | All My Universe",
@@ -11,7 +10,17 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function CharacterRegisterPage() {
+type PageProps = {
+  searchParams: Promise<{ universeId?: string | string[] }>;
+};
+
+export default async function CharacterRegisterPage({ searchParams }: PageProps) {
+  const requestedUniverseId = (await searchParams).universeId;
+  const trimmedUniverseId = typeof requestedUniverseId === "string" ? requestedUniverseId.trim() : "";
+  const entryUniverseId = trimmedUniverseId.length >= 1 && trimmedUniverseId.length <= 80
+    ? trimmedUniverseId
+    : null;
+
   return (
     <OperatorForgeRoute
       operator={<OperatorCharacterStage />}
@@ -30,7 +39,7 @@ export default function CharacterRegisterPage() {
               />
             </p>
           </header>
-          <CharacterRegisterView universeId={DEFAULT_PLAY_UNIVERSE} />
+          <CharacterUniverseEntry entryUniverseId={entryUniverseId} />
         </div>
       }
     />

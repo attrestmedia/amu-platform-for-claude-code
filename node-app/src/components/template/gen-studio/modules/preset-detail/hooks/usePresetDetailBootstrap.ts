@@ -4,11 +4,11 @@ import { useEffect, type Dispatch, type SetStateAction } from "react";
 import {
   ASPECT_TO_OPENAI_COMPAT_SIZE,
   DEFAULT_IMAGE_ASPECT,
-  DEFAULT_IMAGE_MODEL_BY_PROVIDER,
   DEFAULT_IMAGE_SIZE,
   type ImageModelNameType,
   type SupportedAspectRatio,
 } from "consts/ai";
+import { AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 import type { ImageProviderType } from "types/ai";
 import type { PromptItemType } from "types/app";
 import {
@@ -104,7 +104,7 @@ export function usePresetDetailBootstrap({
     if (!detail) {
       setNegative("");
       setSelectedModelNames([
-        String(defaultImageModelByProvider?.google || DEFAULT_IMAGE_MODEL_BY_PROVIDER.google) as ImageModelNameType,
+        String(defaultImageModelByProvider?.google || AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google) as ImageModelNameType,
       ]);
       setAspect((initialAspectRatio || DEFAULT_IMAGE_ASPECT) as SupportedAspectRatio);
       setSize(DEFAULT_IMAGE_SIZE);
@@ -127,9 +127,9 @@ export function usePresetDetailBootstrap({
       modelLock?.modelName ||
         resolvePromptDefaultModelName(dp) ||
         defaultImageModelByProvider?.[dpProvider] ||
-        DEFAULT_IMAGE_MODEL_BY_PROVIDER[dpProvider] ||
+        AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER[dpProvider] ||
         defaultImageModelByProvider?.google ||
-        DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
+        AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google,
     );
     setSelectedModelNames([nextDefaultModel as ImageModelNameType]);
 

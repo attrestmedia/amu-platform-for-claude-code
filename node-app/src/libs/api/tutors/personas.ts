@@ -1,7 +1,6 @@
 import fetchClient from "libs/api/fetchClient";
-import type { PersonaFormValuesType, PublicTutorGalleryItemType } from "types/ai";
+import type { PersonaFormValuesType } from "types/ai";
 import type { BaseImageType } from "types/app";
-import type { TutorConversationLevel } from "consts/tutors";
 import { isDev, type UnknownRecord } from "utils/common";
 import { v4 as uuidv4 } from "uuid";
 
@@ -13,7 +12,7 @@ import { v4 as uuidv4 } from "uuid";
  * @scope client_lib
  */
 
-const BASE = "/tutors/personas";
+const BASE = "/game/personas";
 const createRequestId = () => (isDev ? uuidv4() : crypto.randomUUID());
 
 type TutorsApiEnvelope<T> = {
@@ -59,20 +58,6 @@ export async function getTutorsPersona(pid: string): Promise<PersonaFormValuesTy
   }
 }
 
-export async function updateTutorsPersonaConversationLevel(
-  pid: string,
-  conversationLevel: TutorConversationLevel,
-): Promise<PersonaFormValuesType> {
-  const res = await fetchClient.patch<TutorsApiEnvelope<PersonaFormValuesType>>(
-    `${BASE}/${encodeURIComponent(pid)}`,
-    { conversationLevel },
-    { responseType: "auto" },
-  );
-  const body = unwrap<PersonaFormValuesType>(res);
-  if (!body?.success) throw new Error(body?.error || "update_conversation_level_failed");
-  return body.data as PersonaFormValuesType;
-}
-
 export async function deleteTutorsPersona(pid: string): Promise<boolean> {
   const res = await fetchClient.delete<TutorsApiEnvelope<UnknownRecord>>(
     `${BASE}/${encodeURIComponent(pid)}`,
@@ -80,79 +65,6 @@ export async function deleteTutorsPersona(pid: string): Promise<boolean> {
   );
   const body = unwrap<UnknownRecord>(res);
   return !!body?.success;
-}
-
-export async function listSharedTutorsPersonaTemplates(params?: { q?: string; mine?: boolean; limit?: number }) {
-  const res = await fetchClient.get<TutorsApiEnvelope<PersonaFormValuesType[]>>(BASE, {
-    params: {
-      scope: "templates",
-      ...(params?.q ? { q: params.q } : {}),
-      ...(typeof params?.mine === "boolean" ? { mine: params.mine } : {}),
-      ...(typeof params?.limit === "number" ? { limit: params.limit } : {}),
-    },
-    responseType: "auto",
-  });
-  const body = unwrap<PersonaFormValuesType[]>(res);
-  return (body?.data || []) as PersonaFormValuesType[];
-}
-
-export async function listPublicTutorGallery(limit = 8, options?: { includeNoImage?: boolean }): Promise<PublicTutorGalleryItemType[]> {
-  const res = await fetchClient.get<TutorsApiEnvelope<PublicTutorGalleryItemType[]>>("/tutors/public-gallery", {
-    params: { limit, ...(options?.includeNoImage ? { includeNoImage: true } : {}) },
-    responseType: "auto",
-  });
-  const body = unwrap<PublicTutorGalleryItemType[]>(res);
-  return (body?.data || []) as PublicTutorGalleryItemType[];
-}
-
-export async function publishTutorsPersonaTemplate(pid: string, visibility: "private" | "unlisted" | "public" = "public") {
-  const res = await fetchClient.post<TutorsApiEnvelope<PersonaFormValuesType>>(
-    BASE,
-    {
-      action: "publish_template",
-      pid,
-      visibility,
-    },
-    { responseType: "auto" },
-  );
-  const body = unwrap<PersonaFormValuesType>(res);
-  if (!body?.success) throw new Error(body?.error || "publish_template_failed");
-  return body.data as PersonaFormValuesType;
-}
-
-export async function updateTutorsPersonaTemplate(
-  pid: string,
-  data: PersonaFormValuesType,
-  visibility: "private" | "unlisted" | "public" = "public",
-) {
-  const res = await fetchClient.post<TutorsApiEnvelope<PersonaFormValuesType>>(
-    BASE,
-    {
-      action: "update_template",
-      pid,
-      data,
-      visibility,
-    },
-    { responseType: "auto" },
-  );
-  const body = unwrap<PersonaFormValuesType>(res);
-  if (!body?.success) throw new Error(body?.error || "update_template_failed");
-  return body.data as PersonaFormValuesType;
-}
-
-export async function forkTutorsPersonaTemplate(pid: string) {
-  const res = await fetchClient.post<TutorsApiEnvelope<PersonaFormValuesType>>(
-    BASE,
-    {
-      action: "fork_template",
-      pid,
-      requestId: createRequestId(),
-    },
-    { responseType: "auto" },
-  );
-  const body = unwrap<PersonaFormValuesType>(res);
-  if (!body?.success) throw new Error(body?.error || "fork_template_failed");
-  return body.data as PersonaFormValuesType;
 }
 
 export async function generateTutorsPersonaDraft(params: {
@@ -184,66 +96,4 @@ export async function generateTutorsPersonaDraft(params: {
       coins: Number(body?.billing?.coins || 0),
     },
   };
-}
-
-export async function giftTutorsPersona(params: { pid: string; recipientActorId: string; message?: string }) {
-  const res = await fetchClient.post<TutorsApiEnvelope<UnknownRecord>>(
-    BASE,
-    {
-      action: "gift_tutor",
-      pid: params.pid,
-      recipientActorId: params.recipientActorId,
-      message: params.message || "",
-    },
-    { responseType: "auto" },
-  );
-  const body = unwrap<UnknownRecord>(res);
-  if (!body?.success) throw new Error(body?.error || "gift_tutor_failed");
-  return body.data as UnknownRecord;
-}
-
-export async function acceptTutorsPersonaGift(grantId: string) {
-  const res = await fetchClient.post<TutorsApiEnvelope<UnknownRecord>>(
-    BASE,
-    { action: "accept_gift", grantId },
-    { responseType: "auto" },
-  );
-  const body = unwrap<UnknownRecord>(res);
-  if (!body?.success) throw new Error(body?.error || "accept_gift_failed");
-  return body.data as UnknownRecord;
-}
-
-export async function rejectTutorsPersonaGift(grantId: string) {
-  const res = await fetchClient.post<TutorsApiEnvelope<UnknownRecord>>(
-    BASE,
-    { action: "reject_gift", grantId },
-    { responseType: "auto" },
-  );
-  const body = unwrap<UnknownRecord>(res);
-  if (!body?.success) throw new Error(body?.error || "reject_gift_failed");
-  return body.data as UnknownRecord;
-}
-
-export async function getTutorsPersonaTemplate(pid: string) {
-  const res = await fetchClient.get<TutorsApiEnvelope<PersonaFormValuesType>>(
-    `${BASE}/${encodeURIComponent(pid)}`,
-    {
-      params: { scope: "template" },
-      responseType: "auto",
-    },
-  );
-  const body = unwrap<PersonaFormValuesType>(res);
-  return (body?.data as PersonaFormValuesType) || null;
-}
-
-export async function deleteTutorsPersonaTemplate(pid: string): Promise<boolean> {
-  const res = await fetchClient.delete<TutorsApiEnvelope<UnknownRecord>>(
-    `${BASE}/${encodeURIComponent(pid)}`,
-    {
-      params: { scope: "template" },
-      responseType: "auto",
-    },
-  );
-  const body = unwrap<UnknownRecord>(res);
-  return !!body?.success;
 }

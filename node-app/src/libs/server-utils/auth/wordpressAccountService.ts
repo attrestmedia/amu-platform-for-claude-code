@@ -42,8 +42,14 @@ async function wpRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!response.ok) {
     const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+    const errorData = record.data && typeof record.data === "object"
+      ? record.data as Record<string, unknown>
+      : {};
     throw Object.assign(new Error(String(record.message || "WordPress 통합 계정 요청에 실패했습니다.")), {
       errorCode: String(record.code || "WORDPRESS_ACCOUNT_ERROR"),
+      ...(typeof errorData.errorCode === "string" && errorData.errorCode
+        ? { wpDataErrorCode: errorData.errorCode }
+        : {}),
       status: response.status,
     });
   }
@@ -92,11 +98,53 @@ export async function ensureWordPressAccount(args: { email: string; name?: strin
   return (await findWordPressUserByEmail(args.email)) || createWordPressAccount(args);
 }
 
-export async function saveWordPressPolicyConsents(userId: number, consents: unknown[]) {
+export async function saveWordPressPolicyConsents(
+  userId: number,
+  consents: unknown[],
+  releaseInput?: {
+    releaseIds: readonly string[];
+    manifestRevision: string;
+    agreedAt: Date | string;
+    method: string;
+    provider?: string;
+  },
+) {
+  if (releaseInput) return saveWordPressPolicyReleaseConsents(userId, releaseInput);
   await wpRequest("/wp-json/amu/v1/account/consent", {
     method: "POST",
     body: JSON.stringify({ user_id: userId, consents }),
   });
+}
+
+export async function saveWordPressPolicyReleaseConsents(userId: number, input: {
+  releaseIds: readonly string[];
+  manifestRevision: string;
+  agreedAt: Date | string;
+  method: string;
+  provider?: string;
+}) {
+  try {
+    await wpRequest("/wp-json/amu/v1/account/consent", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: userId,
+        releaseIds: input.releaseIds,
+        manifestRevision: input.manifestRevision,
+        agreedAt: input.agreedAt instanceof Date ? input.agreedAt.toISOString() : input.agreedAt,
+        method: input.method,
+        ...(input.provider ? { provider: input.provider } : {}),
+      }),
+    });
+  } catch (error) {
+    const coded = error as { message?: unknown; errorCode?: unknown; wpDataErrorCode?: unknown; status?: unknown };
+    if (typeof coded.wpDataErrorCode === "string" && coded.wpDataErrorCode) {
+      throw Object.assign(new Error(String(coded.message || "WordPress 정책 동의 요청이 거부되었습니다.")), {
+        errorCode: coded.wpDataErrorCode,
+        status: coded.status,
+      });
+    }
+    throw error;
+  }
 }
 
 export async function saveWordPressEmailVerification(

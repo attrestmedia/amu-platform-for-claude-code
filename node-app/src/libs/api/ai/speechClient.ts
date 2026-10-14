@@ -28,8 +28,6 @@ type SpeechTranscribeClientArgs = {
   audioRetention?: "transient" | "short_ttl";
   assessmentConsent?: boolean;
   analysisContext?: string;
-  disclosureAcknowledged?: boolean;
-  disclosureVersion?: string;
 };
 
 type SpeechSynthesizeClientArgs = {
@@ -91,10 +89,6 @@ export async function requestSpeechTranscription(args: SpeechTranscribeClientArg
   form.append("voiceIntent", args.voiceIntent || "chat_transcript");
   form.append("audioRetention", args.audioRetention || "transient");
   if (args.assessmentConsent) form.append("assessmentConsent", "true");
-  if (typeof args.disclosureAcknowledged === "boolean") {
-    form.append("disclosureAcknowledged", String(args.disclosureAcknowledged));
-  }
-  if (args.disclosureVersion) form.append("disclosureVersion", args.disclosureVersion);
   if (args.analysisContext) form.append("analysisContext", args.analysisContext.slice(0, 1200));
   if (typeof args.durationMs === "number" && Number.isFinite(args.durationMs) && args.durationMs > 0) {
     form.append("durationMs", String(Math.round(args.durationMs)));
@@ -105,94 +99,6 @@ export async function requestSpeechTranscription(args: SpeechTranscribeClientArg
     responseType: "auto",
   });
 
-  return out.data;
-}
-
-export type TutorsAssistantTtsJobResponse = {
-  jobId: string;
-  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "unknown_outcome";
-  audioUrl?: string;
-  audioMeta?: IMessageAudioMeta;
-  errorCode?: string;
-};
-
-/** EL-602 Tutors 응답 TTS는 비동기 job으로 생성한다. 클라이언트는 text/provider/uid를 주장하지 않는다. */
-export async function requestTutorsAssistantTtsJob(args: {
-  personaId: string;
-  sessionId: string;
-  assistantClientId: string;
-  mode: "playback" | "autoplay";
-  speed?: number;
-}) {
-  const out = await fetchClient.post<TutorsAssistantTtsJobResponse>(
-    "/tutors/assistant-tts/jobs",
-    {
-      personaId: args.personaId,
-      sessionId: args.sessionId,
-      assistantClientId: args.assistantClientId,
-      mode: args.mode,
-      speed: args.speed,
-    },
-    { timeout: 30_000, responseType: "auto" },
-  );
-  return out.data;
-}
-
-export type TutorsSttStatus = {
-  ok?: boolean;
-  enabled: boolean;
-  disclosureVersion: string;
-  notice: string;
-  languages: string[];
-};
-
-/** EL-601/TUTORS-192: Tutors OpenAI STT 노출 상태·per-use 고지를 서버에서 조회한다. */
-export async function getTutorsSttStatus() {
-  const out = await fetchClient.get<TutorsSttStatus>("/tutors/stt-status", { responseType: "auto" });
-  return out.data;
-}
-
-export async function getTutorsAssistantTtsJob(jobId: string) {
-  const safeJobId = encodeURIComponent(String(jobId || "").trim());
-  const out = await fetchClient.get<TutorsAssistantTtsJobResponse>(`/tutors/assistant-tts/jobs/${safeJobId}`, {
-    timeout: 30_000,
-    responseType: "auto",
-  });
-  return out.data;
-}
-
-/** H3: queued 단계 job 취소. running 이후는 서버가 409로 거부한다. */
-export async function cancelTutorsAssistantTtsJob(jobId: string) {
-  const safeJobId = encodeURIComponent(String(jobId || "").trim());
-  const out = await fetchClient.post<TutorsAssistantTtsJobResponse>(
-    `/tutors/assistant-tts/jobs/${safeJobId}`,
-    { action: "cancel" },
-    { timeout: 30_000, responseType: "auto" },
-  );
-  return out.data;
-}
-
-/** EL-603 Stream B: 서버 설정 기반 파일럿 surface 조회. 미설정 시 exposableVoices는 빈 배열. */
-export type TutorsVoicePilotSurfaceResponse = {
-  ok: boolean;
-  data: {
-    exposure: "allowed" | "denied";
-    reasonCode: string;
-    exposableVoices: string[];
-    metricsRecordingEnabled: boolean;
-    recordingEnabled: boolean;
-    analysisExposed: boolean;
-    ttsModel: string;
-    baseline: { status: string };
-  };
-};
-
-export async function getTutorsVoicePilotSurface(args?: { universeId?: string }) {
-  const out = await fetchClient.get<TutorsVoicePilotSurfaceResponse>("/tutors/voice-pilot", {
-    params: args?.universeId ? { universeId: args.universeId } : undefined,
-    timeout: 15_000,
-    responseType: "auto",
-  });
   return out.data;
 }
 

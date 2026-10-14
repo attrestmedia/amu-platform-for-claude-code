@@ -8,10 +8,7 @@ import type {
   ImagePromptCustomType,
   PromptVisibilityType,
 } from "types/app";
-import {
-  AI_GEN_IMAGE_LIMIT,
-  IMAGE_REF_LIMIT_BY_PROVIDER,
-} from "consts/ai";
+import { AI_GEN_IMAGE_LIMIT } from "consts/ai";
 import {
   deleteStoredGenStudioImageByStorage,
   deleteStoredGenStudioImageByUrl,
@@ -60,6 +57,7 @@ import {
   toAgentImageRoutingMetaResponse,
   type AgentImageRoutingMetaType,
 } from "utils/ai/agentImageRoutingPolicy";
+import { AI_IMAGE_REF_LIMIT_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 
 /**
  * @docHint
@@ -408,7 +406,7 @@ export async function generateSaveAndBillImages(params: ImagePipelineInputType) 
   const normalizedInputImages = [...normalizedModelImages, ...normalizedBaseImages];
   validatePromptOrImageOrThrow(prompt, normalizedInputImages);
   normalizedInputImages.forEach((img) => validateBaseImageOrThrow(img));
-  const refLimit = Math.max(0, Number(IMAGE_REF_LIMIT_BY_PROVIDER[provider] || 0));
+  const refLimit = Math.max(0, Number((AI_IMAGE_REF_LIMIT_BY_PROVIDER as Record<ImageProviderType, number>)[provider] || 0));
   if (refLimit > 0 && normalizedInputImages.length > refLimit) {
     throw codedError(`${provider}_base_image_limit_exceeded`, "BASE_IMAGE_LIMIT_EXCEEDED", 400);
   }

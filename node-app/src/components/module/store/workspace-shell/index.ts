@@ -1,0 +1,1 @@
+export { StoreWorkspaceFrame } from "./StoreWorkspaceFrame";

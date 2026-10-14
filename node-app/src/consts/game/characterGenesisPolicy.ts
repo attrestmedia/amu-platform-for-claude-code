@@ -1,6 +1,12 @@
 export const CHARACTER_SPECIES_IDS = ["human", "monster"] as const;
 export type CharacterSpeciesId = (typeof CHARACTER_SPECIES_IDS)[number];
 
+export const CHARACTER_SPECIES_MODES = ["human", "monster", "both"] as const;
+export type CharacterSpeciesMode = (typeof CHARACTER_SPECIES_MODES)[number];
+/** UniverseDetail.settings.game.characterSpeciesMode 부재(legacy) 시 해석값 — G-ASC-SPECIES */
+export const CHARACTER_SPECIES_MODE_LEGACY_DEFAULT: CharacterSpeciesMode = "both";
+export const UNIVERSE_OWNER_UIDS_MAX = 20;
+
 export const CHARACTER_SPECIES_OPTIONS: Array<{
   id: CharacterSpeciesId;
   label: { ko: string; en: string };
@@ -14,7 +20,10 @@ export const CHARACTER_SPECIES_OPTIONS: Array<{
   {
     id: "monster",
     label: { ko: "몬스터형", en: "Monster" },
-    description: { ko: "몬스터의 모습과 생태를 유지합니다.", en: "Keep a monster form and ecology." },
+    description: {
+      ko: "사람이 아닌 존재로 시작합니다. 크리처·로봇 같은 기계형 생명체도 포함합니다.",
+      en: "Begin as a non-human being, including creatures and mechanical beings such as robots.",
+    },
   },
 ];
 
@@ -23,7 +32,7 @@ export const CHARACTER_GENESIS_ATTRIBUTE_OPTIONS = [
   { id: "focus", label: { ko: "집중", en: "Focus" } },
   { id: "insight", label: { ko: "통찰", en: "Insight" } },
   { id: "empathy", label: { ko: "공감", en: "Empathy" } },
-  { id: "adaptability", label: { ko: "적응", en: "Adaptability" } },
+  { id: "adaptability", label: { ko: "적응력", en: "Adaptability" } },
   { id: "fortune", label: { ko: "행운", en: "Fortune" } },
 ] as const;
 

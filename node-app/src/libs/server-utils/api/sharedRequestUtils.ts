@@ -3,9 +3,10 @@ import { composeAuthoritativeSystemPrompt } from "libs/server-utils/system-promp
 import { normalizeRouteHint } from "utils/normalize";
 import type { RouteHintType, SystemPromptOptionsType } from "types/ai";
 import { getUniverseById } from "libs/database/universe";
-import { TUTORS_NAMESPACE_KEY, UNIVERSE_NAMESPACE_KEY, COMMERCE_NAMESPACE_KEY } from "consts/app";
+import { UNIVERSE_NAMESPACE_KEY, COMMERCE_NAMESPACE_KEY } from "consts/app";
 import { toUnknownRecord, type UnknownRecord } from "utils/common/typeUtils";
 import type { UniverseType } from "types/game";
+import { buildNarrativeDirectorChatRequest, type NarrativeDirectorChatContext } from "libs/server-utils/narrative/narrativeDirectorChatCaller";
 
 /**
  * @docHint
@@ -31,7 +32,7 @@ async function assertUniverseRouteConsistency(
   routeHint: RouteHintType,
   universeId: string,
   universeTypeHint?: string | null,
-) {
+): Promise<string> {
   // commerce는 withGuestOrAuth에서 이미 존재/타입 검증을 끝냈으면 힌트로 중복 조회를 제거
   let t = String(universeTypeHint || "")
     .trim()
@@ -45,7 +46,7 @@ async function assertUniverseRouteConsistency(
   }
   const isCommerce = t === "commerce";
 
-  // routeHint가 권위: ai/tutors에서 commerce 유니버스를 쓰면 우회 위험이 생길 수 있으니 차단
+  // routeHint가 권위: ai에서 commerce 유니버스를 쓰면 우회 위험이 생길 수 있으니 차단
   if (routeHint !== "commerce" && isCommerce) {
     throwHttpError("커머스 유니버스는 commerce 라우트를 사용해야 합니다.", "ROUTE_UNIVERSE_MISMATCH", 400);
   }
@@ -54,6 +55,8 @@ async function assertUniverseRouteConsistency(
   if (routeHint === "commerce" && !isCommerce) {
     throwHttpError("커머스 유니버스가 아닙니다.", "NOT_COMMERCE_UNIVERSE", 400);
   }
+
+  return t;
 }
 
 export function getSharedRequestBase(data: unknown) {
@@ -75,8 +78,7 @@ export function getSharedRequestBase(data: unknown) {
 
 export function getBillingContext(routeHint: RouteHintType) {
   const billToUniverse = routeHint === "commerce";
-  const app =
-    routeHint === "tutors" ? TUTORS_NAMESPACE_KEY : billToUniverse ? COMMERCE_NAMESPACE_KEY : UNIVERSE_NAMESPACE_KEY;
+  const app = billToUniverse ? COMMERCE_NAMESPACE_KEY : UNIVERSE_NAMESPACE_KEY;
   return { billToUniverse, app };
 }
 
@@ -87,9 +89,20 @@ export async function composeSystemPromptOrThrow(args: {
   user?: UnknownRecord;
   promptOptions?: SystemPromptOptionsType;
   universeTypeHint?: string | null;
+  narrativeDirector?: NarrativeDirectorChatContext;
 }) {
-  const { routeHint, universeId, npcId, user, promptOptions, universeTypeHint } = args;
-  await assertUniverseRouteConsistency(routeHint, universeId, universeTypeHint);
+  const { routeHint, universeId, npcId, user, promptOptions, universeTypeHint, narrativeDirector } = args;
+  const resolvedUniverseType = await assertUniverseRouteConsistency(routeHint, universeId, universeTypeHint);
+  const narrativeDirectorRequest = narrativeDirector
+    ? await buildNarrativeDirectorChatRequest({
+        ...narrativeDirector,
+        user,
+        routeHint,
+        universeId,
+        characterId: npcId,
+        universeType: resolvedUniverseType,
+      })
+    : undefined;
 
   const { systemPrompt } = await composeAuthoritativeSystemPrompt({
     routeHint,
@@ -98,6 +111,7 @@ export async function composeSystemPromptOrThrow(args: {
     user,
     promptOptions,
     universeTypeHint: universeTypeHint ? (universeTypeHint as UniverseType) : null,
+    narrativeDirectorRequest,
   });
 
   const trimmed = String(systemPrompt || "").trim();

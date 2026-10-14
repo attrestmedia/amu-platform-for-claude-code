@@ -7,4 +7,5 @@ export * from "./modelRole";
 export * from "./promptCaps";
 export * from "./reasoningEffort";
 export * from "./speechModel";
+export * from "./speechRuntimeManifest";
 export * from "./voiceCatalog";

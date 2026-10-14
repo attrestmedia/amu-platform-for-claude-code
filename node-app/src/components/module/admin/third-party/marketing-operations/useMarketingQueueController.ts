@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { lang } from "components/module/i18n";
-import { TEXT_MODEL_MAP } from "consts/ai";
+import { AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 import fetchClient from "libs/api/fetchClient";
 import { listContentPrompts } from "libs/api/lab/contentPrompts";
 import { listImagePrompts } from "libs/api/lab/imagePrompts";
@@ -83,7 +83,7 @@ export function useMarketingQueueController({
   );
   const modelOptions = useMemo(
     () =>
-      ((TEXT_MODEL_MAP as Record<string, readonly string[]>)[queueComposer.modelProvider] || []) as readonly string[],
+      ((AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[queueComposer.modelProvider] || []) as readonly string[],
     [queueComposer.modelProvider],
   );
   const isLocalAgentMode = queueComposer.generationMode === "local_agent";

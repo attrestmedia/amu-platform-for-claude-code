@@ -2,7 +2,7 @@ import type { BillingKeyLikeType, BillingCostKeyLikeType } from "types/payment";
 import type { ICalcParams } from "types/payment";
 import type { CoinUpdatedPayload } from "./billingUtils";
 import type { AiProviderType, AiModalityType, BillableProviderType, UserScopeType } from "types/ai";
-import { TOKENS_PER_COIN, FIXED_COSTS } from "consts/payment";
+import { AI_SELL_TOKENS_PER_COIN, AI_SELL_FIXED_COSTS } from "consts/ai/generated/modelCatalog.generated";
 import { AI_MODALITY_TYPES } from "consts/ai";
 import { toUnknownRecord } from "utils/common/typeUtils";
 
@@ -69,8 +69,8 @@ export function calcCoinsWithPricingMaps({
   tokenMap?: TokenPricingMapType;
   fixedMap?: FixedPricingMapType;
 }) {
-  const resolvedTokenMap = tokenMap || (TOKENS_PER_COIN as unknown as TokenPricingMapType);
-  const resolvedFixedMap = fixedMap || (FIXED_COSTS as unknown as FixedPricingMapType);
+  const resolvedTokenMap = tokenMap || (AI_SELL_TOKENS_PER_COIN as unknown as TokenPricingMapType);
+  const resolvedFixedMap = fixedMap || (AI_SELL_FIXED_COSTS as unknown as FixedPricingMapType);
   let coins = 0;
   let tokenCoins = 0;
   let fixedCoins = 0;
@@ -158,7 +158,7 @@ export function calcCoinsWithPricingMaps({
 
   // 2) 고정형
   if (fixed) {
-    // 모달리티 꼬리표가 붙어도 FIXED_COSTS를 찾도록 보완
+    // 모달리티 꼬리표가 붙어도 AI_SELL_FIXED_COSTS를 찾도록 보완
     const fixedRate = resolveFixedKey(billingKey);
     if (fixedRate) {
       if (fixed.seconds && fixedRate.perSecond) {
@@ -238,8 +238,8 @@ export function resolveBillingKeyWithPricingMaps(args: {
   const base = normalizeBillingBase(args.provider, args.model);
   if (!base) return base as BillingKeyLikeType | BillingCostKeyLikeType;
 
-  const resolvedTokenMap = args.tokenMap || (TOKENS_PER_COIN as unknown as TokenPricingMapType);
-  const resolvedFixedMap = args.fixedMap || (FIXED_COSTS as unknown as FixedPricingMapType);
+  const resolvedTokenMap = args.tokenMap || (AI_SELL_TOKENS_PER_COIN as unknown as TokenPricingMapType);
+  const resolvedFixedMap = args.fixedMap || (AI_SELL_FIXED_COSTS as unknown as FixedPricingMapType);
   const billingBase =
     base === "openai:gpt-audio-1.5" &&
     resolvedTokenMap["openai:gpt-audio:text"] &&
@@ -313,7 +313,7 @@ export function consumeCoinUpdatedIfAny(
   }
 }
 
-// provider + modelName(+modality) 기준 FIXED_COSTS에서 장당(perImage) 코인 비용 조회
+// provider + modelName(+modality) 기준 AI_SELL_FIXED_COSTS에서 장당(perImage) 코인 비용 조회
 // - 이미지 모델이 아니거나 perImage가 없으면 null
 type FixedCostItem = {
   perSecond?: number;
@@ -333,7 +333,7 @@ export function getPerImageCost(
   const billingKey = resolveBillingKey(provider, modelName, variant, modality);
 
   // 2) 정확히 일치하는 키 먼저 시도
-  const direct = FIXED_COSTS[billingKey as keyof typeof FIXED_COSTS] as FixedCostItem | undefined;
+  const direct = AI_SELL_FIXED_COSTS[billingKey as keyof typeof AI_SELL_FIXED_COSTS] as FixedCostItem | undefined;
   if (direct?.perImage != null) {
     return direct.perImage;
   }
@@ -344,7 +344,7 @@ export function getPerImageCost(
 
   if (last === "text" || last === "audio" || last === "image" || last === "video") {
     const baseKey = parts.slice(0, -1).join(":");
-    const base = FIXED_COSTS[baseKey as keyof typeof FIXED_COSTS] as FixedCostItem | undefined;
+    const base = AI_SELL_FIXED_COSTS[baseKey as keyof typeof AI_SELL_FIXED_COSTS] as FixedCostItem | undefined;
     if (base?.perImage != null) {
       return base.perImage;
     }

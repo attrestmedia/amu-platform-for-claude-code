@@ -16,7 +16,7 @@ import {
   type CanonRevisionStatus,
 } from "types/game";
 import { cn, toUnknownRecord } from "utils/common";
-import { PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS } from "utils/theme";
+import { THEME_OVERRIDE_CLASS } from "utils/theme";
 import { CanonDraftForm, type CanonDraftFormValue } from "./CanonDraftForm";
 import { CanonGraphView } from "./CanonGraphView";
 import {
@@ -192,11 +192,8 @@ export function CanonAdminConsole({ universeId }: { universeId: string }) {
   }
 
   return (
-    <div className={cn(PAGE_LAYOUT_CLASS, THEME_OVERRIDE_CLASS, "overflow-x-hidden")}>
-      <a href="#canon-main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-10 focus:rounded-md focus:bg-primary focus:px-3 focus:py-2 focus:text-sm focus:text-white">
-        <Lang text={{ ko: "본문으로 건너뛰기", en: "Skip to content" }} />
-      </a>
-      <main id="canon-main" className="mx-auto flex w-full max-w-[1440px] flex-col gap-5 p-4 md:p-6">
+    <div className={cn(THEME_OVERRIDE_CLASS, "overflow-x-hidden")}>
+      <section className="mx-auto flex w-full max-w-[1440px] flex-col gap-5">
         <header className="rounded-xl border border-border bg-surface/80 p-4 md:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
@@ -316,7 +313,7 @@ export function CanonAdminConsole({ universeId }: { universeId: string }) {
             </div>
           </div>
         </div>
-      </main>
+      </section>
     </div>
   );
 }

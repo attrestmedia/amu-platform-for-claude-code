@@ -2,9 +2,9 @@ import "server-only";
 
 import type { MarketingChannel } from "consts/marketing/queue";
 import {
-  MARKETING_PROOFREAD_DEFAULT_MODEL,
-  MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-} from "consts/marketing/proofread";
+  AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
+  AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+} from "consts/ai/generated/modelCatalog.generated";
 import { runMarketingBridge } from "libs/marketing/bridge/runner";
 import type { MarketingChannelDraft } from "libs/marketing/bridge/types";
 import { normalizeMarketingGenerationConfig } from "libs/marketing/generationConfig";
@@ -60,14 +60,14 @@ export async function runIndependentMarketingProofread(args: {
   const draftDigest = createMarketingDraftDigest(args.draft);
   const operationId = `marketing:${args.jobId}:${args.channel}:independent-proofread:${draftDigest}`;
   await assertSystemModelSelectableOrThrow({
-    provider: MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-    modelName: MARKETING_PROOFREAD_DEFAULT_MODEL,
+    provider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+    modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
     modality: "text",
     actor: { user: args.actorUser },
   });
   await assertPricingPreflightOrThrow({
-    provider: MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-    modelName: MARKETING_PROOFREAD_DEFAULT_MODEL,
+    provider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+    modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
     modality: "text",
     kind: "token",
     variants: [undefined],
@@ -75,8 +75,8 @@ export async function runIndependentMarketingProofread(args: {
   await assertAIUsageBalanceOrThrow({
     uid: args.uid,
     app: "ai_marketing_independent_proofread",
-    provider: MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-    modelName: MARKETING_PROOFREAD_DEFAULT_MODEL,
+    provider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+    modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
     usage: {
       text: {
         input: Math.max(1, Math.ceil(JSON.stringify(args.draft).length / 3)),
@@ -95,8 +95,8 @@ export async function runIndependentMarketingProofread(args: {
 
   const generationConfig = normalizeMarketingGenerationConfig({
     generationMode: "server_worker",
-    modelProvider: MARKETING_PROOFREAD_DEFAULT_PROVIDER,
-    modelName: MARKETING_PROOFREAD_DEFAULT_MODEL,
+    modelProvider: AI_MARKETING_PROOFREAD_DEFAULT_PROVIDER,
+    modelName: AI_MARKETING_PROOFREAD_DEFAULT_MODEL,
     reviewMode: "review_required",
   });
   const result = await runMarketingBridge({

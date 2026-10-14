@@ -14,8 +14,6 @@ import {
   validateAppMagazineContent,
 } from "./appContentValidate";
 import { ensureAppMagazineTopics } from "./appMagazinePersonalizationRepo";
-import { buildAppMagazineContentDeclaration } from "./appContentDeclaration";
-import { upsertMagazineArticleDeclaration } from "./magazineArticleDeclaration";
 import { logger } from "utils/log";
 
 /**
@@ -147,7 +145,6 @@ export async function upsertAppMagazineContent(input: unknown, args: {
       await existing.save();
       const data = projection(existing.toObject());
       if (!data) return { ok: false, error: "unavailable" };
-      await ensureAppContentEmbedDeclaration(content, args);
       if (revisionChanged) await invalidateNarrationAfterContentWrite(content, args.actor);
       return { ok: true, data, created: false };
     }
@@ -164,7 +161,6 @@ export async function upsertAppMagazineContent(input: unknown, args: {
     });
     const data = projection(created.toObject());
     if (!data) return { ok: false, error: "unavailable" };
-    await ensureAppContentEmbedDeclaration(content, args);
     return { ok: true, data, created: true };
   } catch (error) {
     logger.error("[app-magazine-content] upsert failed", { error: error instanceof Error ? error.message : "unknown" });
@@ -187,15 +183,5 @@ async function invalidateNarrationAfterContentWrite(content: AppMagazineContent,
   } catch (error) {
     // 본문 저장은 완료됐고 SSR은 revision mismatch/indexable gate로 즉시 fail-closed한다. cleanup은 retry 가능한 pending으로 남긴다.
     logger.warn("[app-magazine-content] narration invalidation unavailable", { contentId: content.contentId, error: error instanceof Error ? error.message : "unknown" });
-  }
-}
-
-/** E3 동적 모듈이 있는 App 콘텐츠는 Embed resolver가 쓸 declaration(contentRef=app_content, v2)을 함께 등록한다. */
-async function ensureAppContentEmbedDeclaration(content: AppMagazineContent, args: { actor: string; source: AppMagazineContentSource }) {
-  const declaration = buildAppMagazineContentDeclaration(content);
-  if (!declaration) return;
-  const result = await upsertMagazineArticleDeclaration(declaration, { actor: args.actor, source: args.source === "admin" ? "admin" : "agent" });
-  if (!result.ok) {
-    logger.warn("[app-magazine-content] embed declaration register failed", { contentId: content.contentId, error: result.error });
   }
 }

@@ -15,11 +15,12 @@ export function PlayForgeShell({ children }: { children: ReactNode }) {
     <WorkspaceShell
       mainId="forge-main"
       skipLink={<Lang text={{ ko: "에셋 스튜디오 본문으로 건너뛰기", en: "Skip to Assets Studio content" }} />}
-      topBar={({ onToggleSidebar, sidebarExpanded, sidebarControlsId }) => (
+      topBar={({ onToggleSidebar, sidebarExpanded, sidebarControlsId, sidebarToggleId }) => (
         <ForgeTopBar
           onToggleSidebar={onToggleSidebar}
           sidebarExpanded={sidebarExpanded}
           sidebarControlsId={sidebarControlsId}
+          sidebarToggleId={sidebarToggleId}
         />
       )}
       sidebar={(props) => <ForgeSidebar {...props} />}

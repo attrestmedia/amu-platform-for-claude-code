@@ -11,6 +11,7 @@ import { relationshipProposalSessionKey, resolveRelationshipProposals } from "li
 import { RELATIONSHIP_PROPOSAL_POLICY, type CanonGraphRevisionDoc, type IPersonalUniverseCanonRevisionDoc, type RelationshipProposalContext } from "types/game";
 import type { TextProviderType } from "types/ai";
 import { redisCache } from "libs/cache/redisCacheService";
+import { toErrorLike } from "utils/common";
 import type { UnknownRecord } from "utils/common/typeUtils";
 
 export const runtime = "nodejs";
@@ -90,7 +91,8 @@ export const POST = withAuth(
       try {
         requestedModel = value(body, "modelName", 120) || await resolveSystemDefaultModelName({ provider, modality: "text" });
         await assertSystemModelSelectableOrThrow({ provider, modelName: requestedModel, modality: "text", actor: { user } });
-      } catch {
+      } catch (error) {
+        if (toErrorLike(error).errorCode === "SYSTEM_CONTROL_UNAVAILABLE") throw error;
         return NextResponse.json({ ok: true, data: { ...buildManualRelationshipProposal(context, "model_unavailable"), persisted: false, approvalRequired: true } }, { headers: { "Cache-Control": "no-store" } });
       }
       const prompt = buildRelationshipProposalPrompt(context);
@@ -111,6 +113,7 @@ export const POST = withAuth(
             n: 1,
             temperature: 0.2,
             maxOutputTokens: RELATIONSHIP_PROPOSAL_POLICY.maxOutputTokens,
+            thinkingBudget: RELATIONSHIP_PROPOSAL_POLICY.thinkingBudgetTokens,
             responseMimeType: "application/json",
             actorUser: user,
           });
@@ -119,9 +122,23 @@ export const POST = withAuth(
       });
       return NextResponse.json({ ok: true, data: { ...result, persisted: false, approvalRequired: true } }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
-      const code = String((error as { errorCode?: unknown; message?: unknown })?.errorCode || (error as { message?: unknown })?.message || "RELATIONSHIP_PROPOSAL_FAILED");
-      const status = code.includes("FORBIDDEN") ? 403 : code.includes("NOT_FOUND") ? 404 : code.includes("MODEL_NOT_SELECTABLE") ? 403 : code.includes("INVALID") ? 400 : 500;
-      return NextResponse.json({ ok: false, error: code }, { status });
+      const meta = toErrorLike(error);
+      const code = String(meta.errorCode || meta.message || "RELATIONSHIP_PROPOSAL_FAILED");
+      const status =
+        typeof meta.status === "number"
+          ? meta.status
+          : code.includes("FORBIDDEN")
+            ? 403
+            : code.includes("NOT_FOUND")
+              ? 404
+              : code.includes("MODEL_NOT_SELECTABLE")
+                ? 403
+                : code === "SYSTEM_CONTROL_UNAVAILABLE"
+                  ? 503
+                  : code.includes("INVALID")
+                    ? 400
+                    : 500;
+      return NextResponse.json({ ok: false, error: code, errorCode: code }, { status });
     }
   },
   undefined,

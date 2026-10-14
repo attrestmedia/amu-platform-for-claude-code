@@ -3,14 +3,13 @@
 import { Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, RadioGroup, RadioGroupItem, dialog } from "@amu-labs/ui";
 import type { ReactNode } from "react";
 import {
-  OPENAI_APPROVED_VOICE_CATALOG,
   getOpenAiVoiceCatalogEntry,
   isOpenAiVoiceAllowedForGenderHint,
-  OPENAI_DEFAULT_TTS_MODEL,
   PERSONA_BINARY_GENDER_OPTIONS,
   resolvePersonaBinaryGenderValue,
   resolveOpenAiVoiceGenderHint,
 } from "consts/ai";
+import { AI_ELEVENLABS_APPROVED_VOICE_CATALOG } from "consts/ai/generated/modelCatalog.generated";
 import { ELEVENLABS_DEFAULT_TTS_MODEL, getElevenLabsVoiceCatalogEntry } from "consts/ai/voiceCatalog";
 import VoicePreviewButton from "components/module/persona/VoicePreviewButton";
 import type {
@@ -116,10 +115,9 @@ export function PersonaEditor({
 }: PersonaEditorProps) {
   const universeId = value.universeId || "";
   const pid = value.pid || undefined;
-  const voiceGenderHint = resolveOpenAiVoiceGenderHint(value.gender);
   const currentVoiceId = String(value.voiceProfile?.voiceId || "").trim();
-  const hasVoiceOverride = Boolean(currentVoiceId);
-  const selectedVoiceEntry = getOpenAiVoiceCatalogEntry(currentVoiceId);
+  const selectedVoiceEntry = getElevenLabsVoiceCatalogEntry(currentVoiceId);
+  const hasVoiceOverride = Boolean(selectedVoiceEntry);
   const labelClass = "text-xs font-medium text-secondary-text whitespace-nowrap";
   const helperTextClass = "mt-1 text-xxs leading-5 text-secondary-text";
   const groupedSectionClass = "space-y-2 rounded-2xl border border-border/60 bg-surface/60 p-4";
@@ -170,7 +168,10 @@ export function PersonaEditor({
 
   const applyGenderChange = async (nextGender: string) => {
     const next = { ...value, gender: resolvePersonaBinaryGenderValue(nextGender) || nextGender };
-    if (!(await confirmVoiceGenderMismatch(next.voiceProfile?.voiceId || "", next.gender))) return;
+    if (
+      next.voiceProfile?.voiceId && next.voiceProfile.provider !== "elevenlabs" &&
+      !(await confirmVoiceGenderMismatch(next.voiceProfile.voiceId, next.gender))
+    ) return;
     onChange(enforceUniverseId(next));
   };
 
@@ -217,32 +218,29 @@ export function PersonaEditor({
     onChange(enforceUniverseId(next));
   };
 
-  const handleVoiceProfileChange = async (patch: Partial<NonNullable<PersonaFormValuesType["voiceProfile"]>>) => {
+  const handleVoiceProfileChange = (patch: Partial<NonNullable<PersonaFormValuesType["voiceProfile"]>>) => {
     const current = value.voiceProfile && typeof value.voiceProfile === "object" ? value.voiceProfile : {};
-    const merged = {
-      ...current,
-      ...patch,
-      provider: "openai" as const,
-      source: "persona-profile",
-    };
-    const voiceId = String(merged.voiceId || "")
-      .trim()
-      .toLowerCase();
-    const modelName = String(merged.modelName || "").trim();
-    const locale = String(merged.locale || "").trim();
-    const instructions = String(merged.instructions || "").trim();
+    const nextVoiceId = Object.prototype.hasOwnProperty.call(patch, "voiceId") ? patch.voiceId : current.voiceId;
+    const voiceId = String(nextVoiceId || "").trim();
 
     if (!voiceId) {
       handleBaseChange("voiceProfile", undefined);
       return;
     }
 
-    if (!(await confirmVoiceGenderMismatch(voiceId, value.gender))) return;
+    const entry = getElevenLabsVoiceCatalogEntry(voiceId);
+    if (!entry) return;
+    const modelName = String(patch.modelName ?? (current.provider === "elevenlabs" ? current.modelName : "") ?? "").trim();
+    const locale = String(patch.locale ?? current.locale ?? entry.locales[0] ?? "ko").trim();
+    const instructions = String(patch.instructions ?? current.instructions ?? "").trim();
 
     handleBaseChange("voiceProfile", {
-      provider: "openai",
-      voiceId,
-      modelName: modelName || OPENAI_DEFAULT_TTS_MODEL,
+      provider: "elevenlabs",
+      voiceId: entry.voiceId,
+      voiceRevision: entry.voiceRevision,
+      provenance: "approved_catalog",
+      rightsStatus: entry.rightsStatus,
+      modelName: modelName || ELEVENLABS_DEFAULT_TTS_MODEL,
       locale: locale || undefined,
       instructions: instructions || undefined,
       source: "persona-profile",
@@ -687,7 +685,7 @@ export function PersonaEditor({
                 <Lang text={{ ko: "음성", en: "Voice" }} />
               </label>
               <Select
-                value={currentVoiceId || "auto"}
+                value={selectedVoiceEntry ? currentVoiceId : "auto"}
                 disabled={isFieldDisabled("voiceProfile")}
                 onValueChange={(nextValue) =>
                   handleVoiceProfileChange({
@@ -705,25 +703,22 @@ export function PersonaEditor({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="auto">
-                    {voiceGenderHint
-                      ? lang({ ko: "자동 선택 (성별 기반)", en: "Auto select by gender" })
-                      : lang({ ko: "자동 선택", en: "Auto select" })}
+                    {lang({ ko: "자동 선택", en: "Auto select" })}
                   </SelectItem>
-                  {OPENAI_APPROVED_VOICE_CATALOG.map((voice) => (
+                  {AI_ELEVENLABS_APPROVED_VOICE_CATALOG
+                    .filter((voice) => voice.rightsStatus === "verified_commercial" && voice.usage === "production")
+                    .map((voice) => (
                     <SelectItem key={voice.voiceId} value={voice.voiceId}>
                       {voice.label} ({voice.tags.join(", ")})
-                      {voiceGenderHint && !isOpenAiVoiceAllowedForGenderHint(voice.voiceId, voiceGenderHint)
-                        ? ` · ${lang({ ko: "성별과 다름", en: "gender mismatch" })}`
-                        : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {selectedVoiceEntry ? (
                 <VoicePreviewButton
-                  key={`${selectedVoiceEntry.voiceId}:${value.voiceProfile?.modelName || OPENAI_DEFAULT_TTS_MODEL}:${value.voiceProfile?.locale || "ko"}`}
+                  key={`${selectedVoiceEntry.voiceId}:${value.voiceProfile?.modelName || ELEVENLABS_DEFAULT_TTS_MODEL}:${value.voiceProfile?.locale || "ko"}`}
                   voiceId={selectedVoiceEntry.voiceId}
-                  modelName={value.voiceProfile?.modelName || OPENAI_DEFAULT_TTS_MODEL}
+                  modelName={value.voiceProfile?.modelName || ELEVENLABS_DEFAULT_TTS_MODEL}
                   universeId={universeId}
                   locale={value.voiceProfile?.locale || "ko"}
                   className="mt-2"
@@ -761,9 +756,9 @@ export function PersonaEditor({
                 <Lang text={{ ko: "TTS 모델", en: "TTS Model" }} />
               </label>
               <Input
-                value={value.voiceProfile?.modelName || OPENAI_DEFAULT_TTS_MODEL}
+                value={value.voiceProfile?.modelName || ELEVENLABS_DEFAULT_TTS_MODEL}
                 onChange={(e) => handleVoiceProfileChange({ modelName: e.target.value })}
-                placeholder={OPENAI_DEFAULT_TTS_MODEL}
+                placeholder={ELEVENLABS_DEFAULT_TTS_MODEL}
                 disabled={!hasVoiceOverride || isFieldDisabled("voiceProfile")}
                 readOnly={isFieldDisabled("voiceProfile")}
               />

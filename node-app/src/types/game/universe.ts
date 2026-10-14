@@ -1,6 +1,7 @@
 import type { WalletType } from "../payment";
 import type { UnknownRecord } from "utils/common/typeUtils";
 import type { IStageDoc, IStageInfo } from "./stage-doc";
+import type { CharacterSpeciesMode } from "consts/game/characterGenesisPolicy";
 
 export type UniverseType = "game" | "commerce";
 export type UniverseBasePath = "play" | "store";
@@ -91,6 +92,7 @@ export interface IUniverse {
   billingOwnerEmail?: string; // 결제·환불 책임자
   commerceAdmins?: string[]; // 커머스 타입 유니버스 관리자 아이디 (이메일)
   wallet?: WalletType;
+  ownerUids?: string[]; // 표준 game Universe 소유자 uid — 서버 관리, administrator 전용 API로만 배정
 
   personaLimits?: {
     maxTotal?: number; // 전체 생성 가능 페르소나 수
@@ -141,6 +143,7 @@ export interface IGameSettings {
   spawnPoint?: { x: number; y: number };
   obstacles?: UnknownRecord;
   roads?: UnknownRecord;
+  characterSpeciesMode?: CharacterSpeciesMode;
 }
 
 // 스토어 정보/지식 인터페이스

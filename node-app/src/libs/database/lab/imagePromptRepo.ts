@@ -3,7 +3,12 @@ import { ImagePromptSchema, type IImagePromptDocument } from "models/lab";
 import { redisCache } from "libs/cache/redisCacheService";
 import { MONGODB_AI_URL } from "consts/env/server";
 import type { PromptAccessLevelType, PromptItemExtendedType } from "types/app";
-import { INTERNAL_PROMPT_ACCESS_LEVELS, normalizePromptAccessLevel } from "utils/app/promptAccess";
+import {
+  assertSystemPromptKeyAccessLevel,
+  INTERNAL_PROMPT_ACCESS_LEVELS,
+  isReservedInternalPromptKey,
+  normalizePromptAccessLevel,
+} from "utils/app/promptAccess";
 import { toErrorLike, type UnknownRecord } from "utils/common/typeUtils";
 
 type DuplicateKeyError = Error & { errorCode: "DUPLICATE_KEY" };
@@ -48,11 +53,13 @@ export async function existsImagePromptKey(key: string) {
 }
 
 export async function createImagePrompt(input: PromptItemExtendedType) {
+  const accessLevel = normalizePromptAccessLevel(input.accessLevel);
+  assertSystemPromptKeyAccessLevel(input.key, accessLevel);
   const model = await getImageModel();
   try {
     const doc = await model.create({
       ...input,
-      accessLevel: normalizePromptAccessLevel(input.accessLevel),
+      accessLevel,
       categories: input.categories && input.categories.length ? input.categories : ["general"],
     });
     await redisCache.del(cacheKey(input.key));
@@ -159,6 +166,17 @@ export async function countImagePrompts(params?: {
 // 미전달 필드를 기본값으로 되돌려 기존 값을 지우는 사고를 막는다.
 export async function upsertImagePrompt(input: PromptItemExtendedType) {
   const model = await getImageModel();
+  if (isReservedInternalPromptKey(input.key)) {
+    const existing =
+      input.accessLevel === undefined
+        ? await model.findOne({ key: input.key }, { accessLevel: 1 }).lean()
+        : undefined;
+    const accessLevel =
+      input.accessLevel !== undefined
+        ? normalizePromptAccessLevel(input.accessLevel)
+        : normalizePromptAccessLevel(existing?.accessLevel);
+    assertSystemPromptKeyAccessLevel(input.key, accessLevel);
+  }
   const now = new Date();
 
   const setFields: UnknownRecord = {

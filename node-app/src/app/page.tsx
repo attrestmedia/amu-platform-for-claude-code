@@ -25,6 +25,9 @@ export const metadata: Metadata = {
     description:
       "Gen Studio·Tutors·Play·Store를 한 계정으로 쓰는 AI 유니버스. 이미지와 콘텐츠를 만들고, 튜터와 대화하며 배우고, 매거진에서 트렌드를 읽습니다.",
   },
+  verification: {
+    google: "nIpyAPD9nDgduEdBCagdT7toStuUQJ6nMKtiLnS_VAA",
+  },
 };
 
 export default function HomePage() {

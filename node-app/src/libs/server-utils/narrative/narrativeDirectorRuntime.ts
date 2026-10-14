@@ -1,10 +1,11 @@
 import "server-only";
 
-import type { BillableProviderType } from "types/ai";
+import type { TextProviderType } from "types/ai";
 import type { NarrativeDirectiveProposal } from "types/game";
 import { buildStaticNarrativeDirective, NARRATIVE_DIRECTOR_POLICY } from "libs/server-utils/narrative/narrativeDirector";
 import { runCachedNarrativeDirector } from "libs/server-utils/narrative/narrativeDirectorCache";
 import {
+  buildNarrativeDirectorUsage,
   preflightNarrativeDirectorCost,
   type NarrativeDirectorCostGateResult,
 } from "libs/server-utils/narrative/narrativeDirectorCostGate";
@@ -17,7 +18,18 @@ import {
   writeNarrativeDirectorCircuit,
   type NarrativeDirectorCircuitState,
 } from "libs/server-utils/narrative/narrativeDirectorCircuit";
-import { isNarrativeRuntimeEnabled } from "libs/server-utils/narrative/narrativeRuntimePolicy";
+import {
+  isNarrativeDirectorConsumerEnabled,
+  isNarrativeRuntimeEnabled,
+  type NarrativeDirectorConsumer,
+} from "libs/server-utils/narrative/narrativeRuntimePolicy";
+import {
+  reserveNarrativeDirectorValidationBudget,
+  settleNarrativeDirectorValidationBudget,
+  type NarrativeDirectorProviderUsage,
+  type NarrativeDirectorValidationBudgetReservation,
+} from "libs/server-utils/narrative/narrativeDirectorValidationBudget";
+import { logger } from "utils/log";
 
 /**
  * @docHint
@@ -29,15 +41,19 @@ import { isNarrativeRuntimeEnabled } from "libs/server-utils/narrative/narrative
 
 export type NarrativeDirectorGateTelemetry = {
   runtimeEnabled: boolean;
+  consumer: NarrativeDirectorConsumer;
+  consumerEnabled: boolean;
   circuitState: NarrativeDirectorCircuitState;
   circuitCallAllowed: boolean;
   costGate: Pick<NarrativeDirectorCostGateResult, "allowed" | "reason" | "errorCode" | "estimatedCoins" | "budgetCapCoins"> | null;
+  validationBudget: { enabled: boolean; allowed: boolean; reason?: string; estimatedUsd?: number };
   billed: boolean;
 };
 
 export type NarrativeDirectorRuntimeResult = NarrativeDirectiveProposal & { gate: NarrativeDirectorGateTelemetry };
 
 export type NarrativeDirectorRuntimeInput = {
+  consumer: NarrativeDirectorConsumer;
   uid: string;
   universeId: string;
   characterId: string;
@@ -46,12 +62,17 @@ export type NarrativeDirectorRuntimeInput = {
   beatId?: string;
   prompt: string;
   callsInSession: number;
-  provider: BillableProviderType;
+  provider: TextProviderType;
   modelName: string;
+  thinkingBudgetTokens?: number;
   /** 실제 provider 호출. 이 함수는 preflight를 통과하고 circuit이 열려 있지 않을 때만 실행된다. */
   invoke: () => Promise<unknown>;
   /** 성공한 호출의 실제 사용량 과금. 기본값은 aiUsageBilling의 코인 차감이다. */
   recordUsage?: (usage: { promptTokens: number; outputTokens: number }) => Promise<void> | void;
+  /** Provider cost observation for a returned response rejected by directive validation. */
+  recordUnbilledUsage?: (usage: { promptTokens: number; outputTokens: number }) => Promise<void> | void;
+  /** Provider-reported token usage. Required to settle an enabled validation budget. */
+  readProviderUsage?: () => NarrativeDirectorProviderUsage | null;
   narrativeProfileId?: string;
   skipWhenNoUid?: boolean;
   env?: Record<string, string | undefined>;
@@ -90,6 +111,33 @@ async function defaultRecordUsage(
   });
 }
 
+async function defaultRecordUnbilledUsage(
+  input: NarrativeDirectorRuntimeInput,
+  usage: { promptTokens: number; outputTokens: number },
+) {
+  const { recordAiCostObservation } = await import("libs/server-utils/ai/aiCostObservationService");
+  await recordAiCostObservation({
+    provider: input.provider,
+    modelName: input.modelName,
+    modality: "text",
+    usage: { text: { input: usage.promptTokens, output: usage.outputTokens } },
+    meta: {
+      route: "narrative/director",
+      consumer: input.consumer,
+      reason: "parse_failed_unbilled",
+    },
+    result: { ok: false, coins: 0, errorCode: "NARRATIVE_DIRECTOR_PARSE_FAILED_UNBILLED" },
+  });
+}
+
+function logUnbilledRecordingFailure(error: unknown, source: "observation" | "settlement") {
+  logger.error("[NARRATIVE_DIRECTOR_UNBILLED_COST_ALERT]", {
+    alertCode: "NARRATIVE_DIRECTOR_UNBILLED_COST_FAILED",
+    source,
+    errorName: error instanceof Error ? error.name : "UNKNOWN",
+  });
+}
+
 /**
  * Director 결과를 해석한다. 이 함수는 절대 throw하지 않으며, 어떤 실패에서도
  * static directive를 돌려줘 채팅 경로가 계속 동작하게 한다(G6 정적 폴백 계약).
@@ -97,6 +145,7 @@ async function defaultRecordUsage(
 export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeInput): Promise<NarrativeDirectorRuntimeResult> {
   const nowMs = Number.isSafeInteger(Number(input.now)) ? Number(input.now) : Date.now();
   const expected = { universeId: input.universeId, characterId: input.characterId, sceneId: input.sceneId };
+  const thinkingBudgetTokens = input.thinkingBudgetTokens ?? NARRATIVE_DIRECTOR_POLICY.thinkingBudgetTokens;
   const staticResult = (reason: string, gate: NarrativeDirectorGateTelemetry): NarrativeDirectorRuntimeResult => ({
     status: "fallback",
     directive: buildStaticNarrativeDirective(expected),
@@ -105,16 +154,48 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
     gate,
   });
 
-  const runtimeEnabled = isNarrativeRuntimeEnabled();
+  const runtimeEnabled = isNarrativeRuntimeEnabled(input.env);
+  const consumerEnabled = isNarrativeDirectorConsumerEnabled(input.consumer, input.env);
+  const noBudget = { enabled: false, allowed: true };
   if (!runtimeEnabled) {
-    return staticResult("runtime_disabled", { runtimeEnabled, circuitState: "closed", circuitCallAllowed: false, costGate: null, billed: false });
+    return staticResult("runtime_disabled", {
+      runtimeEnabled,
+      consumer: input.consumer,
+      consumerEnabled,
+      circuitState: "closed",
+      circuitCallAllowed: false,
+      costGate: null,
+      validationBudget: noBudget,
+      billed: false,
+    });
+  }
+  if (!consumerEnabled) {
+    return staticResult("consumer_disabled", {
+      runtimeEnabled,
+      consumer: input.consumer,
+      consumerEnabled,
+      circuitState: "closed",
+      circuitCallAllowed: false,
+      costGate: null,
+      validationBudget: noBudget,
+      billed: false,
+    });
   }
 
   const scope = circuitScope(input);
   const record = await readNarrativeDirectorCircuit(scope);
   const circuit = evaluateNarrativeDirectorCircuit(record, nowMs);
   if (!circuit.callAllowed) {
-    return staticResult("circuit_open", { runtimeEnabled, circuitState: circuit.state, circuitCallAllowed: false, costGate: null, billed: false });
+    return staticResult("circuit_open", {
+      runtimeEnabled,
+      consumer: input.consumer,
+      consumerEnabled,
+      circuitState: circuit.state,
+      circuitCallAllowed: false,
+      costGate: null,
+      validationBudget: noBudget,
+      billed: false,
+    });
   }
 
   let costGate: NarrativeDirectorCostGateResult;
@@ -125,6 +206,7 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
       modelName: input.modelName,
       prompt: input.prompt,
       maxOutputTokens: NARRATIVE_DIRECTOR_POLICY.maxOutputTokens,
+      thinkingBudgetTokens,
       circuitOpen: false,
       universeId: input.universeId,
       characterId: input.characterId,
@@ -136,9 +218,12 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
     // preflight 자체가 예외로 끝나면 비용을 확인하지 못한 것이므로 호출하지 않는다.
     return staticResult("cost_gate:preflight_error", {
       runtimeEnabled,
+      consumer: input.consumer,
+      consumerEnabled,
       circuitState: circuit.state,
       circuitCallAllowed: true,
       costGate: { allowed: false, reason: "estimated_cost_unavailable", estimatedCoins: null, budgetCapCoins: null },
+      validationBudget: noBudget,
       billed: false,
     });
   }
@@ -153,9 +238,12 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
   if (!costGate.allowed) {
     return staticResult(`cost_gate:${costGate.reason || "blocked"}`, {
       runtimeEnabled,
+      consumer: input.consumer,
+      consumerEnabled,
       circuitState: circuit.state,
       circuitCallAllowed: true,
       costGate: costTelemetry,
+      validationBudget: noBudget,
       billed: false,
     });
   }
@@ -165,17 +253,106 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
   }
 
   let billed = false;
+  let validationBudgetReservation: NarrativeDirectorValidationBudgetReservation = noBudget;
+  let validationBudgetReason = "";
+  let settlementFailure = "";
   const proposal = await runCachedNarrativeDirector({
     cacheKey: directorCacheKey(input),
     prompt: input.prompt,
     callsInSession: input.callsInSession,
     expected,
     invoke: input.invoke,
-    budgetCheck: () => costGate.allowed,
+    budgetCheck: async () => {
+      if (!costGate.allowed) return false;
+      validationBudgetReservation = await reserveNarrativeDirectorValidationBudget({
+        consumer: input.consumer,
+        provider: input.provider,
+        modelName: input.modelName,
+        prompt: input.prompt,
+        maxOutputTokens: NARRATIVE_DIRECTOR_POLICY.maxOutputTokens,
+        thinkingBudgetTokens,
+        env: input.env,
+      });
+      if (!validationBudgetReservation.allowed) {
+        validationBudgetReason = validationBudgetReservation.reason || "budget_blocked";
+        return false;
+      }
+      return true;
+    },
     recordUsage: async (usage) => {
-      if (input.recordUsage) await input.recordUsage(usage);
-      else await defaultRecordUsage(input, usage);
+      let providerUsage: NarrativeDirectorProviderUsage | null = null;
+      try {
+        providerUsage = input.readProviderUsage?.() || null;
+      } catch {
+        if (validationBudgetReservation.enabled) settlementFailure = "provider_usage_unavailable";
+      }
+      const providerUsageValid = Boolean(
+        providerUsage &&
+          Number.isSafeInteger(providerUsage.promptTokens) &&
+          providerUsage.promptTokens > 0 &&
+          Number.isSafeInteger(providerUsage.outputTokens) &&
+          providerUsage.outputTokens > 0,
+      );
+      const billedUsage = providerUsageValid && providerUsage ? providerUsage : usage;
+      if (validationBudgetReservation.enabled) {
+        const settlement = await settleNarrativeDirectorValidationBudget({
+          reservation: validationBudgetReservation,
+          usage: providerUsageValid ? providerUsage : null,
+        });
+        if (!settlement.settled || settlement.outcome === "settlement_overrun") {
+          settlementFailure ||= settlement.reason || "settlement_overrun";
+        }
+      }
+      if (input.recordUsage) await input.recordUsage(billedUsage);
+      else await defaultRecordUsage(input, billedUsage);
       billed = true;
+      if (settlementFailure) throw new Error(`validation_budget:${settlementFailure}`);
+    },
+    recordUnbilledUsage: async () => {
+      const upperBound = buildNarrativeDirectorUsage({
+        provider: input.provider,
+        modelName: input.modelName,
+        prompt: input.prompt,
+        maxOutputTokens: NARRATIVE_DIRECTOR_POLICY.maxOutputTokens,
+        thinkingBudgetTokens,
+      });
+      let providerUsage: NarrativeDirectorProviderUsage | null = null;
+      try {
+        providerUsage = input.readProviderUsage?.() || null;
+      } catch {
+        providerUsage = null;
+      }
+      const providerUsageValid = Boolean(
+        providerUsage &&
+          Number.isSafeInteger(providerUsage.promptTokens) &&
+          providerUsage.promptTokens > 0 &&
+          Number.isSafeInteger(providerUsage.outputTokens) &&
+          providerUsage.outputTokens > 0,
+      );
+      const unbilledUsage = providerUsageValid && providerUsage
+        ? providerUsage
+        : { promptTokens: upperBound.promptTokens, outputTokens: upperBound.outputTokens };
+
+      if (validationBudgetReservation.enabled) {
+        try {
+          const settlement = await settleNarrativeDirectorValidationBudget({
+            reservation: validationBudgetReservation,
+            usage: unbilledUsage,
+          });
+          if (!settlement.settled || settlement.outcome === "settlement_overrun") {
+            logUnbilledRecordingFailure(new Error(settlement.reason || "settlement_overrun"), "settlement");
+          }
+        } catch (error) {
+          logUnbilledRecordingFailure(error, "settlement");
+        }
+      }
+
+      try {
+        if (input.recordUnbilledUsage) await input.recordUnbilledUsage(unbilledUsage);
+        else await defaultRecordUnbilledUsage(input, unbilledUsage);
+      } catch (error) {
+        logUnbilledRecordingFailure(error, "observation");
+      }
     },
     circuitOpen: false,
     modelName: input.modelName,
@@ -190,7 +367,24 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
 
   return {
     ...proposal,
+    ...(validationBudgetReason && proposal.fallbackReason === "preflight_blocked"
+      ? { fallbackReason: `validation_budget:${validationBudgetReason}` }
+      : {}),
     directive: proposal.directive || buildStaticNarrativeDirective(expected),
-    gate: { runtimeEnabled, circuitState: circuit.state, circuitCallAllowed: true, costGate: costTelemetry, billed },
+    gate: {
+      runtimeEnabled,
+      consumer: input.consumer,
+      consumerEnabled,
+      circuitState: circuit.state,
+      circuitCallAllowed: true,
+      costGate: costTelemetry,
+      validationBudget: {
+        enabled: validationBudgetReservation.enabled,
+        allowed: validationBudgetReservation.allowed,
+        ...(validationBudgetReservation.reason ? { reason: validationBudgetReservation.reason } : {}),
+        ...(validationBudgetReservation.estimatedUsd !== undefined ? { estimatedUsd: validationBudgetReservation.estimatedUsd } : {}),
+      },
+      billed,
+    },
   };
 }

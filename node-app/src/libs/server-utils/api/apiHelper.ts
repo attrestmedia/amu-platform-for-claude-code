@@ -2,11 +2,7 @@ import "server-only";
 import { GoogleGenAI, Modality } from "@google/genai";
 import type { AiProviderType, ImageProviderType, TextProviderType } from "types/ai";
 import type { BaseImageType } from "types/app";
-import {
-  AI_GEN_IMAGE_LIMIT,
-  AI_GEN_CONTENT_LIMIT,
-  OPENAI_IMAGE_QUALITY_LOCK,
-} from "consts/ai";
+import { AI_GEN_IMAGE_LIMIT, AI_GEN_CONTENT_LIMIT, OPENAI_IMAGE_QUALITY_LOCK } from "consts/ai";
 import { resolveUpstreamModelName } from "consts/ai/modelRole";
 import { resolveImageBillingModelName } from "utils/ai/imageBillingPolicy";
 import {
@@ -17,6 +13,7 @@ import {
   hasValidXaiInputTokenCount,
   isOpenAIGpt6TextModel,
   resolveAnthropicMaxTokens,
+  resolveAnthropicThinkingOffType,
   resolveTextOutputBudget,
   resolveTextUpstreamTimeoutMs,
   shouldDisableAnthropicThinking,
@@ -41,6 +38,7 @@ import {
 } from "consts/env/server";
 import { logger } from "utils/log";
 import { resolvePlatformCredential } from "libs/server-utils/secure/platformCredentialResolver";
+import { safeNonNegativeTokenCount } from "./emptyTextUsage";
 import { getPlatformQwenOpenAIClient } from "libs/server-utils/secure/platformAiClients";
 import {
   assertQwenProviderCallReady,
@@ -49,6 +47,7 @@ import {
   QWEN_IMAGE_MODEL,
   QWEN_OMNI_MODEL,
 } from "libs/server-utils/audio/providers/qwenSpeech";
+import { AI_TEXT_MODEL_CAPABILITIES } from "consts/ai/generated/modelCatalog.generated";
 
 /**
  * @docHint
@@ -654,6 +653,24 @@ async function callOpenAICompatibleText(args: {
   const finishReason = String(toUnknownRecord(choices[0]).finish_reason || "");
 
   if (!outputs.length) {
+    const promptTokens = safeNonNegativeTokenCount(usage.prompt_tokens);
+    const completionTokens = safeNonNegativeTokenCount(usage.completion_tokens);
+    const usageTotal =
+      promptTokens !== null && completionTokens !== null && promptTokens + completionTokens > 0
+        ? { input: promptTokens, output: completionTokens }
+        : undefined;
+    const reasoningTokens = safeNonNegativeTokenCount(
+      toUnknownRecord(usage.completion_tokens_details).reasoning_tokens,
+    );
+    logger.warn("[AI] empty_text_response", {
+      provider,
+      model,
+      finish_reason: finishReason,
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      reasoning_tokens: reasoningTokens,
+      max_tokens: effectiveMaxOutputTokens ?? null,
+    });
     if (isGpt6Text && finishReason === "length") {
       logger.warn("[OpenAI] output_token_limit_reached", {
         provider: "openai",
@@ -661,13 +678,19 @@ async function callOpenAICompatibleText(args: {
         finish_reason: finishReason,
         providerUsage,
       });
-      throw codedError(
-        "출력 한도가 작아 답을 만들지 못했습니다. 한도를 늘려 다시 시도해 주세요.",
-        "OUTPUT_TOKEN_LIMIT_REACHED",
-        422,
+      throw Object.assign(
+        codedError(
+          "출력 한도가 작아 답을 만들지 못했습니다. 한도를 늘려 다시 시도해 주세요.",
+          "OUTPUT_TOKEN_LIMIT_REACHED",
+          422,
+        ),
+        { finishReason, ...(usageTotal ? { usageTotal } : {}) },
       );
     }
-    throw codedError("empty_text_response", "EMPTY_TEXT_RESPONSE", 502);
+    throw Object.assign(codedError("empty_text_response", "EMPTY_TEXT_RESPONSE", 502), {
+      finishReason,
+      ...(usageTotal ? { usageTotal } : {}),
+    });
   }
 
   if (errCode === "XAI_UPSTREAM_ERROR" && !hasValidXaiInputTokenCount(model, usage.prompt_tokens)) {
@@ -829,7 +852,14 @@ export async function callZaiForText(
   opts?: TextGenerationOptions,
 ) {
   const aliasModel = await resolveTextModelNameFor("zai", modelName, opts?.actorUser);
-  if (aliasModel === "glm-5.3" && normalizeTextReferenceImages(opts?.baseImages).length > 0) {
+  const reasoningEffort = await resolveSystemReasoningEffort({
+    provider: "zai",
+    modelName: aliasModel,
+    modality: "text",
+  });
+  const supportsImageInput = (AI_TEXT_MODEL_CAPABILITIES as Record<string, { supportsImageInput: boolean }>)[aliasModel]
+    ?.supportsImageInput;
+  if (supportsImageInput === false && normalizeTextReferenceImages(opts?.baseImages).length > 0) {
     throw codedError("model_image_input_unsupported", "MODEL_IMAGE_INPUT_UNSUPPORTED", 400);
   }
   const apiKey = (await resolvePlatformCredential("ai.zai.default")).payload.apiKey;
@@ -844,6 +874,7 @@ export async function callZaiForText(
     n: take,
     temperature: opts?.temperature,
     maxOutputTokens: opts?.maxOutputTokens,
+    reasoningEffort,
     baseImages: opts?.baseImages,
     errCode: "ZAI_UPSTREAM_ERROR",
   });
@@ -907,7 +938,7 @@ export async function callClaudeForText(
           body: JSON.stringify({
             model: upstreamModel,
             max_tokens: maxTokens,
-            ...(disableThinking ? { thinking: { type: "disabled" } } : {}),
+            ...(disableThinking ? { thinking: { type: resolveAnthropicThinkingOffType(upstreamModel) } } : {}),
             ...(typeof opts?.temperature === "number" && supportsCustomAnthropicTemperature(upstreamModel)
               ? { temperature: opts.temperature }
               : {}),

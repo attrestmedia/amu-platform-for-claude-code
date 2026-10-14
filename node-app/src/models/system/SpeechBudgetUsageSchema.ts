@@ -3,8 +3,8 @@ import { SPEECH_BUDGET_OWNERS } from "consts/system/speechRuntimeControls";
 
 /**
  * @docHint
- * @purpose EL-204 speech 지출 누적 집계 (일·월)
- * @process provider 호출 성공 시 $inc  상한 판정 시 조회
+ * @purpose EL-204 speech 지출·예약 누적 집계 (일·월)
+ * @process provider 전 예약  실사용 정산  committed 합계 판정
  * @domain system-control
  * @scope server
  *
@@ -23,6 +23,8 @@ export interface ISpeechBudgetUsageDocument extends mongoose.Document {
   /** KST 기준 "YYYY-MM-DD" 또는 "YYYY-MM" */
   periodKey: string;
   spentUsd: number;
+  /** 아직 정산되지 않은 speech 예산 예약 합계. 기존 문서는 읽을 때 0으로 취급한다. */
+  reservedUsd: number;
   requestCount: number;
   /** 집계 문서는 무기한 보관할 이유가 없다. TTL로 정리한다. */
   expiresAt: Date;
@@ -38,6 +40,7 @@ export const SpeechBudgetUsageSchema = new mongoose.Schema<ISpeechBudgetUsageDoc
     periodType: { type: String, required: true, enum: ["day", "month"] },
     periodKey: { type: String, required: true },
     spentUsd: { type: Number, required: true, default: 0, min: 0 },
+    reservedUsd: { type: Number, required: true, default: 0, min: 0 },
     requestCount: { type: Number, required: true, default: 0, min: 0 },
     expiresAt: { type: Date, required: true },
   },

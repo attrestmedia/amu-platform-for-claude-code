@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { withAuth } from "libs/server-utils/api/apiMiddleware";
-import { getAuthenticatedUid } from "libs/server-utils/lab/imageAssetAccess";
+import { canAccessImageAsset, getAuthenticatedUid } from "libs/server-utils/lab/imageAssetAccess";
 import type { AuthenticatedUserType } from "libs/server-utils/api/_helpers";
 import { listUserGameCharacters, listGameAssets, getStageModel } from "libs/database/game";
+import { getImageAssetByAssetId } from "libs/database/lab";
+import { resolveImageAssetDisplayUrl } from "libs/server-utils/lab/imageAssetDisplay";
 import { DEFAULT_PLAY_UNIVERSE } from "consts/app/universe";
 import { logger } from "utils/log";
 
@@ -22,6 +24,19 @@ function iso(value: unknown): string | undefined {
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(String(value));
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
+async function resolveCharacterImageUrl(assetId: string, user: AuthenticatedUserType): Promise<string | undefined> {
+  if (!assetId) return undefined;
+
+  const asset = await getImageAssetByAssetId(assetId).catch(() => null);
+  if (!asset || asset.state !== "active" || asset.hardDeletedAt) return undefined;
+
+  const allowed = await canAccessImageAsset(user, asset).catch(() => false);
+  if (!allowed) return undefined;
+
+  const display = await resolveImageAssetDisplayUrl(asset, { delivery: "signed" }).catch(() => null);
+  return String(display?.url || "").trim() || undefined;
 }
 
 type StepStatusValue = "locked" | "todo" | "in_progress" | "done";
@@ -59,7 +74,8 @@ function computeStepStatus(params: {
 export const GET = withAuth(
   async (_body, user, request) => {
     try {
-      const uid = getAuthenticatedUid(user as AuthenticatedUserType);
+      const authUser = user as AuthenticatedUserType;
+      const uid = getAuthenticatedUid(authUser);
       const { searchParams } = new URL(request.url);
       const universeId = String(searchParams.get("universeId") || DEFAULT_PLAY_UNIVERSE).trim();
 
@@ -82,6 +98,23 @@ export const GET = withAuth(
       const latestCharacter = characters[0];
       const latestStage = stages[0];
 
+      const characterImageAssetIds = Array.from(
+        new Set(
+          characters
+            .slice(0, 3)
+            .map((character) => String(character.sourceImageAssetId || "").trim())
+            .filter(Boolean),
+        ),
+      );
+      const characterImageUrlEntries = await Promise.all(
+        characterImageAssetIds.map(async (assetId) => {
+          const url = await resolveCharacterImageUrl(assetId, authUser);
+          return [assetId, url] as const;
+        }),
+      );
+      const characterImageUrls = new Map(characterImageUrlEntries);
+      const characterImageUrl = (assetId: string) => characterImageUrls.get(String(assetId || "").trim());
+
       const byCategory: Record<string, number> = {};
       for (const asset of assetResult.items) {
         const category = String(asset.categories?.[0] || asset.assetType || "other").trim();
@@ -94,7 +127,7 @@ export const GET = withAuth(
           kind: "character" as const,
           id: character.characterId,
           name: character.name,
-          imageUrl: character.sourceImageRef || undefined,
+          imageUrl: characterImageUrl(character.sourceImageAssetId),
           updatedAt: iso(character.updatedAt),
         })),
         ...assetResult.items.slice(0, 3).map((asset) => ({
@@ -125,7 +158,7 @@ export const GET = withAuth(
                   characterId: latestCharacter.characterId,
                   name: latestCharacter.name,
                   status: latestCharacter.status,
-                  imageUrl: latestCharacter.sourceImageRef || "",
+                  imageUrl: characterImageUrl(latestCharacter.sourceImageAssetId) || "",
                   updatedAt: iso(latestCharacter.updatedAt),
                 }
               : null,

@@ -54,6 +54,8 @@ export interface IUpdateUserData {
     agreedAt: Date;
     method: PolicyConsentMethod;
     provider?: string;
+    displayedReleaseId?: string;
+    displayedContentSha256?: string;
   }>;
   purposeConsents?: VoicePurposeConsentRecord[];
 

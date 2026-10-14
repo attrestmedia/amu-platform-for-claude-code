@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { AiProviderType } from "types/ai";
 import type { ImagePromptCustomType, ImagePromptInputPolicyType } from "types/app";
+import { AI_MODEL_CATALOG_REVISIONS } from "consts/ai/generated/modelCatalog.generated";
 import { GEN_STUDIO_CUSTOM_PROMPT_TEMPLATE_KEY, IMAGE_STUDIO_NAMESPACE_KEY } from "consts/app";
 import { resolveImageProvider, generateSaveAndBillImages } from "libs/server-utils/api/imagePipeline";
 import {
-  createSystemPricingSnapshotRevision,
   getSystemPricingMaps,
   type SystemPricingMaps,
 } from "libs/server-utils/api/systemPricingControl";
@@ -88,12 +88,6 @@ const IMAGE_CAPABILITY_HINTS: Record<string, ImageCapabilityHint> = {
     latency: "balanced",
     supportsReferenceImages: true,
   },
-  "google:gemini-3-pro-image-preview": {
-    quality: "premium",
-    costTier: "premium",
-    latency: "quality",
-    supportsReferenceImages: true,
-  },
   "openai:gpt-image-2.5-flare": {
     quality: "premium",
     costTier: "premium",
@@ -104,12 +98,6 @@ const IMAGE_CAPABILITY_HINTS: Record<string, ImageCapabilityHint> = {
     quality: "premium",
     costTier: "premium",
     latency: "quality",
-    supportsReferenceImages: true,
-  },
-  "xai:grok-imagine-image": {
-    quality: "standard",
-    costTier: "economy",
-    latency: "fast",
     supportsReferenceImages: true,
   },
   "xai:grok-imagine-image-2.0": {
@@ -335,7 +323,7 @@ export async function POST(request: NextRequest) {
     }
 
     const pricingMaps = await getSystemPricingMaps();
-    const priceSnapshotRevision = createSystemPricingSnapshotRevision(pricingMaps);
+    const priceSnapshotRevision = AI_MODEL_CATALOG_REVISIONS.pricingRevision;
     const capabilitySignals = {
       task: routingPlan.effectiveProfile,
       modality: "image" as const,

@@ -7,12 +7,12 @@ import {
   DEFAULT_IMAGE_SIZE,
   SUPPORTED_ASPECT_RATIOS,
   ASPECT_TO_OPENAI_COMPAT_SIZE,
-  DEFAULT_IMAGE_MODEL_BY_PROVIDER,
   OPENAI_COMPAT_UI_RATIOS,
   getSupportedOpenAIAspectRatios,
   type ImageModelNameType,
   type SupportedAspectRatio,
 } from "consts/ai";
+import { AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER } from "consts/ai/generated/modelCatalog.generated";
 import type { GenStudioModelCatalogClientSection } from "libs/api/lab";
 import type { ImageProviderType, UiScopeType, UserScopeType } from "types/ai";
 import type {
@@ -196,7 +196,7 @@ export function PresetDetailSheet({
 }: PresetDetailSheetProps) {
   const isLoggedIn = useAuthStore((s) => s.isLogged());
   const { isAdministrator } = useUserData();
-  const fallbackImageModelName = String(defaultImageModelByProvider?.google || DEFAULT_IMAGE_MODEL_BY_PROVIDER.google);
+  const fallbackImageModelName = String(defaultImageModelByProvider?.google || AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER.google);
   const imageModelOptions = useMemo(() => getCatalogImageModelOptions(imageCatalogSection), [imageCatalogSection]);
   const imageModelByName = useMemo(
     () =>
@@ -212,7 +212,7 @@ export function PresetDetailSheet({
   );
   const effectiveDefaultImageModelByProvider = useMemo(
     () => ({
-      ...DEFAULT_IMAGE_MODEL_BY_PROVIDER,
+      ...AI_DEFAULT_IMAGE_MODEL_BY_PROVIDER,
       ...getCatalogDefaultModelByProvider(imageCatalogSection),
       ...(defaultImageModelByProvider || {}),
     }),

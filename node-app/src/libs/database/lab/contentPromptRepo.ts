@@ -3,7 +3,12 @@ import { ContentPromptSchema, type IContentPromptDocument } from "models/lab";
 import { redisCache } from "libs/cache/redisCacheService";
 import { MONGODB_AI_URL } from "consts/env/server";
 import type { PromptAccessLevelType } from "types/app";
-import { INTERNAL_PROMPT_ACCESS_LEVELS, normalizePromptAccessLevel } from "utils/app/promptAccess";
+import {
+  assertSystemPromptKeyAccessLevel,
+  INTERNAL_PROMPT_ACCESS_LEVELS,
+  isReservedInternalPromptKey,
+  normalizePromptAccessLevel,
+} from "utils/app/promptAccess";
 import { toErrorLike, type UnknownRecord } from "utils/common";
 
 // Mongoose duplicate-key 보호를 위해 errorCode를 부착한 Error
@@ -59,11 +64,13 @@ export async function createContentPrompt(input: {
   updatedBy?: string;
   version?: number;
 }) {
+  const accessLevel = normalizePromptAccessLevel(input.accessLevel);
+  assertSystemPromptKeyAccessLevel(input.key, accessLevel);
   const model = await getContentModel();
   try {
     const doc = await model.create({
       ...input,
-      accessLevel: normalizePromptAccessLevel(input.accessLevel),
+      accessLevel,
       categories: input.categories && input.categories.length ? input.categories : ["general"],
     });
     await redisCache.del(cacheKey(input.key));
@@ -176,6 +183,17 @@ export async function upsertContentPrompt(input: {
   version?: number;
 }) {
   const model = await getContentModel();
+  if (isReservedInternalPromptKey(input.key)) {
+    const existing =
+      input.accessLevel === undefined
+        ? await model.findOne({ key: input.key }, { accessLevel: 1 }).lean()
+        : undefined;
+    const accessLevel =
+      input.accessLevel !== undefined
+        ? normalizePromptAccessLevel(input.accessLevel)
+        : normalizePromptAccessLevel(existing?.accessLevel);
+    assertSystemPromptKeyAccessLevel(input.key, accessLevel);
+  }
   const now = new Date();
 
   const setFields: UnknownRecord = {

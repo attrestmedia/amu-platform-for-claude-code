@@ -6,7 +6,7 @@ import { Badge, Button, Tabs, TabsContent, TabsList, TabsTrigger, TooltipBasic }
 import { Lang, lang } from "components/module/i18n";
 import { NaverKeywordStrategyPanel } from "./NaverKeywordStrategyPanel";
 import fetchClient from "libs/api/fetchClient";
-import { TEXT_MODEL_MAP } from "consts/ai";
+import { AI_TEXT_MODEL_MAP } from "consts/ai/generated/modelCatalog.generated";
 import { cn } from "utils/common";
 import { BarChart3, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -80,6 +80,7 @@ export default function MarketingOperationsPanel({
   initialJobId = "",
   initialCampaignId = "",
   onActiveTabChange,
+  showTabList = true,
 }: {
   universeId?: string;
   availableUniverses?: MarketingUniverseOption[];
@@ -89,6 +90,7 @@ export default function MarketingOperationsPanel({
   initialJobId?: string;
   initialCampaignId?: string;
   onActiveTabChange?: (tab: string) => void;
+  showTabList?: boolean;
 }) {
   const scopedUniverseId = toSafeString(universeId);
   const isGlobalScope = !scopedUniverseId;
@@ -261,9 +263,9 @@ export default function MarketingOperationsPanel({
       scheduleScheduledOnlyWorkerPoll,
       onRefresh: refreshAll,
     });
-  const proofreadModelOptions = ((TEXT_MODEL_MAP as Record<string, readonly string[]>)[proofreadDialog.modelProvider] ||
+  const proofreadModelOptions = ((AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[proofreadDialog.modelProvider] ||
     []) as readonly string[];
-  const strategyFitModelOptions = ((TEXT_MODEL_MAP as Record<string, readonly string[]>)[
+  const strategyFitModelOptions = ((AI_TEXT_MODEL_MAP as Record<string, readonly string[]>)[
     strategyFitDialog.modelProvider
   ] || []) as readonly string[];
   const blockMarketingEditorImagePaste = useCallback((event: ReactClipboardEvent<HTMLElement>) => {
@@ -634,7 +636,7 @@ export default function MarketingOperationsPanel({
         onDone={(images, meta) => void attachGeneratedImages(images, meta)}
       />
       <Tabs value={activeTab} onValueChange={changeActiveTab} className="mt-2 w-full">
-        <div className="-mx-4">
+        {showTabList ? <div className="-mx-4">
           <TabsList variant="chip" scrollable className="mb-5 shadow-none">
             <div className="w-full flex gap-2 px-4">
               <TabsTrigger value="queue" className="flex-1">
@@ -688,7 +690,7 @@ export default function MarketingOperationsPanel({
               </TabsTrigger>
             </div>
           </TabsList>
-        </div>
+        </div> : null}
 
         <TabsContent value="queue" className="mt-0">
           <MarketingQueueTab

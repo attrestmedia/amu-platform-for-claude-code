@@ -1,6 +1,9 @@
 import "server-only";
 
-import { isNarrativeRuntimeEnabled } from "./narrativeRuntimePolicy";
+import {
+  isNarrativeDirectorConsumerEnabled,
+  isNarrativeRuntimeEnabled,
+} from "./narrativeRuntimePolicy";
 import {
   aggregatePilotDashboard,
   type PlayPilotDashboard,
@@ -22,8 +25,14 @@ export type NarrativeOperationalStatus = {
   runtimeEnabled: boolean;
   killSwitch: {
     globalRuntimeEnabled: boolean;
-    play: { narrativeEnabled: boolean; degradedWhenOff: string };
-    tutors: { narrativeModeDefault: "off"; degradedWhenOff: string; pauseNarrativeRecommended: boolean };
+    play: { chatConsumerEnabled: boolean; relationshipProposalConsumerEnabled: boolean; degradedWhenOff: string };
+    tutors: {
+      narrativeModeDefault: "off";
+      usesChatConsumer: true;
+      chatConsumerEnabled: boolean;
+      degradedWhenOff: string;
+      pauseNarrativeRecommended: boolean;
+    };
   };
   play: PlayPilotDashboard;
   tutors: TutorPilotDashboard;
@@ -31,12 +40,14 @@ export type NarrativeOperationalStatus = {
 };
 
 /**
- * Play/Tutors 독립 kill switch + 파일럿 계측·guardrail을 한 응답으로 통합한다.
+ * Director consumer별 kill switch + 파일럿 계측·guardrail을 한 응답으로 통합한다.
  * duplicate roll·canon violation·reducer failure·persona fallback·budget exhaustion·reconciliation backlog
  * 신호의 소스·경보 조건·대응은 docs/pilot/narrative-observability-runbook.md에 매핑한다.
  */
 export async function aggregateNarrativeOperationalStatus(universeId: string): Promise<NarrativeOperationalStatus> {
   const runtimeEnabled = isNarrativeRuntimeEnabled();
+  const chatConsumerEnabled = isNarrativeDirectorConsumerEnabled("chat");
+  const relationshipProposalConsumerEnabled = isNarrativeDirectorConsumerEnabled("relationship_proposal");
   const [play, tutors] = await Promise.all([
     aggregatePilotDashboard(universeId),
     aggregateTutorPilotDashboard(universeId),
@@ -46,12 +57,15 @@ export async function aggregateNarrativeOperationalStatus(universeId: string): P
     killSwitch: {
       globalRuntimeEnabled: runtimeEnabled,
       play: {
-        narrativeEnabled: runtimeEnabled,
-        degradedWhenOff: "NARRATIVE_RUNTIME_ENABLED=false → Play narrative adapter가 static fallback으로 강등(발견/보상 중단)",
+        chatConsumerEnabled,
+        relationshipProposalConsumerEnabled,
+        degradedWhenOff: "NARRATIVE_RUNTIME_ENABLED=false 또는 해당 consumer flag=false → 해당 consumer만 provider 호출 없이 static/manual fallback",
       },
       tutors: {
         narrativeModeDefault: "off",
-        degradedWhenOff: "narrativeMode off → 기존 Tutors 학습 유지, story context 미포함(학습 무영향)",
+        usesChatConsumer: true,
+        chatConsumerEnabled,
+        degradedWhenOff: "Tutors는 chat consumer를 공유하며 독립 kill switch는 없음; chat consumer off면 story context가 static fallback으로 강등되고 학습은 유지",
         pauseNarrativeRecommended: tutors.guardrail.recommendPauseNarrative,
       },
     },

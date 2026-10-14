@@ -1,5 +1,5 @@
 import "server-only";
-import { TUTORS_NAMESPACE_KEY, UNIVERSE_NAMESPACE_KEY, COMMERCE_NAMESPACE_KEY } from "consts/app";
+import { UNIVERSE_NAMESPACE_KEY, COMMERCE_NAMESPACE_KEY } from "consts/app";
 import {
   assertAIUsageBalanceOrThrow,
   assertCommerceAIUsageBalanceOrThrow,
@@ -20,7 +20,6 @@ import type { IValidatedSpeechAudioInput } from "./types";
 function resolveSpeechApp(routeHint?: RouteHintType, explicitApp?: string) {
   const app = String(explicitApp || "").trim();
   if (app) return app;
-  if (routeHint === "tutors") return TUTORS_NAMESPACE_KEY;
   if (routeHint === "commerce") return COMMERCE_NAMESPACE_KEY;
   return UNIVERSE_NAMESPACE_KEY;
 }

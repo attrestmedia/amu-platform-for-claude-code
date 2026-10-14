@@ -13,6 +13,3 @@ export { useVoiceInput } from "./useVoiceInput";
 export { useVoicePlayback, type VoicePlaybackViewState } from "./useVoicePlayback";
 export { useChatModelSelection } from "./useChatModelSelection";
 export { useAmuChatModelPreference } from "./useAmuChatModelPreference";
-export { useConversationHints } from "./useConversationHints";
-export { useTutorsChatImageInput } from "./useTutorsChatImageInput";
-export type { PendingTutorsChatImage } from "./useTutorsChatImageInput";
