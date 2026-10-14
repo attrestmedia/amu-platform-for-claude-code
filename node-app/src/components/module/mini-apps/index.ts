@@ -1,1 +1,0 @@
-export { MiniAppDefaultLogo } from "./MiniAppDefaultLogo";

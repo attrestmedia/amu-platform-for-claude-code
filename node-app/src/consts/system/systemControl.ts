@@ -1,1 +1,0 @@
-export const SYSTEM_CONTROL_ROLLBACK_CONFIRM_PHRASE = "ROLLBACK" as const;
