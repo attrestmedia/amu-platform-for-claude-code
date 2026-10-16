@@ -4,6 +4,7 @@ import { logger } from "utils/log";
 
 const DECISION_POINT_ID_PATTERN = /^[a-z0-9-]+\.[a-z0-9-]+\.v[1-9][0-9]*$/;
 const VALID_SERVICES = new Set<string>([...SERVICE_KEYS, "platform"]);
+const MAX_DEADLINE_MS = 10_000;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
@@ -66,6 +67,13 @@ export function validateDecisionPoint(point: DecisionPoint): string[] {
 
   if (typeof point.defaultThreshold !== "number" || !Number.isFinite(point.defaultThreshold) || point.defaultThreshold < 0 || point.defaultThreshold > 1) {
     issues.push("defaultThreshold must be between 0 and 1");
+  }
+
+  if (
+    point.deadlineMs !== undefined &&
+    (typeof point.deadlineMs !== "number" || !Number.isFinite(point.deadlineMs) || point.deadlineMs <= 0 || point.deadlineMs > MAX_DEADLINE_MS)
+  ) {
+    issues.push(`deadlineMs must be between 1 and ${MAX_DEADLINE_MS}`);
   }
 
   const stateLimits = point.stateLimits;

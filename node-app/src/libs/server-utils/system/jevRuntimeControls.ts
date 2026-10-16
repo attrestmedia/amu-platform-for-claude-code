@@ -21,6 +21,32 @@ export type JevRuntimeControlsRead =
   | { readable: true; controls: JevRuntimeControls }
   | { readable: false };
 
+/**
+ * OD-JEV-14: 판단 호출마다 DB 를 읽지 않도록 읽기 성공값만 짧게 캐시한다.
+ * unreadable(손상·정규화 거부·조회 예외)은 캐시하지 않아 fail-closed 가 매 호출 재평가된다.
+ * 같은 프로세스의 저장은 즉시 무효화하고, 다른 인스턴스 반영은 최대 TTL 만큼 늦다.
+ */
+export const JEV_RUNTIME_CONTROLS_CACHE_TTL_MS = 3_000;
+
+let controlsCache: { controls: JevRuntimeControls; expiresAt: number } | null = null;
+
+export function invalidateJevRuntimeControlsCache() {
+  controlsCache = null;
+}
+
+/** 판단 런타임 전용 조회. 관리자 화면은 항상 최신값을 보도록 getJevRuntimeControls 를 쓴다. */
+export async function getCachedJevRuntimeControls(nowMs: number = Date.now()): Promise<JevRuntimeControlsRead> {
+  if (controlsCache && controlsCache.expiresAt > nowMs) {
+    return { readable: true, controls: controlsCache.controls };
+  }
+  controlsCache = null;
+  const read = await getJevRuntimeControls();
+  if (read.readable) {
+    controlsCache = { controls: read.controls, expiresAt: nowMs + JEV_RUNTIME_CONTROLS_CACHE_TTL_MS };
+  }
+  return read;
+}
+
 export async function getJevRuntimeControls(): Promise<JevRuntimeControlsRead> {
   try {
     // 손상 값(문서는 있으나 plain object 아님)은 부재와 구분해 차단한다 — 외부 비용 축이라 fail-closed(INV-SSI-3).
@@ -118,6 +144,7 @@ export async function setJevRuntimeControls(args: {
     description: "통합 어드민에서 관리하는 JEV Decision Runtime 제어",
     updatedBy: args.updatedBy,
   });
+  invalidateJevRuntimeControlsCache();
 
   return normalized.controls;
 }

@@ -42,6 +42,11 @@ export type DecisionPoint = {
   /** runtime controls 에 값이 없을 때 쓰는 코드 기본 threshold(0~1). */
   defaultThreshold: number;
   smartMode: { supported: boolean; defaultEnabled: false; fallbackToStandard: true };
+  /**
+   * 호출부가 이 판단을 기다리는 최대 시간(ms). 사용자 대기 경로의 지점만 선언한다.
+   * 초과하면 호출부는 Standard 로 진행하고 provider 호출은 백그라운드에서 끝난다(runDecisionWithDeadline).
+   */
+  deadlineMs?: number;
   /** 실패·불확실 시 귀결. 이 두 값 외에는 없다. */
   fallback: "standard" | "human_review";
 };
@@ -83,6 +88,7 @@ export const DECISION_REASON_CODES = [
   "invalid_answer",
   "below_threshold",
   "effect_requires_human",
+  "deadline_exceeded",
 ] as const;
 export type DecisionReasonCode = (typeof DECISION_REASON_CODES)[number];
 

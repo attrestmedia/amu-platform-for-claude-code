@@ -5,7 +5,7 @@
   "programType": "구현 로드맵. 외부 의존(TypeSafe 조기 액세스)과 법무·경제 게이트가 걸린 단계형 원장이다. 게이트가 닫힌 TASK 는 dependsOn 이 풀려도 ready 가 아니다.",
   "roadmapVersion": "1.0",
   "createdAt": "2026-09-25T16:28:15+09:00",
-  "updatedAt": "2026-10-16T09:00:00+09:00",
+  "updatedAt": "2026-10-16T10:00:00+09:00",
   "status": "planned",
   "provisional": false,
   "objective": "TypeSafe JEV(System One 모델)를 AMU 플랫폼의 빠른 판단 계층(Decision Fabric)으로 도입한다. 사용자 요청 3건 — (1) ai-model-tracker 추적 대상에 JEV 추가 (2) 플랫폼 Credential Panel 에 TypeSafe(JEV) API 등록 패널 추가 (3) JEV 추상화 판단 레이어 구현과 주요 로직(AI 모델 라우팅 등) 도입.",
@@ -1133,8 +1133,8 @@
         "JEV-000"
       ],
       "openDecisionDependsOn": [
-        "OD-JEV-15(D1)",
-        "OD-JEV-16(D2)"
+        "OD-JEV-15",
+        "OD-JEV-16"
       ],
       "goal": "JEV 없이 결정론 수정만으로 Play 세션 첫 턴 LLM 3회(Director → 본 대화 → 메모리 요약, 앞의 둘은 사용자 대기 경로 직렬)를 본 대화 1회(+백그라운드)로 줄이고 직렬 I/O 를 줄인다. 외부 AI 로 데이터를 새로 보내지 않으므로 G-JEV-LEGAL·G-JEV-PERSONALIZATION 비해당.",
       "deliverables": [
@@ -2152,7 +2152,10 @@
         "JEV-116-D2",
         "JEV-117-D4(비상차단 캐시)"
       ],
-      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-B R2 · §6"
+      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-B R2 · §6",
+      "decision": "권고안 승인 — runtime controls·모델 비상차단 설정 in-process 캐시 TTL 3초(권고 범위 2~5초). readable:false·읽기 실패는 캐시하지 않고, admin 변경 시 같은 프로세스 캐시 즉시 무효화. 다중 인스턴스 반영 지연 ≤3초를 admin 패널에 고지.",
+      "decidedAt": "2026-10-16",
+      "decidedBy": "user"
     },
     {
       "id": "OD-JEV-15",
@@ -2161,7 +2164,10 @@
       "blocks": [
         "JEV-117-D1"
       ],
-      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F1"
+      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F1",
+      "decision": "권고안 승인 — canon 공통 Narrative Director directive 생성 비용은 플랫폼 COGS(콘텐츠 준비 비용)로 처리하고 사용자 코인을 차감하지 않는다. server-economy-security 관점: 사용자 지갑 변동 없음(과금 경로 제거), provider 비용은 AiCostObservation 으로 관측.",
+      "decidedAt": "2026-10-16",
+      "decidedBy": "user"
     },
     {
       "id": "OD-JEV-16",
@@ -2170,7 +2176,10 @@
       "blocks": [
         "JEV-117-D2"
       ],
-      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F2"
+      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F2",
+      "decision": "권고안 승인 — 세션 메모리 요약은 messageCount ≥ 8 또는 end-chat/end-force 일 때만 강제한다(첫 assistant 메시지 강제 요약 제거).",
+      "decidedAt": "2026-10-16",
+      "decidedBy": "user"
     }
   ],
   "risks": [
@@ -2283,7 +2292,7 @@
     ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md"
   ],
   "nextExecutable": {
-    "computedAt": "2026-10-16T09:00:00+09:00",
+    "computedAt": "2026-10-16T10:00:00+09:00",
     "ready": [
       "JEV-105 — provider synthetic benchmark (JEV-104 done, G-JEV-ACCESS pass). 선행 권고: 평가셋 label 운영자 검수",
       "JEV-107 — Smart Mode 사용자 설정 + 서버 실효 활성 판정(과금 없음)",
@@ -2291,8 +2300,8 @@
       "JEV-201 — Cloudflare Workers AI credential safe-off(키 없이 구현 가능, 실키 검증은 G-JEV-CLEF-ACCESS 후). OD-JEV-09·10 승인됨. 착수 시 JEV-201-D0(사용자 token 발급·계정 확인) 함께 요청",
       "JEV-202 — tracker Clef Neuron 단위·첫 수집(SSOT-115 done)",
       "JEV-205 — Cloudflare 계약·정본 정합 착수 가능(owner leader+user, OD-JEV-10 승인됨)",
-      "JEV-116 — Decision Runtime 레이턴시 보강(live 0). D2 controls 캐시만 OD-JEV-14 결정 필요",
-      "JEV-117 — Play AI 호출 다이어트 D0·D3·D4 즉시, D1 ← OD-JEV-15, D2 ← OD-JEV-16"
+      "JEV-116 — Decision Runtime 레이턴시 보강(live 0, OD-JEV-14 결정됨)",
+      "JEV-117 — Play AI 호출 다이어트(OD-JEV-15·16 결정됨)"
     ],
     "readyAfter": [
       "JEV-203 ← JEV-201 (OD-JEV-08·OD-JEV-12 승인됨)",
