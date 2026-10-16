@@ -3,7 +3,7 @@ import "server-only";
 import type { TextProviderType } from "types/ai";
 import type { NarrativeDirectiveProposal } from "types/game";
 import { buildStaticNarrativeDirective, NARRATIVE_DIRECTOR_POLICY } from "libs/server-utils/narrative/narrativeDirector";
-import { runCachedNarrativeDirector } from "libs/server-utils/narrative/narrativeDirectorCache";
+import { peekNarrativeDirectorCache, runCachedNarrativeDirector } from "libs/server-utils/narrative/narrativeDirectorCache";
 import {
   buildNarrativeDirectorUsage,
   preflightNarrativeDirectorCost,
@@ -74,6 +74,12 @@ export type NarrativeDirectorRuntimeInput = {
   /** Provider-reported token usage. Required to settle an enabled validation budget. */
   readProviderUsage?: () => NarrativeDirectorProviderUsage | null;
   narrativeProfileId?: string;
+  /**
+   * 사용자와 무관한 입력(캐릭터 canon)으로 만든 directive 를 여러 사용자·세션이 공유할 때의 cache key.
+   * 있으면 circuit·비용 preflight 전에 cache 를 먼저 보고, hit 이면 provider·과금 경로를 타지 않는다(JEV-117 F1).
+   */
+  sharedCacheKey?: string;
+  sharedCacheTtlSeconds?: number;
   skipWhenNoUid?: boolean;
   env?: Record<string, string | undefined>;
   now?: number;
@@ -182,6 +188,25 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
     });
   }
 
+  if (input.sharedCacheKey) {
+    const shared = await peekNarrativeDirectorCache(input.sharedCacheKey);
+    if (shared?.directive) {
+      return {
+        ...shared,
+        gate: {
+          runtimeEnabled,
+          consumer: input.consumer,
+          consumerEnabled,
+          circuitState: "closed",
+          circuitCallAllowed: false,
+          costGate: null,
+          validationBudget: noBudget,
+          billed: false,
+        },
+      };
+    }
+  }
+
   const scope = circuitScope(input);
   const record = await readNarrativeDirectorCircuit(scope);
   const circuit = evaluateNarrativeDirectorCircuit(record, nowMs);
@@ -257,7 +282,8 @@ export async function resolveNarrativeDirective(input: NarrativeDirectorRuntimeI
   let validationBudgetReason = "";
   let settlementFailure = "";
   const proposal = await runCachedNarrativeDirector({
-    cacheKey: directorCacheKey(input),
+    cacheKey: input.sharedCacheKey || directorCacheKey(input),
+    ...(input.sharedCacheKey && input.sharedCacheTtlSeconds ? { cacheTtlSeconds: input.sharedCacheTtlSeconds } : {}),
     prompt: input.prompt,
     callsInSession: input.callsInSession,
     expected,

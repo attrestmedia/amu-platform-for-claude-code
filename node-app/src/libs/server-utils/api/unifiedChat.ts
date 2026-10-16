@@ -665,7 +665,23 @@ const CLEAN_LABEL: Record<UnifiedTextProviderType, string> = {
 
 // 통합 텍스트 챗 처리
 // - pricing preflight / system prompt / history sanitize / provider call / parse + billing
-export async function handleUnifiedTextChatRequest(provider: UnifiedTextProviderType, data: UnifiedChatRequest, user?: UnifiedChatUser) {
+export type UnifiedChatStageTimings = Partial<Record<"preflight" | "compose" | "llm" | "billing" | "total", number>>;
+
+export async function handleUnifiedTextChatRequest(
+  provider: UnifiedTextProviderType,
+  data: UnifiedChatRequest,
+  user?: UnifiedChatUser,
+  options: { onTimings?: (timings: UnifiedChatStageTimings) => void } = {},
+) {
+  // JEV-117 F0: 단계별 소요(ms). 응답 본문에는 싣지 않고 호출부 콜백과 서버 로그로만 낸다.
+  const requestStartedAt = performance.now();
+  let stageStartedAt = requestStartedAt;
+  const timings: UnifiedChatStageTimings = {};
+  const markStage = (stage: Exclude<keyof UnifiedChatStageTimings, "total">) => {
+    const now = performance.now();
+    timings[stage] = Math.round(now - stageStartedAt);
+    stageStartedAt = now;
+  };
   const requestedModel = String(data?.modelName || data?.model || "").trim();
   const promptOptions = data?.options?.promptOptions;
 
@@ -708,6 +724,8 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
     variants: needsShortLongVariants ? ["short", "long"] : [undefined],
   });
 
+  markStage("preflight");
+
   // upstream 실모델 ID로 변환
   const upstreamModel = resolveUpstreamModelName(provider, requestedModel);
 
@@ -738,6 +756,7 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
     },
   });
   const authoritativeSystemPrompt = serverSystemPrompt;
+  markStage("compose");
   const voiceInputContext = buildVoiceInputContext(data.voiceInput, message);
 
   const { processedHistory } = processAndCleanHistory(history, message, CLEAN_LABEL[provider]) as {
@@ -799,6 +818,7 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
           : {}),
       }));
       providerResponseReceived = true;
+      markStage("llm");
     } catch (error) {
       // fallback은 provider 호출 실패만 재시도한다. preflight·prompt·billing 오류와 구분하기 위한 내부 reason code다.
       const providerError = (
@@ -906,6 +926,14 @@ export async function handleUnifiedTextChatRequest(provider: UnifiedTextProvider
     };
 
     await providerLease?.complete(success);
+    markStage("billing");
+    timings.total = Math.round(performance.now() - requestStartedAt);
+    logger.log(`[API] UnifiedChat(${provider}) timings`, { model: requestedModel, ...timings });
+    try {
+      options.onTimings?.(timings);
+    } catch {
+      // timing observers cannot change the chat result
+    }
     return success;
   } catch (error) {
     if (providerLease?.kind === "reserved" && !providerLease.isTerminal()) {

@@ -6,6 +6,7 @@ import { getUniverseById } from "libs/database/universe";
 import { UNIVERSE_NAMESPACE_KEY, COMMERCE_NAMESPACE_KEY } from "consts/app";
 import { toUnknownRecord, type UnknownRecord } from "utils/common/typeUtils";
 import type { UniverseType } from "types/game";
+import { getPersonaForPrompt } from "libs/database/universe/personaPromptRepo";
 import { buildNarrativeDirectorChatRequest, type NarrativeDirectorChatContext } from "libs/server-utils/narrative/narrativeDirectorChatCaller";
 
 /**
@@ -92,7 +93,11 @@ export async function composeSystemPromptOrThrow(args: {
   narrativeDirector?: NarrativeDirectorChatContext;
 }) {
   const { routeHint, universeId, npcId, user, promptOptions, universeTypeHint, narrativeDirector } = args;
-  const resolvedUniverseType = await assertUniverseRouteConsistency(routeHint, universeId, universeTypeHint);
+  const [resolvedUniverseType, npcPersona] = await Promise.all([
+    assertUniverseRouteConsistency(routeHint, universeId, universeTypeHint),
+    // 대화 상대 persona 는 Director 요청과 프롬프트 구성이 함께 쓰므로 한 번만 조회한다(JEV-117 F4).
+    universeId && npcId ? getPersonaForPrompt(universeId, npcId) : Promise.resolve(null),
+  ]);
   const narrativeDirectorRequest = narrativeDirector
     ? await buildNarrativeDirectorChatRequest({
         ...narrativeDirector,
@@ -101,6 +106,7 @@ export async function composeSystemPromptOrThrow(args: {
         universeId,
         characterId: npcId,
         universeType: resolvedUniverseType,
+        persona: npcPersona,
       })
     : undefined;
 
@@ -112,6 +118,7 @@ export async function composeSystemPromptOrThrow(args: {
     promptOptions,
     universeTypeHint: universeTypeHint ? (universeTypeHint as UniverseType) : null,
     narrativeDirectorRequest,
+    npcPersona,
   });
 
   const trimmed = String(systemPrompt || "").trim();

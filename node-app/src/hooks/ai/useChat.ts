@@ -611,9 +611,11 @@ export function useChat(
       const assistantClientId = createChatMessageMeta("assistant", { seed: "send-assistant" }).clientId;
 
       try {
-        // 유저 메시지 저장
+        // 유저 메시지 저장은 AI 요청과 동시에 시작한다(JEV-117 F3). 저장 실패는 기존과 같이 AI 요청을 막지 않고,
+        // assistant 저장만 user 저장 완료를 기다려 세션 순서·messageCount 를 보존한다.
+        let userMessageSaved: Promise<unknown> = Promise.resolve();
         if (isLoggedIn && user?.id && conversationUserPersonaId && character.pid) {
-          const saved = await useMessageStore.getState().saveMessage(
+          userMessageSaved = useMessageStore.getState().saveMessage(
             {
               userId: user.id,
               personaId: character.pid,
@@ -627,18 +629,19 @@ export function useChat(
               timestamp: ts,
             },
             { optimisticLocalAdd: meta?.optimisticLocalAdd ?? true },
-          );
-
-          // 저장 성공 이후에 persona 업데이트
-          if (saved) {
-            updatePersonaOnMessage(character, textToSend).catch((error) => {
-              logger.warn("페르소나 능력치 업데이트 실패 (무시됨):", error);
-            });
-          }
+          ).then((saved) => {
+            // 저장 성공 이후에 persona 업데이트
+            if (saved) {
+              updatePersonaOnMessage(character, textToSend).catch((error) => {
+                logger.warn("페르소나 능력치 업데이트 실패 (무시됨):", error);
+              });
+            }
+            return saved;
+          });
         } else if (!isLoggedIn && isCommerceUniverse && character.pid && effectiveUniverseId) {
           const effectiveGuestId = ensureGuestId(guestId);
           if (effectiveGuestId) {
-            await useMessageStore.getState().saveMessageAsGuest?.(
+            userMessageSaved = Promise.resolve(useMessageStore.getState().saveMessageAsGuest?.(
               {
                 guestId: effectiveGuestId,
                 personaId: character.pid,
@@ -652,7 +655,7 @@ export function useChat(
                 timestamp: ts,
               },
               { optimisticLocalAdd: meta?.optimisticLocalAdd ?? true },
-            );
+            ));
           }
         }
 
@@ -661,6 +664,10 @@ export function useChat(
           assistantClientId,
           voiceInput: meta?.voiceInput,
           imageInput: meta?.imageInput,
+        });
+
+        await userMessageSaved.catch((error) => {
+          logger.warn("유저 메시지 저장 실패 (무시됨):", error);
         });
 
         if (!response.isError) {

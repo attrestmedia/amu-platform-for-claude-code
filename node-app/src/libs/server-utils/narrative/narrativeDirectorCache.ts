@@ -17,11 +17,26 @@ function cacheKey(value: string) {
   return `narrative:director:${normalized}`;
 }
 
-export async function runCachedNarrativeDirector(input: Parameters<typeof runNarrativeDirector>[0] & { cacheKey: string }): Promise<NarrativeDirectiveProposal> {
+/** 성공 proposal 만 hit 으로 본다. Redis 장애는 miss 로 취급한다. */
+export async function peekNarrativeDirectorCache(rawKey: string): Promise<NarrativeDirectiveProposal | null> {
+  try {
+    const cached = await redisCache.get<NarrativeDirectiveProposal>(cacheKey(rawKey));
+    if (cached?.directive && cached.status === "proposal") return { ...cached, telemetry: { ...cached.telemetry, cacheHit: true } };
+  } catch {
+    // cache read failure is a miss
+  }
+  return null;
+}
+
+export async function runCachedNarrativeDirector(
+  input: Parameters<typeof runNarrativeDirector>[0] & { cacheKey: string; cacheTtlSeconds?: number },
+): Promise<NarrativeDirectiveProposal> {
   const key = cacheKey(input.cacheKey);
   const cached = await redisCache.get<NarrativeDirectiveProposal>(key);
   if (cached?.directive && cached.status === "proposal") return { ...cached, telemetry: { ...cached.telemetry, cacheHit: true } };
   const result = await runNarrativeDirector({ ...input, cacheHit: false });
-  if (result.status === "proposal" && result.directive) await redisCache.set(key, result, NARRATIVE_DIRECTOR_POLICY.cacheTtlSeconds);
+  if (result.status === "proposal" && result.directive) {
+    await redisCache.set(key, result, input.cacheTtlSeconds ?? NARRATIVE_DIRECTOR_POLICY.cacheTtlSeconds);
+  }
   return result;
 }

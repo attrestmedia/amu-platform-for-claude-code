@@ -1,5 +1,5 @@
 import "server-only";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getConversationModel, getConversationSessionModel, getConversationMessageModel } from "libs/database/conversations";
 import {
   wasUpserted,
@@ -325,19 +325,30 @@ export async function saveConversationMessageServer({
     ]);
   }
 
+  // 요약·rollup LLM 은 저장 응답을 붙잡지 않는다(JEV-117 F2). 응답 전송 후 같은 런타임에서 실행되며
+  // 멱등 operation lease·과금 경로는 그대로다. 실패는 다음 저장 때 같은 조건으로 다시 시도된다.
+  const memoryArgs: Parameters<typeof refreshConversationMemoryPipeline>[0] = {
+    serverUserId,
+    personaId,
+    userPersonaId: isGuest ? undefined : userPersonaId,
+    universeId: isGuest ? universeId : undefined,
+    sessionId,
+    role,
+    messageInserted,
+    systemCode,
+  };
+  const refreshMemory = async () => {
+    try {
+      await refreshConversationMemoryPipeline(memoryArgs);
+    } catch (error) {
+      logger.warn("대화 memory 파이프라인 갱신 실패:", error);
+    }
+  };
   try {
-    await refreshConversationMemoryPipeline({
-      serverUserId,
-      personaId,
-      userPersonaId: isGuest ? undefined : userPersonaId,
-      universeId: isGuest ? universeId : undefined,
-      sessionId,
-      role,
-      messageInserted,
-      systemCode,
-    });
-  } catch (error) {
-    logger.warn("대화 memory 파이프라인 갱신 실패:", error);
+    after(refreshMemory);
+  } catch {
+    // request scope 밖(스크립트·테스트)에서는 after 를 쓸 수 없으므로 기존처럼 기다린다.
+    await refreshMemory();
   }
 
   return NextResponse.json({ success: true, inserted: messageInserted, isNewSession }, { status: 200 });

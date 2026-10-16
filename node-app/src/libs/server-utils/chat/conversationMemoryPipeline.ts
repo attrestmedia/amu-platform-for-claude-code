@@ -28,6 +28,11 @@ type AnyMongoModel = import("mongoose").Model<any>;
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const SESSION_SUMMARY_INTERVAL = 24;
+/**
+ * OD-JEV-16: 요약이 없는 세션도 이 수 이상 쌓였을 때만 첫 요약을 만든다. 이전에는 첫 assistant 메시지(대화 2개)부터
+ * 사용자 과금 LLM 요약이 돌았다. end-chat/end-force 는 메시지 수와 무관하게 요약한다.
+ */
+export const SESSION_FIRST_SUMMARY_MIN_MESSAGES = 8;
 const SESSION_INPUT_MESSAGE_BUDGET = 6000;
 const SESSION_FORCE_MESSAGE_LIMIT = 48;
 const MEMORY_INJECTION_TOKEN_BUDGET = 1200;
@@ -852,7 +857,7 @@ export async function refreshConversationMemoryPipeline(args: RefreshArgs) {
   let archiveDoc: UnknownRecord | null =
     ((await ArchiveModel.findOne(archiveMatch).lean()) as UnknownRecord | null) || null;
   const shouldForceCurrentSessionSummary =
-    !currentSession.summary ||
+    (!currentSession.summary && Number(currentSession.messageCount || 0) >= SESSION_FIRST_SUMMARY_MIN_MESSAGES) ||
     Number(currentSession.messageCount || 0) - Number(currentSession.summarySourceMessageCount || 0) >=
       SESSION_SUMMARY_INTERVAL ||
     (Array.isArray(args.systemCode) && args.systemCode.some((code) => code === "end-chat" || code === "end-force"));

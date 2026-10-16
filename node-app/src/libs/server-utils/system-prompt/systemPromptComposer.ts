@@ -189,6 +189,8 @@ export async function composeAuthoritativeSystemPrompt(args: {
    */
   narrativeDirectorRequest?: Omit<NarrativeDirectorRuntimeInput, "uid" | "universeId" | "narrativeProfileId" | "consumer">;
   narrativeMemory?: string[];
+  /** 호출부가 같은 요청에서 이미 조회한 대화 상대 persona. 있으면 다시 조회하지 않는다(JEV-117 F4). */
+  npcPersona?: Awaited<ReturnType<typeof getPersonaForPrompt>> | null;
 }) {
   const routeHint = args.routeHint;
 
@@ -223,9 +225,10 @@ export async function composeAuthoritativeSystemPrompt(args: {
   const knowledgeContext = safeTrim(opt.knowledgeContext, promptCaps.knowledgeContext);
 
   // UniverseDetail 로드 (commerce only)
-  const universeDetail = isCommerceUniverse && universeId ? await loadUniverseDetailForPrompt(universeId) : null;
+  const [universeDetail, storefrontProducts] = isCommerceUniverse && universeId
+    ? await Promise.all([loadUniverseDetailForPrompt(universeId), loadStorefrontProductsForPrompt(universeId)])
+    : [null, []];
   const detailMeta = toUnknownRecord(toUnknownRecord(universeDetail).metadata);
-  const storefrontProducts = isCommerceUniverse && universeId ? await loadStorefrontProductsForPrompt(universeId) : [];
 
   // 1) UniverseDetail.metadata.customPrompts
   const customPromptsArr = isCommerceUniverse ? detailMeta.customPrompts : null;
@@ -279,13 +282,47 @@ ${additionalInstructions}`
     ? serverStoreKnowledgeContext
     : knowledgeContext;
 
-  // 2) persona 조회
-  const persona = universeId && pid ? await getPersonaForPrompt(universeId, pid) : null;
+  // 2) 서로 독립인 조회는 한 번에 시작한다(JEV-117 F4): persona · base prompt · 유저 캐릭터 persona ·
+  //    대화 메모리 · Narrative Director. persona prompt 와 narrative projection 만 앞 결과에 의존한다.
+  const baseKey = baseKeyByRoute(effectiveRouteHint);
+  const selectedPersonas = toUnknownRecord(userRec.selectedPersonas);
+  const selPidRaw = universeId ? selectedPersonas[universeId] : "";
+  const selPid = String(selPidRaw || "").trim();
+  const serverUserId = String(userRec.ID || "").trim();
+  const conversationUserPersonaId = selPid;
+  const narrativeProfileId =
+    String(args.narrativeProfileId || "").trim() ||
+    (selPid ? `play:${selPid}` : "");
+
+  const [persona, basePrompt, userCharPersona, conversationMemory, resolvedDirective] = await Promise.all([
+    args.npcPersona !== undefined
+      ? Promise.resolve(args.npcPersona)
+      : universeId && pid
+        ? getPersonaForPrompt(universeId, pid)
+        : Promise.resolve(null),
+    getSystemPersonaPromptText(universeId || null, null, baseKey),
+    universeId && selPid ? getPersonaForPrompt(universeId, selPid).catch(() => null) : Promise.resolve(null),
+    !isCommerceUniverse && serverUserId && conversationUserPersonaId && pid
+      ? loadConversationMemoryBlock({
+          serverUserId,
+          personaId: pid,
+          userPersonaId: conversationUserPersonaId,
+          universeId: universeId || undefined,
+        }).catch(() => "")
+      : Promise.resolve(""),
+    // Director는 요청당 최대 1회다. 결과가 fallback이어도 static directive가 반환되므로 프롬프트는 항상 구성된다.
+    !isCommerceUniverse && serverUserId && universeId && args.narrativeDirectorRequest && !args.narrativeDirective
+      ? resolveNarrativeDirective({
+          ...args.narrativeDirectorRequest,
+          consumer: "chat",
+          uid: serverUserId,
+          universeId,
+          ...(narrativeProfileId ? { narrativeProfileId } : {}),
+        }).catch(() => null)
+      : Promise.resolve(null),
+  ]);
 
   // 3) SystemPersonaPrompt 조합
-  const baseKey = baseKeyByRoute(effectiveRouteHint);
-  const basePrompt = await getSystemPersonaPromptText(universeId || null, null, baseKey);
-
   const personaRec = toUnknownRecord(persona);
   const personaTutorsPolicy = toUnknownRecord(personaRec.tutorsPolicy);
   const personaKey = personaRec.systemPersonaKey
@@ -327,17 +364,11 @@ ${additionalInstructions}`
   intimacy = String(clampInt(relItemRec.intimacy, 0, 999));
 
   // currentUserCharacter는 selectedPersonas[universeId] 기반으로 서버에서 재구성
-  const selectedPersonas = toUnknownRecord(userRec.selectedPersonas);
-  const selPidRaw = universeId ? selectedPersonas[universeId] : "";
-  const selPid = String(selPidRaw || "").trim();
-
   if (universeId && selPid) {
     const userCharItem = findPersonaItemFromUser(user, universeId, selPid);
     const userCharAbility = pickAbilityFromItem(userCharItem);
 
-    // getPersonaForPrompt는 "텍스트 필드만 최소 조회"
-    const userCharPersona = await getPersonaForPrompt(universeId, selPid).catch(() => null);
-
+    // getPersonaForPrompt는 "텍스트 필드만 최소 조회" — 위 Promise.all 에서 이미 조회했다.
     if (userCharPersona) {
       currentUserCharacter = {
         ...toUnknownRecord(userCharPersona),
@@ -368,39 +399,10 @@ ${additionalInstructions}`
   );
 
   let finalSystemPrompt = systemPrompt;
-  const serverUserId = String(userRec.ID || "").trim();
-  const conversationSelectedPersonas = toUnknownRecord(userRec.selectedPersonas);
-  const conversationUserPersonaId = universeId ? String(conversationSelectedPersonas[universeId] || "").trim() : "";
-  const conversationMemory =
-    !isCommerceUniverse && serverUserId && conversationUserPersonaId && pid
-      ? await loadConversationMemoryBlock({
-          serverUserId,
-          personaId: pid,
-          userPersonaId: conversationUserPersonaId,
-          universeId: universeId || undefined,
-        }).catch(() => "")
-      : "";
-
   if (conversationMemory) {
     finalSystemPrompt = injectTaggedBlockOnce(finalSystemPrompt, CONVERSATION_MEMORY_TAG, conversationMemory);
   }
 
-  const selectedPersonasForNarrative = toUnknownRecord(userRec.selectedPersonas);
-  const selectedPlayerId = universeId ? String(selectedPersonasForNarrative[universeId] || "").trim() : "";
-  const narrativeProfileId =
-    String(args.narrativeProfileId || "").trim() ||
-    (selectedPlayerId ? `play:${selectedPlayerId}` : "");
-  // Director는 요청당 최대 1회다. 결과가 fallback이어도 static directive가 반환되므로 프롬프트는 항상 구성된다.
-  const resolvedDirective =
-    !isCommerceUniverse && serverUserId && universeId && args.narrativeDirectorRequest && !args.narrativeDirective
-      ? await resolveNarrativeDirective({
-          ...args.narrativeDirectorRequest,
-          consumer: "chat",
-          uid: serverUserId,
-          universeId,
-          ...(narrativeProfileId ? { narrativeProfileId } : {}),
-        }).catch(() => null)
-      : null;
   const narrativeDirective = args.narrativeDirective ?? resolvedDirective?.directive ?? undefined;
   const narrativeProjection =
     !isCommerceUniverse && serverUserId && universeId && narrativeProfileId

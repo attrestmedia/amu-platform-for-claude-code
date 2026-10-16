@@ -5,7 +5,7 @@
   "programType": "구현 로드맵. 외부 의존(TypeSafe 조기 액세스)과 법무·경제 게이트가 걸린 단계형 원장이다. 게이트가 닫힌 TASK 는 dependsOn 이 풀려도 ready 가 아니다.",
   "roadmapVersion": "1.0",
   "createdAt": "2026-09-25T16:28:15+09:00",
-  "updatedAt": "2026-10-16T10:00:00+09:00",
+  "updatedAt": "2026-10-16T14:00:00+09:00",
   "status": "planned",
   "provisional": false,
   "objective": "TypeSafe JEV(System One 모델)를 AMU 플랫폼의 빠른 판단 계층(Decision Fabric)으로 도입한다. 사용자 요청 3건 — (1) ai-model-tracker 추적 대상에 JEV 추가 (2) 플랫폼 Credential Panel 에 TypeSafe(JEV) API 등록 패널 추가 (3) JEV 추상화 판단 레이어 구현과 주요 로직(AI 모델 라우팅 등) 도입.",
@@ -1047,7 +1047,7 @@
       "targetProject": [
         "amu_app/node-app"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "JEV-103"
       ],
@@ -1115,6 +1115,15 @@
       "notes": [
         "근거: .agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-B R1~R6.",
         "JEV-118 의 모든 핫패스 point 는 이 TASK 완료 후에만 연결한다."
+      ],
+      "evidence": [
+        "구현 2026-10-16: decisionRuntime.ts(runDecisionCore 공통 경로·runDecision·runDecisionBatch·runDecisionWithDeadline), decisionRuntimePolicy.ts(resolveDecisionPreIoGate·resolveDecisionControlsGate·resolveDecisionPostIoGate·isDecisionRolloutHit — 기존 resolveDecisionActivation 은 계약 유지), system/jevRuntimeControls.ts(getCachedJevRuntimeControls 3초·unreadable 비캐시·저장 시 무효화, 관리자 GET 은 비캐시 getJevRuntimeControls), types/decision(deadlineMs·deadline_exceeded), decisionPointRegistry(deadlineMs 1~10000 검증).",
+        "검증(세션 scratch 하네스 — 이 저장소 스냅샷에는 tsconfig·lockfile·test/·vendor 패키지가 없어 pnpm typecheck/lint/test 실행 불가): 변경 파일 + 전이 import 그래프 tsc strict 신규 오류 0(남은 3건은 변경 전 기준선과 동일한 하네스 환경 오류). node:test 12/12 — opt-out·미등록·kill switch·rollout miss·controls unreadable 의 I/O 호출 수, 성공 시 trace defer·빈 circuit 쓰기 생략, 실패 circuit 누적, sync throw 방어, batch 1회 호출·교집합 projection·토큰 첫 trace 귀속, 빈 교집합 개별 호출, deadline_exceeded·백그라운드 완료·circuit 비누적, controls 캐시 TTL·unreadable 비캐시·무효화.",
+        "동작 변경(의도): runtime 경로의 실패 reason 우선순위가 I/O 비용 순으로 바뀜(user_opt_out 이 controls 계열보다, rollout_miss 가 credential·circuit 보다 먼저). 성공 시 빈 circuit 은 쓰지 않음. trace 저장은 verdict 반환 뒤(defer)."
+      ],
+      "remainingVerification": [
+        "원 저장소에서 pnpm run typecheck · pnpm run lint · 기존 decisionCore·jevClient·jevRuntimeControls·decisionRuntime 테스트 회귀 — 특히 reason 우선순위·성공 circuit 쓰기·trace 동기 기록을 기대하는 기존 단언이 있으면 위 의도된 변경에 맞춰 갱신",
+        "admin 패널에 다중 인스턴스 반영 지연 ≤3초 안내 문구(OD-JEV-14)"
       ]
     },
     {
@@ -1128,7 +1137,7 @@
       "targetProject": [
         "amu_app/node-app"
       ],
-      "status": "planned",
+      "status": "in_progress",
       "dependsOn": [
         "JEV-000"
       ],
@@ -1196,6 +1205,20 @@
         "근거: .agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §2·§3-A F1~F4·§7.",
         "JEV 호출을 추가하지 않는 결정론 수정이다. INV-1~INV-10 영향 없음.",
         "F5(비스트리밍 JSON 응답)는 JEV-119 로 분리."
+      ],
+      "evidence": [
+        "D0 구현: unifiedChat 단계별 소요(preflight·compose·llm·billing·total) 서버 로그 + onTimings 콜백, /api/ai/chat 이 policy 포함 meta.timings 를 관리자에게만 노출(응답 본문·lease replay 에는 싣지 않음).",
+        "D1 구현(OD-JEV-15): narrativeDirectorChatCaller — 프롬프트 digest 기반 canon 공통 key(canon:v1:provider:model:sha256/40), TTL 7일, 세션당 1회 counter 제거·miss 잠금 60초, recordUsage 를 플랫폼 COGS 관측(recordAiCostObservation, coins 0)으로 대체. narrativeDirectorRuntime — sharedCacheKey 가 있으면 circuit·비용 preflight 전에 cache 확인, hit 는 provider·과금 경로 없음. narrativeDirectorCache — peekNarrativeDirectorCache·TTL 인자. miss 시 기존 비용 gate(가격표·budget cap·잔액 preview)는 유지하되 차감 없음.",
+        "D2 구현(OD-JEV-16): 첫 요약 최소 메시지 8(SESSION_FIRST_SUMMARY_MIN_MESSAGES), end-chat/end-force 는 무관하게 요약. saveConversationMessage 가 메모리 파이프라인을 next/server after() 로 실행(request scope 밖에서는 기존처럼 await).",
+        "D3 구현: useChat 유저 메시지 저장과 AI 요청 동시 시작, assistant 저장은 user 저장 완료 후(saveMessage 는 throw 하지 않으므로 기존과 같이 저장 실패가 AI 요청을 막지 않음).",
+        "D4 구현: systemPromptComposer 독립 조회 Promise.all(persona·base prompt·유저 캐릭터 persona·메모리·Director), commerce 유니버스 detail·storefront 병렬, sharedRequestUtils 가 대화 상대 persona 를 1회 조회해 Director·composer 공유, /api/ai/chat 이 game 정책 검증 결과를 universe type 힌트로 넘겨 getUniverseById 중복 제거, 모델 비상차단 판독 3초 캐시(정상 판독만, 실패 비캐시, 차단·해제 시 무효화).",
+        "검증(scratch 하네스): 변경 17파일 + 전이 그래프 tsc 신규 오류 0. node:test — Director miss 잠금 1개만 provider 호출·COGS 훅·7일 TTL, hit 시 다른 사용자·세션·턴 모두 동일 directive·provider/circuit/preflight/잠금 0(2/2). 비상차단 캐시 missing TTL·실패 비캐시 fail-closed(1/1)."
+      ],
+      "remainingVerification": [
+        "D0 기준선 대비 실측(운영자 계정 meta.timings · 턴당 LLM 호출 수·코인) — 실행 환경 필요",
+        "D2 일간·주간·월간 rollup 의 cron·배치 분리(현재는 after() 로 응답 경로 밖에서만 실행)",
+        "D4 assertNarrativeCollectionAllowed 중복(Director·projection) 미제거, Director 소요를 compose 와 분리 계측하지 않음",
+        "원 저장소 pnpm run typecheck · lint · 관련 테스트, Play 채팅 수동 확인(첫 턴·후속 턴 directive 일관성, 저장 순서)"
       ]
     },
     {
@@ -2292,7 +2315,7 @@
     ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md"
   ],
   "nextExecutable": {
-    "computedAt": "2026-10-16T10:00:00+09:00",
+    "computedAt": "2026-10-16T14:00:00+09:00",
     "ready": [
       "JEV-105 — provider synthetic benchmark (JEV-104 done, G-JEV-ACCESS pass). 선행 권고: 평가셋 label 운영자 검수",
       "JEV-107 — Smart Mode 사용자 설정 + 서버 실효 활성 판정(과금 없음)",

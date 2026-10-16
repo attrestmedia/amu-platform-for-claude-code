@@ -21,6 +21,7 @@ import {
   type ModelEmergencyDisableRecordV1,
   type ModelEmergencyDisableTarget,
 } from "libs/server-utils/ai/modelEmergencyDisableRecord";
+import { invalidateModelEmergencyDisableCache } from "libs/server-utils/ai/modelEmergencyDisable";
 import { logger } from "utils/log";
 
 type AdminErrorCode =
@@ -329,7 +330,8 @@ export async function createModelEmergencyDisable(
         afterUpdatedAt: after.updatedAt,
         auditId,
       });
-      return { key, record, auditId };
+      invalidateModelEmergencyDisableCache(key);
+  return { key, record, auditId };
     }
 
     before = await readStoredRecord(key);
@@ -365,6 +367,7 @@ export async function createModelEmergencyDisable(
     afterUpdatedAt: after.updatedAt,
     auditId,
   });
+  invalidateModelEmergencyDisableCache(key);
   return { key, record, auditId };
 }
 
@@ -414,6 +417,7 @@ export async function releaseModelEmergencyDisable(
     afterUpdatedAt: after.updatedAt,
     auditId,
   });
+  invalidateModelEmergencyDisableCache(key);
   return { key, record, auditId };
 }
 
