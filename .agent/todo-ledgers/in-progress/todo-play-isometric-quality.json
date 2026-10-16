@@ -5,7 +5,7 @@
   "programType": "구현 로드맵. 투영·에셋 계약·모바일 성능·전투 확장이 서로 의존하는 단계형 원장이다. 게이트가 닫힌 TASK 는 dependsOn 이 풀려도 ready 가 아니다.",
   "roadmapVersion": "1.0",
   "createdAt": "2026-10-15T00:00:00+09:00",
-  "updatedAt": "2026-10-15T00:00:00+09:00",
+  "updatedAt": "2026-10-16T09:00:00+09:00",
   "status": "planned",
   "provisional": false,
   "objective": "AMU Play 를 모바일에서 레퍼런스(2:1 아이소메트릭 ARPG, Threads @climb_yiin 2026-10 게시물) 수준의 시각 품질과 조작감으로 끌어올린다. (1) 투영·방향 계약 확정 (2) Assets Studio 생성 → 런타임 표시 사이의 공통 에셋 계약(v3) 수립 (3) 모바일 렌더링 성능 기반 정비 (4) ARPG 수직 슬라이스로 장르 확장 가능성 검증.",
@@ -38,14 +38,54 @@
       "facingTable": {
         "convention": "화면 좌표계(x 오른쪽 +, y 아래 +), 각도는 +x 기준 시계 방향. 기존 SPRITE_SHEET_ROW_ORDER 명칭과 주석(row 0 = SW …)을 유지한다.",
         "rows": [
-          { "spriteKey": "right", "compass": "SE", "axis": "grid", "screenAngleDeg": 26.57 },
-          { "spriteKey": "down-right", "compass": "S", "axis": "screen", "screenAngleDeg": 90 },
-          { "spriteKey": "down", "compass": "SW", "axis": "grid", "screenAngleDeg": 153.43 },
-          { "spriteKey": "down-left", "compass": "W", "axis": "screen", "screenAngleDeg": 180 },
-          { "spriteKey": "left", "compass": "NW", "axis": "grid", "screenAngleDeg": 206.57 },
-          { "spriteKey": "up-left", "compass": "N", "axis": "screen", "screenAngleDeg": 270 },
-          { "spriteKey": "up", "compass": "NE", "axis": "grid", "screenAngleDeg": 333.43 },
-          { "spriteKey": "up-right", "compass": "E", "axis": "screen", "screenAngleDeg": 0 }
+          {
+            "spriteKey": "right",
+            "compass": "SE",
+            "axis": "grid",
+            "screenAngleDeg": 26.57
+          },
+          {
+            "spriteKey": "down-right",
+            "compass": "S",
+            "axis": "screen",
+            "screenAngleDeg": 90
+          },
+          {
+            "spriteKey": "down",
+            "compass": "SW",
+            "axis": "grid",
+            "screenAngleDeg": 153.43
+          },
+          {
+            "spriteKey": "down-left",
+            "compass": "W",
+            "axis": "screen",
+            "screenAngleDeg": 180
+          },
+          {
+            "spriteKey": "left",
+            "compass": "NW",
+            "axis": "grid",
+            "screenAngleDeg": 206.57
+          },
+          {
+            "spriteKey": "up-left",
+            "compass": "N",
+            "axis": "screen",
+            "screenAngleDeg": 270
+          },
+          {
+            "spriteKey": "up",
+            "compass": "NE",
+            "axis": "grid",
+            "screenAngleDeg": 333.43
+          },
+          {
+            "spriteKey": "up-right",
+            "compass": "E",
+            "axis": "screen",
+            "screenAngleDeg": 0
+          }
         ],
         "sectorRule": "facing 판정 경계는 인접 facing 각도의 이등분선이다(E·W 섹터 폭 26.57°, N·S 섹터 폭 63.43°, 그리드 축 섹터 폭 45°). 현재 calculateDirection8(animationUtils.ts:54) 은 사분면 판정이라 아날로그 입력에서 화면 축 facing 이 거의 선택되지 않는다 — PAQ-303 에서 교체한다."
       },
@@ -162,10 +202,16 @@
       "title": "투영·facing 계약 코드화 (ADR-PAQ-01) — 상수·facing 판정·주석 정정",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-000"],
-      "gates": ["G-PAQ-PROJECTION"],
+      "dependsOn": [
+        "PAQ-000"
+      ],
+      "gates": [
+        "G-PAQ-PROJECTION"
+      ],
       "goal": "26.57° 그리드 축 facing 계약을 단일 상수와 순수 함수로 고정해 생성·검증·런타임이 같은 정의를 쓰게 한다.",
       "deliverables": [
         {
@@ -175,7 +221,9 @@
             "consts/game 에 ISO_GROUND_LINE_DEG·ISO_CAMERA_ELEVATION_DEG·ISO_VERTICAL_SCALE·ISO_FACING_TABLE(ADR-PAQ-01 rows) 단일 정의. GC.ISO.TILE_WIDTH/TILE_HEIGHT 와 정합 assertion.",
             "gameConstants.ts ISO 블록 주석을 '2:1 dimetric(바닥 선 26.57°, 카메라 내려다보는 각도 30°)'로 정정."
           ],
-          "exitCriteria": ["facing 각도·명칭·시트 row 순서의 단일 원천이 한 파일이다."]
+          "exitCriteria": [
+            "facing 각도·명칭·시트 row 순서의 단일 원천이 한 파일이다."
+          ]
         },
         {
           "id": "PAQ-101-D2",
@@ -185,7 +233,9 @@
             "keyboardDirectionToMoveVector — 키보드 대각 입력을 그리드 축 2:1 벡터로, 화면 축 입력은 화면 축 벡터로. directionToScreenVector(isometricMovement.ts:63) 의 대각 처리를 교체.",
             "조이스틱 아날로그 벡터는 자유 각도 이동을 유지하고 facing 만 양자화(PAQ-304 와 연결)."
           ],
-          "exitCriteria": ["섹터 경계·대각 이동 벡터·정지 시 facing 유지를 단위 테스트가 고정한다."]
+          "exitCriteria": [
+            "섹터 경계·대각 이동 벡터·정지 시 facing 유지를 단위 테스트가 고정한다."
+          ]
         }
       ],
       "verification": [
@@ -205,11 +255,20 @@
       "title": "에셋 런타임 계약 v3 스키마·저장·해석 (ADR-PAQ-02)",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-101"],
-      "openDecisionDependsOn": ["OD-PAQ-03", "OD-PAQ-04"],
-      "gates": ["G-PAQ-CONTRACT-V3(v3 활성화)"],
+      "dependsOn": [
+        "PAQ-101"
+      ],
+      "openDecisionDependsOn": [
+        "OD-PAQ-03",
+        "OD-PAQ-04"
+      ],
+      "gates": [
+        "G-PAQ-CONTRACT-V3(v3 활성화)"
+      ],
       "goal": "생성·후처리·검증·발행·런타임이 공유할 계약을 코드 기본값 + 유니버스 override 로 만든다.",
       "deliverables": [
         {
@@ -253,10 +312,17 @@
       "title": "생성 템플릿 공통 변수화 — 투영 각도·광원·스타일 + 각도 가이드 참조 이미지",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-101", "PAQ-102"],
-      "gates": ["G-PAQ-ARTBIBLE(스타일 선택지 제거·대량 생성)"],
+      "dependsOn": [
+        "PAQ-101",
+        "PAQ-102"
+      ],
+      "gates": [
+        "G-PAQ-ARTBIBLE(스타일 선택지 제거·대량 생성)"
+      ],
       "goal": "모든 캐릭터·타일·오브젝트 템플릿이 같은 투영·광원·스타일 문구를 주입받고, AI 가 약한 각도 준수를 가이드 이미지로 보강한다.",
       "deliverables": [
         {
@@ -287,7 +353,9 @@
         {
           "id": "PAQ-103-D4",
           "title": "시드 동기화",
-          "work": ["seedGameAssetTemplates 경로로 템플릿 version 상승·DB 동기화. 기존 template key 유지, version 만 올린다."]
+          "work": [
+            "seedGameAssetTemplates 경로로 템플릿 version 상승·DB 동기화. 기존 template key 유지, version 만 올린다."
+          ]
         }
       ],
       "verification": [
@@ -306,10 +374,16 @@
       "title": "런타임 캐릭터 비율 왜곡 수정 — 시트는 프레임 비율, 레거시만 SPRITE_RATIO",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-000"],
-      "openDecisionDependsOn": ["OD-PAQ-03"],
+      "dependsOn": [
+        "PAQ-000"
+      ],
+      "openDecisionDependsOn": [
+        "OD-PAQ-03"
+      ],
       "goal": "정사각 셀(256×256)을 60×75(4:5)로 늘려 그리는 왜곡(useGameInit.ts:261·useStageNpcs.ts:116)을 없앤다.",
       "deliverables": [
         {
@@ -321,8 +395,13 @@
           ]
         }
       ],
-      "verification": ["단위 테스트(시트/레거시 분기)", "스테이지 캡처 전후 비교"],
-      "exitCriteria": ["시트 캐릭터의 표시 비율이 프레임 비율과 일치한다."]
+      "verification": [
+        "단위 테스트(시트/레거시 분기)",
+        "스테이지 캡처 전후 비교"
+      ],
+      "exitCriteria": [
+        "시트 캐릭터의 표시 비율이 프레임 비율과 일치한다."
+      ]
     },
     {
       "id": "PAQ-201",
@@ -331,10 +410,16 @@
       "title": "캐릭터 셀 정규화 — fit contain·f8 비정사각 해소·기준선/fill 정규화·pivot 메타",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-102"],
-      "gates": ["G-PAQ-CONTRACT-V3"],
+      "dependsOn": [
+        "PAQ-102"
+      ],
+      "gates": [
+        "G-PAQ-CONTRACT-V3"
+      ],
       "goal": "캐릭터마다 다른 크기·떠 있는 발·방향 전환 시 튐·f8 왜곡을 합성 단계에서 결정론으로 제거한다.",
       "deliverables": [
         {
@@ -367,7 +452,9 @@
         "f8 왜곡 회귀 테스트",
         "v2 기존 시트 해석 불변"
       ],
-      "exitCriteria": ["서로 다른 캐릭터를 같은 표시 크기로 그렸을 때 키·발 위치가 계약 오차 안에 있다."]
+      "exitCriteria": [
+        "서로 다른 캐릭터를 같은 표시 크기로 그렸을 때 키·발 위치가 계약 오차 안에 있다."
+      ]
     },
     {
       "id": "PAQ-202",
@@ -376,10 +463,17 @@
       "title": "월드 오브젝트·타일 후처리 — 배경 제거·trim·앵커/높이 자동 산출·타일 마스크·발행 비율 게이트",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-101", "PAQ-102"],
-      "gates": ["G-PAQ-CONTRACT-V3(v3 발행)"],
+      "dependsOn": [
+        "PAQ-101",
+        "PAQ-102"
+      ],
+      "gates": [
+        "G-PAQ-CONTRACT-V3(v3 발행)"
+      ],
       "goal": "월드 에셋이 후처리 없이 저장돼 생기는 가짜 투명 배경·여백·찌그러짐·떠 있음을 없앤다.",
       "deliverables": [
         {
@@ -418,7 +512,9 @@
         "타일 마스크 밖 alpha 0 검사",
         "pnpm run typecheck · pnpm run lint"
       ],
-      "exitCriteria": ["v3 월드 에셋이 찌그러짐·여백·가짜 배경 없이 발행된다."]
+      "exitCriteria": [
+        "v3 월드 에셋이 찌그러짐·여백·가짜 배경 없이 발행된다."
+      ]
     },
     {
       "id": "PAQ-203",
@@ -427,25 +523,41 @@
       "title": "해상도 변형(high/low) 파생 + 텍스처 로더 기기 등급 선택",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-102", "PAQ-201"],
-      "gates": ["G-PAQ-CONTRACT-V3"],
+      "dependsOn": [
+        "PAQ-102",
+        "PAQ-201"
+      ],
+      "gates": [
+        "G-PAQ-CONTRACT-V3"
+      ],
       "goal": "256px 셀·1K 캔버스를 화면 60~256px 로 그리는 해상도 낭비(GPU 장당 8~16MB, 축소 aliasing)를 없앤다.",
       "deliverables": [
         {
           "id": "PAQ-203-D1",
           "title": "서버 파생",
-          "work": ["발행 시 master 에서 output.variants(표시 크기 ×2 / ×1.25) 를 sharp lanczos 로 파생, WebP. 메타 variants{url, width, height, bytes, sha256}."]
+          "work": [
+            "발행 시 master 에서 output.variants(표시 크기 ×2 / ×1.25) 를 sharp lanczos 로 파생, WebP. 메타 variants{url, width, height, bytes, sha256}."
+          ]
         },
         {
           "id": "PAQ-203-D2",
           "title": "클라이언트 선택",
-          "work": ["기기 등급(메모리·dpr·GPU 힌트) 판정 유틸 → TextureManager 가 variant 선택. variants 없는 레거시는 현행."]
+          "work": [
+            "기기 등급(메모리·dpr·GPU 힌트) 판정 유틸 → TextureManager 가 variant 선택. variants 없는 레거시는 현행."
+          ]
         }
       ],
-      "verification": ["파생 크기·sha256 테스트", "실기기 GPU 텍스처 메모리 비교(G-PAQ-DEVICE)"],
-      "exitCriteria": ["low 등급에서 캐릭터 시트 GPU 메모리가 master 대비 1/4 이하."]
+      "verification": [
+        "파생 크기·sha256 테스트",
+        "실기기 GPU 텍스처 메모리 비교(G-PAQ-DEVICE)"
+      ],
+      "exitCriteria": [
+        "low 등급에서 캐릭터 시트 GPU 메모리가 master 대비 1/4 이하."
+      ]
     },
     {
       "id": "PAQ-204",
@@ -454,10 +566,17 @@
       "title": "검증 게이트 보강 + 재현성 메타 + 재생성 상한",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-201", "PAQ-202"],
-      "openDecisionDependsOn": ["OD-PAQ-06"],
+      "dependsOn": [
+        "PAQ-201",
+        "PAQ-202"
+      ],
+      "openDecisionDependsOn": [
+        "OD-PAQ-06"
+      ],
       "goal": "생성 품질 실패를 발행 전에 잡고, 같은 조건 재생성이 가능하게 한다.",
       "deliverables": [
         {
@@ -480,11 +599,18 @@
         {
           "id": "PAQ-204-D3",
           "title": "Assets Studio 미리보기",
-          "work": ["실제 게임 배경색·표시 크기·2:1 격자 위 미리보기(fringe·떠 있음·각도 육안 확인)."]
+          "work": [
+            "실제 게임 배경색·표시 크기·2:1 격자 위 미리보기(fringe·떠 있음·각도 육안 확인)."
+          ]
         }
       ],
-      "verification": ["fixture 기반 지표 테스트", "운영자 검수 체크리스트 1회 실행"],
-      "exitCriteria": ["§2-V 표(에셋 검토 보고서)의 추가 지표가 발행 전 단계에서 계산·기록된다."]
+      "verification": [
+        "fixture 기반 지표 테스트",
+        "운영자 검수 체크리스트 1회 실행"
+      ],
+      "exitCriteria": [
+        "§2-V 표(에셋 검토 보고서)의 추가 지표가 발행 전 단계에서 계산·기록된다."
+      ]
     },
     {
       "id": "PAQ-300",
@@ -493,25 +619,39 @@
       "title": "성능 측정 기준선 — 기준 스테이지·계측·실기기 3종",
       "owner": "agent + user",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-000"],
-      "gates": ["G-PAQ-DEVICE(판정)"],
+      "dependsOn": [
+        "PAQ-000"
+      ],
+      "gates": [
+        "G-PAQ-DEVICE(판정)"
+      ],
       "goal": "생성된 스테이지가 없으므로 placeholder 에셋 기반 기준 스테이지를 만들고, 이후 성능 TASK 의 전후 비교 기준을 고정한다.",
       "deliverables": [
         {
           "id": "PAQ-300-D1",
           "title": "기준 스테이지",
-          "work": ["운영자 전용 benchmark StageDoc v2 — 타일 20×20·장애물 60·NPC 10·주인공 1, placeholder 시트(256 셀 8방향). 시나리오 자동 재생(조이스틱 30초 이동·NPC 근접·대화 열고 닫기·백그라운드 전환 후 복귀)."]
+          "work": [
+            "운영자 전용 benchmark StageDoc v2 — 타일 20×20·장애물 60·NPC 10·주인공 1, placeholder 시트(256 셀 8방향). 시나리오 자동 재생(조이스틱 30초 이동·NPC 근접·대화 열고 닫기·백그라운드 전환 후 복귀)."
+          ]
         },
         {
           "id": "PAQ-300-D2",
           "title": "계측",
-          "work": ["개발 빌드 전용 오버레이: 평균·1% low fps, long task(>50ms) 수, JS heap, TextureManager GPU 메모리 추정, 스토어 set 횟수/s, React commit 수/s."]
+          "work": [
+            "개발 빌드 전용 오버레이: 평균·1% low fps, long task(>50ms) 수, JS heap, TextureManager GPU 메모리 추정, 스토어 set 횟수/s, React commit 수/s."
+          ]
         }
       ],
-      "verification": ["실기기 3종 기준선 기록(G-PAQ-DEVICE)"],
-      "exitCriteria": ["기준선 수치가 보고서로 남고 이후 TASK 가 같은 시나리오로 비교한다."]
+      "verification": [
+        "실기기 3종 기준선 기록(G-PAQ-DEVICE)"
+      ],
+      "exitCriteria": [
+        "기준선 수치가 보고서로 남고 이후 TASK 가 같은 시나리오로 비교한다."
+      ]
     },
     {
       "id": "PAQ-301",
@@ -520,34 +660,51 @@
       "title": "렌더러 옵션·백그라운드 일시정지·WebGL context 손실 복구·모바일 텍스처 캐시 상한",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-000"],
+      "dependsOn": [
+        "PAQ-000"
+      ],
       "goal": "동작을 바꾸지 않는 안전한 모바일 개선(성능 보고서 P1-1·P1-2·P0-3 일부)을 먼저 적용한다.",
       "deliverables": [
         {
           "id": "PAQ-301-D1",
           "title": "app.init 옵션",
-          "work": ["useGameInit.ts — resolution: min(devicePixelRatio, 저사양 1.5 / 그 외 2), autoDensity: true, antialias: false, powerPreference: 'high-performance', preference: 'webgl' 명시."]
+          "work": [
+            "useGameInit.ts — resolution: min(devicePixelRatio, 저사양 1.5 / 그 외 2), autoDensity: true, antialias: false, powerPreference: 'high-performance', preference: 'webgl' 명시."
+          ]
         },
         {
           "id": "PAQ-301-D2",
           "title": "visibilitychange",
-          "work": ["숨김 시 app.ticker·게임 루프·NPC 이동 정지, 복귀 시 lastFrameTime 리셋 후 재개(첫 delta 폭주 방지)."]
+          "work": [
+            "숨김 시 app.ticker·게임 루프·NPC 이동 정지, 복귀 시 lastFrameTime 리셋 후 재개(첫 delta 폭주 방지)."
+          ]
         },
         {
           "id": "PAQ-301-D3",
           "title": "context lost/restored",
-          "work": ["canvas webglcontextlost(preventDefault)·restored 처리 — 손실 시 루프 정지·오버레이, 복구 시 텍스처 재로드·재개."]
+          "work": [
+            "canvas webglcontextlost(preventDefault)·restored 처리 — 손실 시 루프 정지·오버레이, 복구 시 텍스처 재로드·재개."
+          ]
         },
         {
           "id": "PAQ-301-D4",
           "title": "텍스처 캐시 상한",
-          "work": ["TextureManager 기본 256MB → 기기 등급별(budgets.stageGpuMemoryMB) 상한, 스테이지 이탈 시 비우기 정책 명시."]
+          "work": [
+            "TextureManager 기본 256MB → 기기 등급별(budgets.stageGpuMemoryMB) 상한, 스테이지 이탈 시 비우기 정책 명시."
+          ]
         }
       ],
-      "verification": ["PAQ-300 시나리오 전후 비교", "iOS 백그라운드 복귀·context 손실 강제(WEBGL_lose_context) 테스트"],
-      "exitCriteria": ["고해상도 화면 선명도 개선, 백그라운드 복귀 후 검은 화면 0건."]
+      "verification": [
+        "PAQ-300 시나리오 전후 비교",
+        "iOS 백그라운드 복귀·context 손실 강제(WEBGL_lose_context) 테스트"
+      ],
+      "exitCriteria": [
+        "고해상도 화면 선명도 개선, 백그라운드 복귀 후 검은 화면 0건."
+      ]
     },
     {
       "id": "PAQ-302",
@@ -556,9 +713,13 @@
       "title": "고빈도 스토어 쓰기 제거 — 카메라·주인공·NPC 위치 비반응화, 셀렉터 축소",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-300"],
+      "dependsOn": [
+        "PAQ-300"
+      ],
       "goal": "매 프레임 setCameraState·이동 틱 setProtagonist·NPC 마다 updateNpcPosition(10명 ≈330회/s)으로 인한 React 리렌더 폭주를 없앤다(INV-6, 성능 보고서 P0-1).",
       "deliverables": [
         {
@@ -579,8 +740,13 @@
           ]
         }
       ],
-      "verification": ["PAQ-300 계측: 이동 중 스토어 set/s·React commit/s", "상호작용·카메라 복귀 버튼 회귀"],
-      "exitCriteria": ["이동 중 React commit 이 초당 수 회 이하(의미 변화 시에만)."]
+      "verification": [
+        "PAQ-300 계측: 이동 중 스토어 set/s·React commit/s",
+        "상호작용·카메라 복귀 버튼 회귀"
+      ],
+      "exitCriteria": [
+        "이동 중 React commit 이 초당 수 회 이하(의미 변화 시에만)."
+      ]
     },
     {
       "id": "PAQ-303",
@@ -589,16 +755,25 @@
       "title": "게임 루프 통합(ticker 1개)·ms 기반 이동/애니메이션·facing 섹터·보폭 연동",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-101", "PAQ-302"],
-      "openDecisionDependsOn": ["OD-PAQ-05"],
+      "dependsOn": [
+        "PAQ-101",
+        "PAQ-302"
+      ],
+      "openDecisionDependsOn": [
+        "OD-PAQ-05"
+      ],
       "goal": "30ms 고정 틱 무보간 이동 + 매 프레임 카메라 lerp 로 인한 떨림, RAF·ticker·setInterval 3중 루프, fps 양자화(10fps→11.1fps), foot sliding 을 해소한다(성능 P0-2, 에셋 N-1·N-2).",
       "deliverables": [
         {
           "id": "PAQ-303-D1",
           "title": "루프 통합",
-          "work": ["useGameLoop 자체 RAF·useNpcMovement setInterval(useNpcMovement.ts:85)을 app.ticker.add(update, UPDATE_PRIORITY.HIGH) 하나로. 업데이트→렌더 순서 보장."]
+          "work": [
+            "useGameLoop 자체 RAF·useNpcMovement setInterval(useNpcMovement.ts:85)을 app.ticker.add(update, UPDATE_PRIORITY.HIGH) 하나로. 업데이트→렌더 순서 보장."
+          ]
         },
         {
           "id": "PAQ-303-D2",
@@ -612,7 +787,9 @@
         {
           "id": "PAQ-303-D3",
           "title": "facing·이동 벡터 적용",
-          "work": ["PAQ-101-D2 함수를 주인공·NPC 이동에 적용 — 대각 이동 2:1 그리드 축, facing 이등분선 섹터."]
+          "work": [
+            "PAQ-101-D2 함수를 주인공·NPC 이동에 적용 — 대각 이동 2:1 그리드 축, facing 이등분선 섹터."
+          ]
         }
       ],
       "verification": [
@@ -620,7 +797,9 @@
         "PAQ-300 시나리오 1% low fps 비교",
         "이동·충돌 회귀(isometricMovement 테스트)"
       ],
-      "exitCriteria": ["주사율과 무관하게 이동·애니메이션 속도가 같고 카메라 대비 캐릭터 떨림이 없다."]
+      "exitCriteria": [
+        "주사율과 무관하게 이동·애니메이션 속도가 같고 카메라 대비 캐릭터 떨림이 없다."
+      ]
     },
     {
       "id": "PAQ-304",
@@ -629,29 +808,44 @@
       "title": "깊이 정렬·runtime 캐시·BitmapText·Pointer Events 아날로그 조이스틱",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-303"],
+      "dependsOn": [
+        "PAQ-303"
+      ],
       "goal": "엔티티 수 증가(ARPG)에 대비한 per-frame 비용 제거와 모바일 입력 기반(성능 보고서 P1-3~P1-6).",
       "deliverables": [
         {
           "id": "PAQ-304-D1",
           "title": "깊이 정렬·runtime resolve 캐시",
-          "work": ["장애물 depth key 는 스테이지 로드 시 1회, 이동 엔티티만 갱신·변경 프레임에만 정렬. resolveIsometricMovementRuntime 결과를 스테이지 전환 시 1회 캐시."]
+          "work": [
+            "장애물 depth key 는 스테이지 로드 시 1회, 이동 엔티티만 갱신·변경 프레임에만 정렬. resolveIsometricMovementRuntime 결과를 스테이지 전환 시 1회 캐시."
+          ]
         },
         {
           "id": "PAQ-304-D2",
           "title": "BitmapText",
-          "work": ["이름표 Text(characterDisplayUtils.ts:156) → 동적 BitmapFont(한글 글리프 범위 정책). 데미지 숫자 공용."]
+          "work": [
+            "이름표 Text(characterDisplayUtils.ts:156) → 동적 BitmapFont(한글 글리프 범위 정책). 데미지 숫자 공용."
+          ]
         },
         {
           "id": "PAQ-304-D3",
           "title": "입력",
-          "work": ["useJoypadControls — Pointer Events 통합·멀티터치(이동 + 버튼 동시), 터치 시작 시 rect 1회 측정, 아날로그 벡터(각도·크기) 출력 → PAQ-101 facing 양자화."]
+          "work": [
+            "useJoypadControls — Pointer Events 통합·멀티터치(이동 + 버튼 동시), 터치 시작 시 rect 1회 측정, 아날로그 벡터(각도·크기) 출력 → PAQ-101 facing 양자화."
+          ]
         }
       ],
-      "verification": ["PAQ-300 시나리오 + 엔티티 3배 스트레스 변형", "멀티터치 실기기 확인"],
-      "exitCriteria": ["엔티티 3배에서 1% low fps 저하가 기준선 대비 허용 범위(OD-PAQ-07) 안."]
+      "verification": [
+        "PAQ-300 시나리오 + 엔티티 3배 스트레스 변형",
+        "멀티터치 실기기 확인"
+      ],
+      "exitCriteria": [
+        "엔티티 3배에서 1% low fps 저하가 기준선 대비 허용 범위(OD-PAQ-07) 안."
+      ]
     },
     {
       "id": "PAQ-305",
@@ -660,24 +854,37 @@
       "title": "스테이지 발행 GPU 메모리 예산 게이트 + 발행 시 아틀라스",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-203"],
+      "dependsOn": [
+        "PAQ-203"
+      ],
       "goal": "성능 문제를 런타임이 아니라 제작 단계에서 막는다(에셋 검토 R-2·R-4).",
       "deliverables": [
         {
           "id": "PAQ-305-D1",
           "title": "예산 게이트",
-          "work": ["stageReleaseManifestService — 스테이지가 로드하는 텍스처 GPU 메모리 합계(variant 별)를 계산, budgets.stageGpuMemoryMB 초과 시 경고/차단."]
+          "work": [
+            "stageReleaseManifestService — 스테이지가 로드하는 텍스처 GPU 메모리 합계(variant 별)를 계산, budgets.stageGpuMemoryMB 초과 시 경고/차단."
+          ]
         },
         {
           "id": "PAQ-305-D2",
           "title": "아틀라스",
-          "work": ["스테이지 사용 월드 오브젝트를 발행 시 아틀라스로 묶고 매니페스트에 frame 좌표 기록. 런타임 로더 지원."]
+          "work": [
+            "스테이지 사용 월드 오브젝트를 발행 시 아틀라스로 묶고 매니페스트에 frame 좌표 기록. 런타임 로더 지원."
+          ]
         }
       ],
-      "verification": ["예산 초과 fixture 발행 거부", "draw call·요청 수 전후 비교"],
-      "exitCriteria": ["예산 초과 스테이지가 경고 없이 발행되지 않는다."]
+      "verification": [
+        "예산 초과 fixture 발행 거부",
+        "draw call·요청 수 전후 비교"
+      ],
+      "exitCriteria": [
+        "예산 초과 스테이지가 경고 없이 발행되지 않는다."
+      ]
     },
     {
       "id": "PAQ-401",
@@ -686,11 +893,20 @@
       "title": "액션 계약 확장 — idle 전용·hitFrame·fxAnchor·엔티티 등급별 방향 수·시트 메타 fps",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-201", "PAQ-303"],
-      "openDecisionDependsOn": ["OD-PAQ-05"],
-      "gates": ["G-PAQ-COST"],
+      "dependsOn": [
+        "PAQ-201",
+        "PAQ-303"
+      ],
+      "openDecisionDependsOn": [
+        "OD-PAQ-05"
+      ],
+      "gates": [
+        "G-PAQ-COST"
+      ],
       "goal": "전투 애니메이션에 필요한 메타와 생성 비용 통제를 액션 계약에 넣는다.",
       "deliverables": [
         {
@@ -704,11 +920,18 @@
         {
           "id": "PAQ-401-D2",
           "title": "멀티 액션 런타임",
-          "work": ["캐릭터 1명 = 액션별 시트 N장 해석, 액션 전환·비반복 액션 종료 콜백·hitFrame 이벤트."]
+          "work": [
+            "캐릭터 1명 = 액션별 시트 N장 해석, 액션 전환·비반복 액션 종료 콜백·hitFrame 이벤트."
+          ]
         }
       ],
-      "verification": ["액션 메타 계약 테스트", "비반복 액션 이벤트 타이밍 테스트(ms 오차 ≤1프레임)"],
-      "exitCriteria": ["attack 의 hitFrame 이벤트가 정확한 시간에 발생한다."]
+      "verification": [
+        "액션 메타 계약 테스트",
+        "비반복 액션 이벤트 타이밍 테스트(ms 오차 ≤1프레임)"
+      ],
+      "exitCriteria": [
+        "attack 의 hitFrame 이벤트가 정확한 시간에 발생한다."
+      ]
     },
     {
       "id": "PAQ-402",
@@ -717,26 +940,44 @@
       "title": "전투 시뮬레이션 코어 — 고정 틱·렌더 보간·몬스터 행동·피격/사망·로컬 드랍",
       "owner": "agent",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-303", "PAQ-401"],
-      "openDecisionDependsOn": ["OD-PAQ-08"],
-      "gates": ["G-PAQ-ECON(경제 연결 시)"],
+      "dependsOn": [
+        "PAQ-303",
+        "PAQ-401"
+      ],
+      "openDecisionDependsOn": [
+        "OD-PAQ-08"
+      ],
+      "gates": [
+        "G-PAQ-ECON(경제 연결 시)"
+      ],
       "goal": "PvE 전투를 클라이언트 결정론 시뮬레이션으로 만들고, 보상은 경제 비연결로 시작한다(INV-8).",
       "deliverables": [
         {
           "id": "PAQ-402-D1",
           "title": "시뮬레이션",
-          "work": ["고정 틱 전투 루프(이동·충돌·사거리·쿨다운·HP/MP), 시드 기반 결정론 난수, 렌더 보간. 몬스터 행동은 로컬 상태기계(JEV 등 네트워크 판단을 프레임 루프에 넣지 않는다)."]
+          "work": [
+            "고정 틱 전투 루프(이동·충돌·사거리·쿨다운·HP/MP), 시드 기반 결정론 난수, 렌더 보간. 몬스터 행동은 로컬 상태기계(JEV 등 네트워크 판단을 프레임 루프에 넣지 않는다)."
+          ]
         },
         {
           "id": "PAQ-402-D2",
           "title": "보상 경계",
-          "work": ["드랍은 로컬 표시용. 서버 저장·코인 연결은 OD-PAQ-08·G-PAQ-ECON 이후 별도 TASK."]
+          "work": [
+            "드랍은 로컬 표시용. 서버 저장·코인 연결은 OD-PAQ-08·G-PAQ-ECON 이후 별도 TASK."
+          ]
         }
       ],
-      "verification": ["시뮬레이션 결정론 테스트(같은 시드·입력 → 같은 결과)", "PAQ-300 스트레스 시나리오"],
-      "exitCriteria": ["몬스터 2종과 전투 1회전이 모바일 기준선에서 끊김 없이 동작한다."]
+      "verification": [
+        "시뮬레이션 결정론 테스트(같은 시드·입력 → 같은 결과)",
+        "PAQ-300 스트레스 시나리오"
+      ],
+      "exitCriteria": [
+        "몬스터 2종과 전투 1회전이 모바일 기준선에서 끊김 없이 동작한다."
+      ]
     },
     {
       "id": "PAQ-403",
@@ -745,9 +986,14 @@
       "title": "모바일 전투 UI — 아날로그 이동·공격/스킬 버튼·자동 전투·접이식 시트",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-304", "PAQ-402"],
+      "dependsOn": [
+        "PAQ-304",
+        "PAQ-402"
+      ],
       "goal": "레퍼런스의 PC 레이아웃(단축키 바·사이드 패널)을 모바일 문법으로 재구성한다.",
       "deliverables": [
         {
@@ -759,8 +1005,13 @@
           ]
         }
       ],
-      "verification": ["375px 실기기 조작 확인", "멀티터치 이동+스킬 동시 입력"],
-      "exitCriteria": ["한 손 세로·양손 가로 모드에서 전투 조작이 가능하다."]
+      "verification": [
+        "375px 실기기 조작 확인",
+        "멀티터치 이동+스킬 동시 입력"
+      ],
+      "exitCriteria": [
+        "한 손 세로·양손 가로 모드에서 전투 조작이 가능하다."
+      ]
     },
     {
       "id": "PAQ-404",
@@ -769,24 +1020,38 @@
       "title": "VFX·game feel — 이펙트 파이프라인(additive/투명 모델)·데미지 숫자·hit-stop·넉백·풀링",
       "owner": "agent",
       "riskTier": "STANDARD",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-401", "PAQ-402"],
+      "dependsOn": [
+        "PAQ-401",
+        "PAQ-402"
+      ],
       "goal": "레퍼런스 체감 품질의 핵심인 타격감을 만든다.",
       "deliverables": [
         {
           "id": "PAQ-404-D1",
           "title": "이펙트 에셋 경로",
-          "work": ["반투명이 본질인 이펙트는 크로마키 금지 — 투명 지원 모델(supportsTransparentBackground) 또는 검은 배경 + additive blend 전용 템플릿·후처리. 프레임 시퀀스 규격(fps·원점·크기 등급)."]
+          "work": [
+            "반투명이 본질인 이펙트는 크로마키 금지 — 투명 지원 모델(supportsTransparentBackground) 또는 검은 배경 + additive blend 전용 템플릿·후처리. 프레임 시퀀스 규격(fps·원점·크기 등급)."
+          ]
         },
         {
           "id": "PAQ-404-D2",
           "title": "런타임",
-          "work": ["데미지 숫자(BitmapText)·hit-stop·넉백·화면 흔들림·타격음, 엔티티·투사체·숫자 스프라이트 풀링."]
+          "work": [
+            "데미지 숫자(BitmapText)·hit-stop·넉백·화면 흔들림·타격음, 엔티티·투사체·숫자 스프라이트 풀링."
+          ]
         }
       ],
-      "verification": ["PAQ-300 스트레스(이펙트 다수) fps", "G-PAQ-PLAYTEST 입력"],
-      "exitCriteria": ["이펙트 다수 상황에서도 기준선 fps 허용 범위 안."]
+      "verification": [
+        "PAQ-300 스트레스(이펙트 다수) fps",
+        "G-PAQ-PLAYTEST 입력"
+      ],
+      "exitCriteria": [
+        "이펙트 다수 상황에서도 기준선 fps 허용 범위 안."
+      ]
     },
     {
       "id": "PAQ-405",
@@ -795,25 +1060,45 @@
       "title": "수직 슬라이스 콘텐츠·플레이테스트 — 던전 1·몬스터 2·스킬 3·드랍 1",
       "owner": "agent + user",
       "riskTier": "JUDGE",
-      "targetProject": ["amu_app/node-app"],
+      "targetProject": [
+        "amu_app/node-app"
+      ],
       "status": "planned",
-      "dependsOn": ["PAQ-103", "PAQ-202", "PAQ-403", "PAQ-404"],
-      "gates": ["G-PAQ-ARTBIBLE", "G-PAQ-COST", "G-PAQ-PLAYTEST"],
+      "dependsOn": [
+        "PAQ-103",
+        "PAQ-202",
+        "PAQ-403",
+        "PAQ-404"
+      ],
+      "gates": [
+        "G-PAQ-ARTBIBLE",
+        "G-PAQ-COST",
+        "G-PAQ-PLAYTEST"
+      ],
       "goal": "계약 v3 에셋으로 만든 최소 콘텐츠로 '레퍼런스 수준 손맛'을 사용자가 직접 판정한다.",
       "deliverables": [
         {
           "id": "PAQ-405-D1",
           "title": "콘텐츠 생성",
-          "work": ["Assets Studio 로 던전 타일셋·오브젝트·몬스터 2종(등급별 방향 수)·주인공 액션 세트 생성, PAQ-204 검증 통과분만 발행."]
+          "work": [
+            "Assets Studio 로 던전 타일셋·오브젝트·몬스터 2종(등급별 방향 수)·주인공 액션 세트 생성, PAQ-204 검증 통과분만 발행."
+          ]
         },
         {
           "id": "PAQ-405-D2",
           "title": "플레이테스트·튜닝",
-          "work": ["사용자 플레이 → 조작감·가독성·타격감 피드백 → 수치 튜닝 반복. 결과와 다음 확장 범위를 보고서로."]
+          "work": [
+            "사용자 플레이 → 조작감·가독성·타격감 피드백 → 수치 튜닝 반복. 결과와 다음 확장 범위를 보고서로."
+          ]
         }
       ],
-      "verification": ["G-PAQ-PLAYTEST 사용자 판정", "실기기 3종 기준선 통과"],
-      "exitCriteria": ["사용자가 수직 슬라이스를 통과로 판정한다."]
+      "verification": [
+        "G-PAQ-PLAYTEST 사용자 판정",
+        "실기기 3종 기준선 통과"
+      ],
+      "exitCriteria": [
+        "사용자가 수직 슬라이스를 통과로 판정한다."
+      ]
     }
   ],
   "openDecisions": [
@@ -821,7 +1106,10 @@
       "id": "OD-PAQ-01",
       "question": "캐릭터 대각 facing 을 화면 45° 로 둘 것인가, 2:1 그리드 축(26.57°)에 정렬할 것인가",
       "recommendation": "그리드 축 정렬. 이동은 아날로그 자유 각도, facing 만 양자화.",
-      "blocks": ["PAQ-101", "PAQ-103"],
+      "blocks": [
+        "PAQ-101",
+        "PAQ-103"
+      ],
       "decision": "26.57°(2:1 그리드 축 정렬) 고정. 키보드 대각 이동 벡터도 그리드 축으로 변경.",
       "decidedAt": "2026-10-15",
       "decidedBy": "user"
@@ -830,43 +1118,60 @@
       "id": "OD-PAQ-02",
       "question": "아날로그 조이스틱 입력의 이동 방향을 자유 각도로 둘 것인가, 8방향으로 스냅할 것인가",
       "recommendation": "자유 각도 이동 + facing 만 8방향 양자화(ADR-PAQ-01 sectorRule). 키보드는 8방향(대각 = 그리드 축).",
-      "blocks": ["PAQ-304"]
+      "blocks": [
+        "PAQ-304"
+      ]
     },
     {
       "id": "OD-PAQ-03",
       "question": "런타임 SPRITE_RATIO.default(1:1.25) 를 쓰는 레거시 단일 이미지 스프라이트가 운영 데이터에 남아 있는가",
       "recommendation": "운영 데이터 조회로 확인. 없으면 시트 비율로 일원화, 있으면 PAQ-104 분기 유지.",
-      "blocks": ["PAQ-104", "PAQ-102"]
+      "blocks": [
+        "PAQ-104",
+        "PAQ-102"
+      ]
     },
     {
       "id": "OD-PAQ-04",
       "question": "geometry 기본값 — characterHeightInTiles·cell.targetFillRatio·cell.baselineRatio",
       "recommendation": "초안 1.4타일·0.78·0.92. PAQ-300 기준 스테이지에서 placeholder 로 시각 확인 후 확정.",
-      "blocks": ["PAQ-102", "PAQ-201"]
+      "blocks": [
+        "PAQ-102",
+        "PAQ-201"
+      ]
     },
     {
       "id": "OD-PAQ-05",
       "question": "엔티티 등급별 방향 수·액션 세트 (주인공·NPC·몬스터 소/중/대·펫)",
       "recommendation": "주인공 8방향 전 액션, NPC 8방향 idle·walk, 몬스터·펫 그리드 축 4방향 + 수직축 반전(대칭 디자인만). 생성 비용 약 절반.",
-      "blocks": ["PAQ-303", "PAQ-401"]
+      "blocks": [
+        "PAQ-303",
+        "PAQ-401"
+      ]
     },
     {
       "id": "OD-PAQ-06",
       "question": "방향별 자동 재생성 상한과 캐릭터 1명 생성 비용 상한",
       "recommendation": "방향당 2회, 캐릭터당 예상 코인의 1.5배 상한. G-PAQ-COST 와 함께 승인.",
-      "blocks": ["PAQ-204"]
+      "blocks": [
+        "PAQ-204"
+      ]
     },
     {
       "id": "OD-PAQ-07",
       "question": "성능 수용 기준 — 기기 등급별 목표 fps·1% low·GPU 메모리",
       "recommendation": "PAQ-300 기준선 측정 후 확정. 초안: low 30fps 유지(1% low ≥24), mid/high 60fps(1% low ≥45), GPU low 64MB.",
-      "blocks": ["PAQ-304"]
+      "blocks": [
+        "PAQ-304"
+      ]
     },
     {
       "id": "OD-PAQ-08",
       "question": "전투 권위 범위 — 클라이언트 시뮬레이션 + 서버 보상 검증인가, 서버 시뮬레이션인가",
       "recommendation": "PvE 수직 슬라이스는 클라이언트 결정론 시뮬레이션 + 경제 비연결. 보상 저장 시점에 서버 검증(시드·입력 로그 재시뮬 또는 상한 검증) 설계를 별도 TASK 로.",
-      "blocks": ["PAQ-402"]
+      "blocks": [
+        "PAQ-402"
+      ]
     },
     {
       "id": "OD-PAQ-09",
@@ -930,7 +1235,7 @@
     }
   ],
   "relatedLedgers": [
-    ".agent/todo-jev-decision-fabric.json — Play 게임플레이 DecisionPoint 후보(play.discovery-attribute.v1·play.npc-reaction.v1·play.cross-universe-rerank.v1)와 채팅 AI 호출 다이어트(F1~F4)·Decision Runtime 레이턴시 보강(R1~R6)은 JEV 원장 소유로 제안(JEV-116·117, 2026-10-14 보고서 §6). 이 원장은 전투 프레임 루프에 네트워크 판단을 넣지 않는다(INV-8·PAQ-402).",
+    ".agent/todo-jev-decision-fabric.json — 채팅 AI 호출 다이어트(F1~F4)는 JEV-117, Decision Runtime 레이턴시 보강(R1~R6)은 JEV-116, Play 게임플레이 DecisionPoint(play.discovery-attribute.v1·play.npc-reaction.v1·play.cross-universe-rerank.v1)는 JEV-118-D3, 스트리밍 응답 계약은 JEV-119 가 소유한다(2026-10-16 추가). 이 원장은 전투 프레임 루프에 네트워크 판단을 넣지 않는다(INV-8·PAQ-402).",
     ".agent/todo-jev-decision-fabric.json — JEV-208·209(Clef 이미지 판단): PAQ-204 facing 각도·정체성 일치 vision 검증의 후보 소비처"
   ],
   "references": [

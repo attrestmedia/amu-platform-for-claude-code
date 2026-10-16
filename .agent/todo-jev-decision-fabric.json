@@ -5,7 +5,7 @@
   "programType": "구현 로드맵. 외부 의존(TypeSafe 조기 액세스)과 법무·경제 게이트가 걸린 단계형 원장이다. 게이트가 닫힌 TASK 는 dependsOn 이 풀려도 ready 가 아니다.",
   "roadmapVersion": "1.0",
   "createdAt": "2026-09-25T16:28:15+09:00",
-  "updatedAt": "2026-10-09T07:58:14+09:00",
+  "updatedAt": "2026-10-16T09:00:00+09:00",
   "status": "planned",
   "provisional": false,
   "objective": "TypeSafe JEV(System One 모델)를 AMU 플랫폼의 빠른 판단 계층(Decision Fabric)으로 도입한다. 사용자 요청 3건 — (1) ai-model-tracker 추적 대상에 JEV 추가 (2) 플랫폼 Credential Panel 에 TypeSafe(JEV) API 등록 패널 추가 (3) JEV 추상화 판단 레이어 구현과 주요 로직(AI 모델 라우팅 등) 도입.",
@@ -21,6 +21,22 @@
       "request": "Clef Decision 모델을 fallback·disagreement·이미지 판단용 secondary 로 추가(JEV primary 유지).",
       "researchCycle": ".agents/jev-decision-fabric/JEV-200/ (MS-PARALLEL · 멤버 4 · 교차 검토 5건)",
       "report": ".agent/docs/project/2026/10/20261006_134500__jev-clef-secondary-decision-roadmap.md"
+    },
+    "latencyReview": {
+      "requestedAt": "2026-10-14",
+      "requestedBy": "user",
+      "request": "jev 모델을 코드상 어디에 적용하면 가장 효과적일지, 불필요한 AI 호출을 없애고 레이턴시·리스폰스 타임을 단축해 Play UX 를 높일 방법을 node-app 소스 기준으로 분석. 2026-10-16 사용자 지시로 관련 TASK 를 이 원장에 추가.",
+      "report": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md",
+      "addedTasks": [
+        "JEV-116",
+        "JEV-117",
+        "JEV-118",
+        "JEV-119"
+      ],
+      "amendedTasks": [
+        "JEV-105",
+        "JEV-110"
+      ]
     }
   },
   "invariants": [
@@ -508,7 +524,8 @@
           "work": [
             "synthetic 평가셋만 전송한다(개인정보 없음 — G-JEV-LEGAL 비해당. 단 TypeSafe 계약·약관 수락은 owner=user).",
             "Choice accuracy·Score MAE·Noul calibration(Brier/ECE)·confidence bucket 별 precision·abstention·p50/p95 latency·state 크기·질문 수별 비용·동일 state replay 일관성. 한국어/영어/혼합 분리 집계.",
-            "pin 버전과 alias 결과 비교."
+            "pin 버전과 alias 결과 비교.",
+            "2026-10-16 개정(.agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §6): point 별 p50/p95 latency 의 deadlineMs 예산 충족률(JEV-116-D4)과, 호출 게이트형 후보(JEV-118 A1·A3)의 false-skip rate(호출했어야 하는데 생략을 권한 비율)를 1급 지표로 추가한다."
           ]
         }
       ],
@@ -522,7 +539,8 @@
         "G-JEV-CJK 판정 근거가 생겼다."
       ],
       "notes": [
-        "JEV-200 R4(2026-10-06): JEV-105 는 JEV 단독 benchmark 로 유지한다. Clef paired 비교·rescue/regression 은 JEV-206 이 같은 평가셋으로 수행한다(W4 는 JEV-105 확장을 제안 — 임계 경로 보호를 위해 분리)."
+        "JEV-200 R4(2026-10-06): JEV-105 는 JEV 단독 benchmark 로 유지한다. Clef paired 비교·rescue/regression 은 JEV-206 이 같은 평가셋으로 수행한다(W4 는 JEV-105 확장을 제안 — 임계 경로 보호를 위해 분리).",
+        "JEV-116 deadlineMs 기본값과 JEV-118 핫패스 후보 채택 여부는 이 TASK 의 p95 실측으로 정한다."
       ]
     },
     {
@@ -748,7 +766,8 @@
       "status": "planned",
       "dependsOn": [
         "JEV-105",
-        "JEV-107"
+        "JEV-107",
+        "JEV-117"
       ],
       "gates": [
         "G-JEV-LEGAL",
@@ -772,7 +791,7 @@
           "id": "JEV-110-D2",
           "title": "단계",
           "work": [
-            "1단계(G-JEV-LEGAL 전 가능): 운영자·테스트 세션 replay 만.",
+            "1단계(G-JEV-LEGAL 전 가능): 운영자·테스트 세션 replay 만. JEV-118 의 A1·A2·B1 후보도 같은 replay 에 포함한다(2026-10-16 개정).",
             "2단계(G-JEV-LEGAL·PERSONALIZATION pass 후): Smart Mode opt-in 사용자만 observe(INV-9). coin 0 · COGS 상한.",
             "3단계: 기존 proposal 대비 품질·비용·latency·CJK 수치를 보고하고, draft(proposal 에 반영) 승격은 G-JEV-EFFECT 사용자 승인."
           ]
@@ -790,7 +809,8 @@
       ],
       "notes": [
         "Narrative event 전이·보상·재화·관계 수치는 resolver/reducer 서버 권위이며 JEV 는 영원히 관여하지 않는다(INV-5).",
-        "JEV-200 R4: Clef 단계는 JEV-203 이후 operator/test replay 에서만(admin_only). Clef 실호출은 G-JEV-CLEF-COGS 통과 후 cap-bound, 사용자 Canon/memory 의 Clef 전송은 G-JEV-CLEF-LEGAL·G-JEV-PERSONALIZATION 이후. coin 0·observe-only 유지. Play 첫 서비스 순서는 불변."
+        "JEV-200 R4: Clef 단계는 JEV-203 이후 operator/test replay 에서만(admin_only). Clef 실호출은 G-JEV-CLEF-COGS 통과 후 cap-bound, 사용자 Canon/memory 의 Clef 전송은 G-JEV-CLEF-LEGAL·G-JEV-PERSONALIZATION 이후. coin 0·observe-only 유지. Play 첫 서비스 순서는 불변.",
+        "2026-10-16 개정(.agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §6): JEV-117-D1 적용 후 Director 는 canon 공통 directive 가 되므로, 3단계 비교 기준(기존 proposal 대비 품질·비용·latency)을 canon 공통 directive 로 다시 잡는다. dependsOn 에 JEV-117 추가."
       ]
     },
     {
@@ -1014,6 +1034,286 @@
           "classification": "reframe",
           "action": "D1을 “Play CharacterChat learning-turn policy · Store claim/readiness review”로 분리 표기한다. Tutor의 intent·난이도·추가 설명 관측은 CharacterChat 학습 기능의 파생 신호로 다루되 음성 원문·transcript·장기 행동 기록을 state에 넣지 않는 범위와 G-JEV-LEGAL/G-JEV-PERSONALIZATION을 유지한다. D2(Store)는 독립 항목으로 둔다. PTU-003-D3 목적·보유·권리 처분 전에는 D1을 진행하지 않는다."
         }
+      ]
+    },
+    {
+      "id": "JEV-116",
+      "executionOrder": 16,
+      "phase": "P0-런타임 보강",
+      "title": "Decision Runtime 레이턴시 보강 — 게이트 순서 2단계·controls TTL 캐시·trace 비동기·circuit 쓰기 생략·point deadline·batch",
+      "userRequest": 3,
+      "owner": "agent",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "JEV-103"
+      ],
+      "openDecisionDependsOn": [
+        "OD-JEV-14"
+      ],
+      "goal": "소비 지점을 연결하기 전에 runDecision 이 사용자 대기 경로에 더하는 I/O·대기를 없앤다. 기본값(OFF)·opt-out 사용자에게는 I/O 0, 활성 경로는 point 별 데드라인 안에서만 기다린다. live 호출 없이 fake transport 로 끝낸다.",
+      "deliverables": [
+        {
+          "id": "JEV-116-D1",
+          "title": "R1 게이트 순서 2단계 분리",
+          "work": [
+            "현재 runDecision 은 controls(Mongo)·circuit(Redis)·credential 을 모두 읽은 뒤 resolveDecisionActivation 으로 opt-out·kill switch 를 판정한다(decisionRuntime.ts:171-210). 기본 OFF 에서도 호출마다 I/O 2회 이상.",
+            "decisionRuntimePolicy 를 preIoGate(point·userSmartModeEnabled — I/O 0) → controlsGate(kill·provider·service·point·rollout 해시·cogs cap) → postIoGate(credential·circuit) 순수 함수로 나눈다. userSmartModeEnabled=false 는 controls 를 읽기 전에 Standard.",
+            "reasonCode 와 판정 순서 계약은 기존 테스트 기대값을 유지하되, I/O 호출 횟수를 deps spy 로 고정한다."
+          ],
+          "exitCriteria": [
+            "opt-out·point 미등록·kill switch 경로의 Mongo/Redis 호출 0건이 테스트로 고정된다."
+          ]
+        },
+        {
+          "id": "JEV-116-D2",
+          "title": "R2 controls in-process TTL 캐시",
+          "work": [
+            "getJevRuntimeControls 결과를 OD-JEV-14 TTL(권고 2~5초) 동안 프로세스 메모리 캐시. readable:false 는 캐시하지 않는다(fail-closed 유지).",
+            "admin PATCH 성공 시 같은 프로세스 캐시 즉시 무효화. 다중 인스턴스 반영 지연(≤TTL)을 INV 보조 문구로 원장·admin 패널 안내에 명시."
+          ]
+        },
+        {
+          "id": "JEV-116-D3",
+          "title": "R3·R4 trace 비동기화·circuit 쓰기 생략",
+          "work": [
+            "recordProviderTrace 는 traceId·traceRef 를 동기로 만들고 createAiCostTrace·completeAiCostTrace 저장은 응답 경로 밖(next/server after() 또는 fire-and-forget + 실패 로그)으로. 현재는 저장 2회를 기다린 뒤 verdict 반환(decisionRuntime.ts:153).",
+            "성공 시 읽은 circuit record 가 이미 empty 면 writeCircuit 생략(decisionRuntime.ts:294-299)."
+          ]
+        },
+        {
+          "id": "JEV-116-D4",
+          "title": "R5 point deadline",
+          "work": [
+            "DecisionPoint 에 deadlineMs(선택) 필드 — validateDecisionPoint 범위 검사. 기본 timeoutMs 1500(jevRuntimeControls.ts:41)과 별개로 호출부 대기 상한.",
+            "runDecisionWithDeadline — 데드라인 초과 시 호출부는 Standard(reasonCode deadline_exceeded, DECISION_REASON_CODES 추가)로 진행하고, provider 호출은 abort 하지 않고 백그라운드에서 trace·circuit 기록을 마친다. deadline_exceeded 는 circuit 실패로 세지 않는다.",
+            "핫패스 point 의 deadlineMs 값은 JEV-105 p95 실측 후 확정(권고 출발점 250~400ms)."
+          ]
+        },
+        {
+          "id": "JEV-116-D5",
+          "title": "R6 같은 state 질문 batch",
+          "work": [
+            "runDecisionBatch — 같은 서비스·같은 projection 을 쓰는 point 여러 개를 System One questions map 한 번 호출로. sanitizer 는 point 별 allowlist 의 교집합 projection 만 허용(INV-7). 교집합이 비면 batch 하지 않는다.",
+            "verdict·trace 는 point 별로 분리 기록, circuit 은 provider 호출 1회 기준."
+          ]
+        }
+      ],
+      "verification": [
+        "fake transport 계약 테스트 — I/O 호출 수·데드라인·batch·trace 비동기·circuit 쓰기 생략",
+        "기존 decisionCore·jevClient·jevRuntimeControls·decisionRuntime 테스트 회귀",
+        "pnpm run typecheck · pnpm run lint"
+      ],
+      "exitCriteria": [
+        "기본값·opt-out 경로가 I/O 0 으로 Standard 를 반환한다.",
+        "활성 경로가 호출부를 deadlineMs 이상 붙잡지 않는다.",
+        "live provider 호출 0건(INV-1~3 불변)."
+      ],
+      "notes": [
+        "근거: .agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-B R1~R6.",
+        "JEV-118 의 모든 핫패스 point 는 이 TASK 완료 후에만 연결한다."
+      ]
+    },
+    {
+      "id": "JEV-117",
+      "executionOrder": 17,
+      "phase": "P0-Play AI 호출 다이어트",
+      "title": "Play 대화 경로 결정론 AI 호출 다이어트 — Director canon 공통 캐시·메모리 요약 응답 경로 분리·user 저장 병렬화·프롬프트 구성 병렬화",
+      "service": "play",
+      "owner": "agent",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "JEV-000"
+      ],
+      "openDecisionDependsOn": [
+        "OD-JEV-15(D1)",
+        "OD-JEV-16(D2)"
+      ],
+      "goal": "JEV 없이 결정론 수정만으로 Play 세션 첫 턴 LLM 3회(Director → 본 대화 → 메모리 요약, 앞의 둘은 사용자 대기 경로 직렬)를 본 대화 1회(+백그라운드)로 줄이고 직렬 I/O 를 줄인다. 외부 AI 로 데이터를 새로 보내지 않으므로 G-JEV-LEGAL·G-JEV-PERSONALIZATION 비해당.",
+      "deliverables": [
+        {
+          "id": "JEV-117-D0",
+          "title": "기준선 계측",
+          "work": [
+            "/api/ai/chat 에 단계별 Server-Timing(policy·compose·director·memory·llm·billing) — 운영자 계정에서만 노출.",
+            "턴 단위 workflowRunId 로 턴당 LLM 호출 수·턴당 코인 차감 집계. D1~D4 를 하나씩 적용하며 전후 비교(권장 순서 D3 → D4 → D1 → D2)."
+          ]
+        },
+        {
+          "id": "JEV-117-D1",
+          "title": "F1 Narrative Director canon 공통 캐시",
+          "work": [
+            "Director 프롬프트 입력은 universeId·characterId·캐릭터 canon 뿐(narrativeDirectorChatCaller.ts:68-81)인데 캐시 key 가 uid·session 단위(narrativeDirectorRuntime.ts:83-85)라 사용자×세션마다 재계산된다.",
+            "maxCallsPerSession 1 + 세션 INCR(TTL 300초, 첫 INCR 에만 EXPIRE)로 2번째 턴부터 Director 요청이 생성되지 않아(narrativeDirectorChatCaller.ts:128-138) 300초 proposal 캐시에 chat consumer 가 도달하지 못하고, directive 가 첫 턴·300초 창 첫 턴에만 붙는다.",
+            "directive 캐시 key 를 characterId + canonDigest + promptVersion + modelName 으로 바꾸고 canon publish·수정 시 선계산(또는 첫 miss 계산). 채팅 경로는 조회만 — 모든 턴에 같은 directive.",
+            "비용 주체(사용자 코인 → 플랫폼 COGS) 변경은 OD-JEV-15 결정 후."
+          ]
+        },
+        {
+          "id": "JEV-117-D2",
+          "title": "F2 메모리 요약 조건·응답 경로 분리",
+          "work": [
+            "shouldForceCurrentSessionSummary 의 !currentSession.summary 조건(conversationMemoryPipeline.ts:854-857)으로 세션 첫 assistant 메시지(대화 2개)부터 사용자 과금 LLM 요약이 돈다 → 최소 메시지 수(OD-JEV-16) 또는 end-chat/end-force 일 때만.",
+            "saveConversationMessage 의 await refreshConversationMemoryPipeline(saveConversationMessage.ts:329)을 after() 또는 큐 워커로 — 저장 응답이 요약·rollup LLM 을 기다리지 않게.",
+            "일간·주간·월간 rollup 직렬 LLM(:903-1000)을 cron·배치로 분리. 기존 provider operation lease·billing 멱등 키 유지."
+          ]
+        },
+        {
+          "id": "JEV-117-D3",
+          "title": "F3 클라이언트 user 메시지 저장 병렬화",
+          "work": [
+            "useChat 의 await saveMessage(user) → await sendToAI 직렬(useChat.ts:616-659)을 동시 시작으로. assistant 저장은 user 저장 완료를 기다려 세션 messageCount·순서 보존. clientId 멱등 계약 유지."
+          ]
+        },
+        {
+          "id": "JEV-117-D4",
+          "title": "F4 프롬프트 구성 병렬화·요청 내 중복 조회 제거",
+          "work": [
+            "composeAuthoritativeSystemPrompt 의 독립 조회(persona·base prompt·persona prompt·user char·memory·projection, systemPromptComposer.ts:283-407)를 Promise.all 2묶음으로.",
+            "요청 단위 memo — getPersonaForPrompt 2회(Director 요청 생성·composer), getUniverseById 2회(chatModelPolicy·assertUniverseRouteConsistency), assertNarrativeCollectionAllowed 2회(Director·projection).",
+            "readModelEmergencyDisable(modelEmergencyDisable.ts:44) 호출마다 Mongo — 짧은 TTL 캐시 여부는 비상차단 반영 지연 허용치와 함께 판단(OD-JEV-14 와 같은 기준)."
+          ]
+        }
+      ],
+      "verification": [
+        "D0 Server-Timing·턴당 LLM 호출 수 전후 비교",
+        "Director: 같은 캐릭터 다른 사용자·세션에서 LLM 호출 1회, 모든 턴 directive 동일",
+        "메모리: 저장 응답이 LLM 을 기다리지 않음, 요약 멱등·과금 회귀",
+        "pnpm run typecheck · pnpm run lint"
+      ],
+      "exitCriteria": [
+        "세션 첫 턴 사용자 대기 경로의 LLM 호출이 본 대화 1회다.",
+        "턴당 직렬 DB 왕복이 기준선 대비 줄었고 수치가 보고서에 남았다."
+      ],
+      "notes": [
+        "근거: .agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §2·§3-A F1~F4·§7.",
+        "JEV 호출을 추가하지 않는 결정론 수정이다. INV-1~INV-10 영향 없음.",
+        "F5(비스트리밍 JSON 응답)는 JEV-119 로 분리."
+      ]
+    },
+    {
+      "id": "JEV-118",
+      "executionOrder": 18,
+      "phase": "P1-서비스 P0",
+      "title": "Play DecisionPoint 후보 — 호출 게이트형(A1~A3)·레이턴시 라우팅형(B1·B2)·게임플레이 해석형 (observe)",
+      "service": "play",
+      "owner": "agent",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "JEV-105",
+        "JEV-107",
+        "JEV-116",
+        "JEV-117"
+      ],
+      "gates": [
+        "G-JEV-LEGAL",
+        "G-JEV-PERSONALIZATION",
+        "G-JEV-CJK(observe 초과 승격 시)",
+        "G-JEV-EFFECT"
+      ],
+      "goal": "JEV 를 '비싼 LLM 을 부를지 말지 정하는 게이트'와 '응답 경로 밖 판단'에 둔다. 본 대화 LLM 앞 직렬 배치는 하지 않는다. 정의·평가셋은 live 없이 먼저 만들고, 실사용자 state 는 게이트 후 observe 부터.",
+      "deliverables": [
+        {
+          "id": "JEV-118-D1",
+          "title": "Tier A — 호출 게이트형 (응답 경로 밖, 사용자 대기 +0)",
+          "work": [
+            "A1 `play.memory-summarize-trigger.v1` noul — JEV-117-D2 고정 규칙 대체 후보. 응답 후 after() 실행. state: 미요약 메시지 수 bucket·세션 길이·systemCode 집합·intimacy delta·서버 regex 결정론 신호 boolean(고유명사·날짜·선호 표현 감지). 원문 없음(INV-7).",
+            "A2 `play.director-refresh.v1` choice(reuse·static·refresh) — JEV-117-D1 canon 공통 directive 로 충분한지, 장면 전환으로 갱신이 필요한지. 턴 N 응답 후 다음 턴용 선계산 → Redis session key → 턴 N+1 GET 1회. D1 만으로 충분하면 만들지 않는다.",
+            "A3 `play.relationship-proposal-gate.v1` noul — 관계 제안 LLM(relationship-proposals/route.ts:112) 호출 여부. LLM 앞의 싼 게이트."
+          ]
+        },
+        {
+          "id": "JEV-118-D2",
+          "title": "Tier B — 레이턴시 라우팅형 (병렬 + 데드라인)",
+          "work": [
+            "B1 `play.chat-tier-route.v1` choice(fast·standard·strong) — resolveChatModelPolicy 와 병렬, JEV-116 deadline 안에 오면 반영. 사용자 명시 선택(preference) 없음 ∧ 유니버스 chatModelPolicy 비 locked 일 때만. 실제 모델 선택은 기존 selectable catalog·pricing preflight·chatModelPolicy 재통과(INV-4·ADR-JEV-01 system2).",
+            "B2 `play.memory-depth.v1` choice(none·recent·full) — 메모리 블록 로딩과 병렬, 주입 블록 선택으로 입력 토큰·TTFT 감소."
+          ]
+        },
+        {
+          "id": "JEV-118-D3",
+          "title": "게임플레이 해석형 (2026-10-14 후속 논의)",
+          "work": [
+            "`play.discovery-attribute.v1` choice — 플레이어 행동을 어느 능력치로 판정할지(playActivityCapability.ts attributeStatMap). 주사위·난이도·성공/실패·보상은 결정론(playNarrativeAdapter.ts:146-192) 권위 유지.",
+            "`play.npc-reaction.v1` choice — NPC 즉시 감정·표정 enum, 본 대화 LLM 과 병렬로 먼저 표시. 대사·mood 저장 권위 불변.",
+            "`play.cross-universe-rerank.v1` score — crossUniverseMatchmaking.ts:33-80 상위 N 후보 재정렬. 공개 스냅샷만 사용(공개 콘텐츠 lane, 게이트 부담 최소) — 이 묶음의 첫 실험 후보.",
+            "자유 입력 원문 대신 선택지형 행동 enum 을 state 로 보내 G-JEV-LEGAL·G-JEV-CJK 부담을 줄이는 설계를 우선한다.",
+            "전투 프레임 루프·결과·보상·호감도 증가량·레어도 추첨에는 JEV 를 넣지 않는다(INV-5, todo-play-isometric-quality INV-8)."
+          ]
+        },
+        {
+          "id": "JEV-118-D4",
+          "title": "단계",
+          "work": [
+            "0단계(지금 가능): registry 정의(기본 controls OFF)·JEV-104 평가셋 확장(false-skip label 포함)·fake transport 계약 테스트.",
+            "1단계(G-JEV-LEGAL 전): 운영자·테스트 세션 replay + 공개 스냅샷 rerank.",
+            "2단계(G-JEV-LEGAL·PERSONALIZATION pass 후): Smart Mode opt-in 사용자 observe, coin 0·COGS 상한.",
+            "3단계: rank(실제 호출 생략·라우팅 반영) 승격은 G-JEV-EFFECT 사용자 승인 + JEV-106 기준(qualityRegressionMax 0.05·costSavingMin 0.15)."
+          ]
+        }
+      ],
+      "verification": [
+        "registry validateDecisionPoint·state allowlist 테스트",
+        "기본 controls 에서 호출 0건 경계 테스트",
+        "A1·A3 false-skip rate·B1 데드라인 충족률(JEV-105 개정 지표)",
+        "pnpm run typecheck · pnpm run lint"
+      ],
+      "exitCriteria": [
+        "후보별 절감 가능 LLM 호출·레이턴시·false-skip 이 replay 로 실측됐다.",
+        "사용자 대기 경로에 JEV 직렬 대기가 추가되지 않았다.",
+        "execute 경로 0건."
+      ],
+      "notes": [
+        "근거: .agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §4·§5 · 2026-10-14 후속 대화(게임플레이 DecisionPoint).",
+        "JEV-110(play.narrative-directive.v1)과 병행한다. 서비스 순서(OD-JEV-02·PTU-Q-016 D-7) 불변.",
+        "연계 원장: .agent/todo-ledgers/in-progress/todo-play-isometric-quality.json — 게임플레이 판단 지점의 소유는 이 원장이다."
+      ]
+    },
+    {
+      "id": "JEV-119",
+      "executionOrder": 19,
+      "phase": "P1-Play UX",
+      "title": "Play 대화 스트리밍 응답 계약 검토 (설계)",
+      "service": "play",
+      "owner": "agent",
+      "riskTier": "JUDGE",
+      "targetProject": [
+        "amu_app/node-app"
+      ],
+      "status": "planned",
+      "dependsOn": [
+        "JEV-117"
+      ],
+      "goal": "본 대화가 {message, translation, systemCode, …} JSON 전체 생성 후 반환돼(unifiedChat.ts:787-819) 체감 첫 글자 시간 = 전체 생성 시간인 문제의 해법을 설계한다. JEV 범위 밖이지만 Play 체감 레이턴시 최대 단일 요인이라 이 원장의 레이턴시 축에서 함께 추적한다.",
+      "deliverables": [
+        {
+          "id": "JEV-119-D1",
+          "title": "응답 계약 분리 설계",
+          "work": [
+            "message 텍스트 스트림 + 종료 시 메타(translation·systemCode·productCode·usage) 2부 계약. provider 별 스트리밍 지원·usage 수집·billing·provider operation lease·operationId replay·clientId 멱등과의 정합.",
+            "systemCode(end-chat 등) 판정이 메타로 늦게 오는 경우 UI·호감도 정산 영향 정리. JEV-118 npc-reaction 과 결합 시 체감 효과 추정."
+          ]
+        }
+      ],
+      "verification": [
+        "설계 문서 리뷰(사용자)"
+      ],
+      "exitCriteria": [
+        "구현 TASK 분해와 위험·호환 계획이 문서로 확정됐다."
+      ],
+      "notes": [
+        "근거: .agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F5."
       ]
     },
     {
@@ -1843,6 +2143,34 @@
         "JEV-204"
       ],
       "source": ".agents/jev-decision-fabric/JEV-200/research/W5.md §E"
+    },
+    {
+      "id": "OD-JEV-14",
+      "question": "runtime controls(및 모델 비상차단 설정) in-process 캐시 TTL — kill switch·비상차단 반영 지연을 얼마까지 허용할 것인가",
+      "recommendation": "2~5초. readable:false 는 캐시하지 않고, admin 변경 시 같은 프로세스 캐시는 즉시 무효화. 다중 인스턴스 지연(≤TTL)을 admin 패널에 고지.",
+      "blocks": [
+        "JEV-116-D2",
+        "JEV-117-D4(비상차단 캐시)"
+      ],
+      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-B R2 · §6"
+    },
+    {
+      "id": "OD-JEV-15",
+      "question": "canon 공통 Narrative Director directive 의 생성 비용 주체 — 현행 사용자 코인 과금(app narrative_director)을 플랫폼 COGS(콘텐츠 준비 비용)로 바꿀 것인가",
+      "recommendation": "플랫폼 COGS. 입력에 사용자 데이터가 없고 결과를 여러 사용자가 공유하므로 사용자별 과금 근거가 약하다. server-economy-security 확인 후 확정.",
+      "blocks": [
+        "JEV-117-D1"
+      ],
+      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F1"
+    },
+    {
+      "id": "OD-JEV-16",
+      "question": "세션 메모리 요약 최소 메시지 수(첫 assistant 메시지 강제 요약 제거)",
+      "recommendation": "messageCount ≥ 8(또는 end-chat/end-force) — 기억 품질 영향은 JEV-117-D0 계측과 운영자 replay 로 확인. 이후 JEV-118 A1 이 대체 후보.",
+      "blocks": [
+        "JEV-117-D2"
+      ],
+      "source": ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md §3-A F2"
     }
   ],
   "risks": [
@@ -1910,6 +2238,26 @@
       "id": "R-JEV-13",
       "risk": "COGS cap 이 숫자 검사뿐이라 fallback·disagreement·vision 동시 호출이 상한을 넘는다. 실패한 첫 JEV 호출 비용이 cap 계산에서 빠진다",
       "mitigation": "JEV-204 atomic bounded reserve · G-JEV-CLEF-COGS 전 live dispatch 0"
+    },
+    {
+      "id": "R-JEV-14",
+      "risk": "controls TTL 캐시로 kill switch 반영이 인스턴스별로 최대 TTL 만큼 늦다",
+      "mitigation": "OD-JEV-14 짧은 TTL · unreadable 비캐시 · 같은 프로세스 즉시 무효화"
+    },
+    {
+      "id": "R-JEV-15",
+      "risk": "병렬+데드라인 배치에서 데드라인 초과 결과가 버려져도 provider 비용은 발생한다(COGS 낭비)",
+      "mitigation": "JEV-105 p95 기반 deadlineMs · deadline_exceeded 비율 모니터링 · 초과율 높은 point 는 선계산(패턴 3)으로 전환"
+    },
+    {
+      "id": "R-JEV-16",
+      "risk": "호출 게이트형 point(A1·A3)의 false-skip 이 기억·관계 품질 회귀로 이어진다",
+      "mitigation": "JEV-105 false-skip 1급 지표 · observe 선행 · rank 승격은 G-JEV-EFFECT"
+    },
+    {
+      "id": "R-JEV-17",
+      "risk": "메모리 파이프라인을 after()/워커로 옮기면 실패가 사용자에게 보이지 않고 조용히 누락된다",
+      "mitigation": "JEV-117-D2 실패 로그·재시도·operation lease 유지 · 요약 지연 지표"
     }
   ],
   "relatedLedgers": [
@@ -1919,7 +2267,8 @@
     ".agent/todo-amu-integrated-reorganization.json — AIR-803 Next Action contract(JEV-111 기반)",
     ".agent/todo-ledgers/completed/2026/09/todo-system-setting-integrity.json — SSI-001: JEV-103 W3-FALSY 에서 발견한 공용 설정 저장소 결함(완료 시 jevRuntimeControls 가 손상 값을 readable:false 로 판정)",
     ".agent/todo-ledgers/in-progress/todo-ai-model-ssot.json — JEV-106 이 SSOT-101 의 roles.routing 생성 상수를 읽는다(SSOT-000 R4, 2026-09-30). JEV decision inventory 는 INV-4 에 따라 SSOT manifest 에 넣지 않는다 / SSOT-100 확정(2026-09-30): JEV-106 이 읽을 계약은 SSOT 원장 sharedContracts.jevRoutingData — modelTierRoute(standard→baseline, worker/planner/evaluator→같은 이름의 AiRoutingRole), escalation cheap_llm·strong_llm 초기 null, 생성 export AI_GEN_STUDIO_MODEL_TIER_ROUTE·AI_GEN_STUDIO_ESCALATION_ROLES. modelPin 은 JEV 소유 유지",
-    ".agent/todo-ledgers/in-progress/todo-ai-model-ssot.json — SSOT-115(done 2026-10-06)가 tracker 에 Clef decision inventory·scraper·decision report 를 구현했다. JEV-202 는 그 위의 Neuron 단위·첫 수집·기준값 승인 gap 만 소유한다."
+    ".agent/todo-ledgers/in-progress/todo-ai-model-ssot.json — SSOT-115(done 2026-10-06)가 tracker 에 Clef decision inventory·scraper·decision report 를 구현했다. JEV-202 는 그 위의 Neuron 단위·첫 수집·기준값 승인 gap 만 소유한다.",
+    ".agent/todo-ledgers/in-progress/todo-play-isometric-quality.json — Play 아이소메트릭 퀄리티 고도화(에셋 계약 v3·모바일 런타임·ARPG). 게임플레이 DecisionPoint(JEV-118-D3)는 이 원장 소유, 전투 프레임 루프에는 JEV 를 넣지 않는다. PAQ-204 facing·정체성 vision 검증은 JEV-208·209 후보."
   ],
   "references": [
     ".agent/references/AMU_APP/in_progress/Jev_System_One_Model.md",
@@ -1930,17 +2279,20 @@
     "https://docs.typesafe.ai/models · https://docs.typesafe.ai/introduction/quickstart · https://docs.typesafe.ai/confidence · https://typesafe.ai/legal/mca · https://typesafe.ai/legal/data-processing (2026-09-25 멤버 확인)",
     ".agent/references/AMU-INFRA/in_progress/clef_decision_model.md",
     ".agents/jev-decision-fabric/JEV-200/research/W1.md ~ W5.md",
-    "https://developers.cloudflare.com/workers-ai/models/clef/ · https://developers.cloudflare.com/workers-ai/platform/data-usage/ · https://www.cloudflare.com/privacypolicy/southkorea-addendum/ (2026-10-06 멤버 확인)"
+    "https://developers.cloudflare.com/workers-ai/models/clef/ · https://developers.cloudflare.com/workers-ai/platform/data-usage/ · https://www.cloudflare.com/privacypolicy/southkorea-addendum/ (2026-10-06 멤버 확인)",
+    ".agent/docs/project/2026/10/20261014_jev-play-latency-ai-call-review.md"
   ],
   "nextExecutable": {
-    "computedAt": "2026-10-06T13:48:07+09:00",
+    "computedAt": "2026-10-16T09:00:00+09:00",
     "ready": [
       "JEV-105 — provider synthetic benchmark (JEV-104 done, G-JEV-ACCESS pass). 선행 권고: 평가셋 label 운영자 검수",
       "JEV-107 — Smart Mode 사용자 설정 + 서버 실효 활성 판정(과금 없음)",
       "JEV-108 ← OD-JEV-04 결정 필요",
       "JEV-201 — Cloudflare Workers AI credential safe-off(키 없이 구현 가능, 실키 검증은 G-JEV-CLEF-ACCESS 후). OD-JEV-09·10 승인됨. 착수 시 JEV-201-D0(사용자 token 발급·계정 확인) 함께 요청",
       "JEV-202 — tracker Clef Neuron 단위·첫 수집(SSOT-115 done)",
-      "JEV-205 — Cloudflare 계약·정본 정합 착수 가능(owner leader+user, OD-JEV-10 승인됨)"
+      "JEV-205 — Cloudflare 계약·정본 정합 착수 가능(owner leader+user, OD-JEV-10 승인됨)",
+      "JEV-116 — Decision Runtime 레이턴시 보강(live 0). D2 controls 캐시만 OD-JEV-14 결정 필요",
+      "JEV-117 — Play AI 호출 다이어트 D0·D3·D4 즉시, D1 ← OD-JEV-15, D2 ← OD-JEV-16"
     ],
     "readyAfter": [
       "JEV-203 ← JEV-201 (OD-JEV-08·OD-JEV-12 승인됨)",
@@ -1948,7 +2300,10 @@
       "JEV-208 ← JEV-203",
       "JEV-206 ← JEV-105·JEV-203·JEV-204 + G-JEV-CLEF-ACCESS·COGS",
       "JEV-207 ← JEV-206 + OD-JEV-11",
-      "JEV-209 ← JEV-104·JEV-204·JEV-208"
+      "JEV-209 ← JEV-104·JEV-204·JEV-208",
+      "JEV-118 ← JEV-105·JEV-107·JEV-116·JEV-117 (0단계 정의·평가셋은 선행 가능)",
+      "JEV-119 ← JEV-117",
+      "JEV-110 ← JEV-105·JEV-107·JEV-117 (2026-10-16 JEV-117 추가)"
     ],
     "blockedOnGate": [
       "JEV-110 2단계·JEV-112·JEV-115 — G-JEV-LEGAL·G-JEV-PERSONALIZATION",
@@ -1956,7 +2311,7 @@
       "Clef live dispatch 전체 — G-JEV-CLEF-ACCESS·G-JEV-CLEF-COGS",
       "Clef 사용자 state·image — G-JEV-CLEF-LEGAL·G-JEV-CLEF-IMAGE"
     ],
-    "criticalPath": "(JEV-104 → JEV-105) ∥ JEV-107 → [G-JEV-LEGAL·G-JEV-PERSONALIZATION] → JEV-110 / Clef: JEV-201 → JEV-203 → (JEV-202 ∥) JEV-204 → [G-JEV-CLEF-ACCESS·COGS] → JEV-206 → JEV-207 / JEV-203 → JEV-208 → JEV-209 → JEV-112·JEV-113",
+    "criticalPath": "(JEV-104 → JEV-105) ∥ JEV-107 → [G-JEV-LEGAL·G-JEV-PERSONALIZATION] → JEV-110 / Clef: JEV-201 → JEV-203 → (JEV-202 ∥) JEV-204 → [G-JEV-CLEF-ACCESS·COGS] → JEV-206 → JEV-207 / JEV-203 → JEV-208 → JEV-209 → JEV-112·JEV-113 / Play 레이턴시: JEV-117 ∥ JEV-116 → (JEV-105) → JEV-118·JEV-110 → JEV-119",
     "calculationRule": [
       "dependsOn 이 모두 done 이고 gates 가 pass/standing 이며 openDecisionDependsOn 이 결정된 TASK 만 ready 다."
     ]
